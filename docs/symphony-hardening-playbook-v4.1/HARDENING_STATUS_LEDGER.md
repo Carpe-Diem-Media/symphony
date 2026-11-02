@@ -157,6 +157,36 @@ Effective 2026-10-07, H-070B is accepted at `b621d6b1663703253da72b3f822c60f5091
 
 PRE-080C-02 is **ACCEPTED** with outcome **LIMIT_FOUND**. PRE-080C-03 is **ACCEPTED** effective 2026-10-11. PRE-H080C is **ACCEPTED** effective 2026-10-12. On 2026-10-17, Master Governance accepted H-080C at PR #46 merge `e8d945b70c4bfc2be1db154a22d23f3c5a5f1a27` / tree `3a325b8dc8cfd515e14a4f1c6016719d980f64b2` and authorized H-090 planning and seam assessment only. On 2026-10-18, Master Governance accepted H-090 at PR #48 merge `d8ebad76e34ef13a98bd11e70f4bd657392ff33d` / tree `3c54c625571ac259fa7ecf42d65b22b8e290cf66` under `MG-2026-10-18-H090-ACCEPT-H120A-AUTH-01` at `2026-10-18T12:16:30+02:00`. Under the later decision `MG-2026-10-18-H120A-ACCEPT-H100-AUTH-01` at `2026-10-18T16:32:05+02:00`, Master Governance accepted H-120A at PR #50 and authorized H-100 as the sole active work. H-100 remains not accepted. H-110 and H-120B remain NOT_AUTHORIZED. The next governance step is H-110, no next phase is authorized, production rollout and automated merge remain unauthorized, and merge authority remains human-only.
 
+## Scoped Gate 2 inventory freeze, 2026-11-02
+
+The selected V1 Gate 2 reference-topology inventory is accepted for freeze
+under the supplied independent governance decision. Its identity is recorded
+in the [Gate 2 acceptance record](GATE2_INVENTORY_FREEZE_ACCEPTANCE_2026-11-02.md),
+[scoped projection](GATE2_INVENTORY_FREEZE_PROJECTION.json), and
+[reconciliation](GATE2_INVENTORY_FREEZE_GOVERNANCE_RECONCILIATION_2026-11-02.md).
+
+```ini
+GATE2_INVENTORY_FREEZE=ACCEPTED
+INVENTORY_SCHEMA_VERSION=G2-INV-2.1
+INVENTORY_ENTRY_COUNT=115
+OBLIGATION_COUNT=26
+INVENTORY_SHA256=7341b7faae506db873f3aa9915f8c162f2a7ebe284e872e78189f66c6ead5c9c
+OBLIGATION_REGISTER_SHA256=c34f145948698ecd474c6ab8194537df4ad3ab8e8ad2c7070cc9ffde9142d686
+COMBINED_FREEZE_SHA256=1458bb041215c6268f2c69c01ed4198357e9561fbdc17a62e7288d0817b61911
+GATE_2_STATUS=INCOMPLETE
+IMPLEMENTATION_AUTHORIZED=NO
+CODEX_EXECUTION_AUTHORIZED=NO
+PROVIDER_EXECUTION_AUTHORIZED=NO
+H100_EXECUTION_AUTHORIZED=NO
+```
+
+This scoped acceptance does not update the V4.1 programme phase or the
+projection-derived status block below. The V4.1 projection continues to
+record H-100 as `AUTHORIZED / ACTIVE / NOT ACCEPTED` under the accepted H-120A
+decision. The Gate 2 task lock separately keeps H-100 execution unauthorized.
+Implementation planning starts only after this persistence is merged and the
+protected-main tree and committed packet identity are verified.
+
 <!-- BEGIN SYMPHONY_GOVERNANCE_STATUS_V1 -->
 GOVERNANCE_PROJECTION_PATH=docs/symphony-hardening-playbook-v4.1/V4_1_GOVERNANCE_PROJECTION.json
 GOVERNING_ROADMAP_ID=docs/symphony-hardening-playbook-v4.1/V4_1_MASTER_ROADMAP.md

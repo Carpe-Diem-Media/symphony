@@ -12,6 +12,7 @@ This directory contains the accepted V4.1 future-roadmap authority, the current 
 - [H-090 governance materialization](H-090_GOVERNANCE_MATERIALIZATION.md) records H-080C acceptance and the planning-only H-090 authorization.
 - [POST-H090 / PRE-H120A governance materialization](POST-H090_PRE-H120A_GOVERNANCE_MATERIALIZATION.md) records the earlier H-090 acceptance and H-120A Governance Pre-Gate authorization.
 - [POST-H120A / PRE-H100 governance materialization](POST-H120A_PRE-H100_GOVERNANCE_MATERIALIZATION.md) records H-120A acceptance and the bounded H-100 authorization.
+- [Gate 2 Inventory Freeze acceptance](GATE2_INVENTORY_FREEZE_ACCEPTANCE_2026-11-02.md), [scoped projection](GATE2_INVENTORY_FREEZE_PROJECTION.json), and [governance reconciliation](GATE2_INVENTORY_FREEZE_GOVERNANCE_RECONCILIATION_2026-11-02.md) bind the accepted inventory hash without changing V4.1 phase authority.
 - [Historical governance reconciliation](GOVERNANCE_RECONCILIATION.md) records the reconstructed V4.1-000 through H-060A history, its evidence sources, and provenance gaps.
 - [2026-10-05 governance reconciliation](GOVERNANCE_RECONCILIATION_2026-10-05.md) reconciles H-070B through H-080B against exact Git/CI facts and preserves the 2026-10-07 Master Governance adjudication that establishes their current formal acceptance states.
 - [V3 accepted authority index](V3_ACCEPTED_AUTHORITY.md) links the immutable accepted H-010, H-020, and H-030 authority.

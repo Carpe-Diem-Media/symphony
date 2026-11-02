@@ -1,0 +1,57 @@
+{
+  "schema_version": "G2-INV-2.1",
+  "projection_role": "SCOPED_DERIVATIVE_OF_SUPPLIED_GATE2_GOVERNANCE_ACCEPTANCE",
+  "authority_input": {
+    "class": "SUPPLIED_INDEPENDENT_GOVERNANCE_APPROVAL",
+    "governance_freeze_verdict": "APPROVED",
+    "decision": "APPROVED",
+    "date": "2026-11-02",
+    "decision_reference": null,
+    "repository_persistence": "PENDING_PR_REVIEW_AND_PROTECTED_MAIN_MERGE"
+  },
+  "freeze_identity": {
+    "topology_selection": "SELECT_REFERENCE_TOPOLOGY",
+    "reference_topology_selected": true,
+    "provider_contract": "SIWC_CHATGPT_PLAN_OAUTH_RESPONSES",
+    "packet_path": "docs/symphony-hardening-playbook-v4.1/GATE2_INVENTORY_FREEZE_PACKET_1458bb041215c626.json",
+    "packet_raw_sha256": "a651b1574ec0a186f6b4cd9548787cf9b67009f6692268ce5a8d0669d9d0636a",
+    "packet_raw_bytes": 683322,
+    "inventory_entry_count": 115,
+    "obligation_count": 26,
+    "inventory_sha256": "7341b7faae506db873f3aa9915f8c162f2a7ebe284e872e78189f66c6ead5c9c",
+    "obligation_register_sha256": "c34f145948698ecd474c6ab8194537df4ad3ab8e8ad2c7070cc9ffde9142d686",
+    "combined_freeze_sha256": "1458bb041215c6268f2c69c01ed4198357e9561fbdc17a62e7288d0817b61911"
+  },
+  "gate2_task_execution_lock": {
+    "inventory_verdict": "READY_FOR_GOVERNANCE_FREEZE",
+    "gate_2_status": "INCOMPLETE",
+    "implementation_authorized": false,
+    "codex_execution_authorized": false,
+    "provider_execution_authorized": false,
+    "h100_execution_authorized": false,
+    "auth_07": "SUSPENDED_UNCONSUMED",
+    "new_codex_execution": false,
+    "codex_recollection_allowed": false,
+    "authorized_run_count": 1,
+    "raw_gate2_run_lineage": "PARTIAL",
+    "local_bearer_nondisclosure": "UNVERIFIED",
+    "scanner_policy_changed": false,
+    "production_policy_changed": false,
+    "raw_gate2_run_acceptance_authority": false,
+    "retained_trace_role": "DIAGNOSTIC_ONLY",
+    "r4_package_accepted": false
+  },
+  "v4_1_programme_provenance": {
+    "source_projection": "docs/symphony-hardening-playbook-v4.1/V4_1_GOVERNANCE_PROJECTION.json",
+    "source_baseline_sha": "62ba70e6fb97373c4a1cb680846aea985fc80d98",
+    "source_baseline_tree": "1eb430d3788d6cff666207e2fdeb8540ae906611",
+    "h100_status": "AUTHORIZED_ACTIVE_NOT_ACCEPTED",
+    "h100_decision_reference": "MG-2026-10-18-H120A-ACCEPT-H100-AUTH-01",
+    "relation_to_gate2_lock": "SEPARATE_AUTHORITY_SCOPES; NEITHER OVERRIDES THE OTHER"
+  },
+  "next_step_boundary": {
+    "merge_authority": "HUMAN_ONLY",
+    "implementation_planning_start": "AFTER_PROTECTED_MAIN_MERGE_AND_POST_MERGE_PACKET_VERIFICATION",
+    "gate2_acceptance": "NOT_ESTABLISHED_BY_INVENTORY_FREEZE"
+  }
+}
