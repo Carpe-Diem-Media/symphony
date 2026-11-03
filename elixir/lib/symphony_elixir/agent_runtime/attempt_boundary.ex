@@ -1,6 +1,15 @@
 defmodule SymphonyElixir.AgentRuntime.AttemptBoundary do
   @moduledoc """
   Dormant Gate 2 coordinator. It records no active authority and cannot verify cleanup.
+
+  Initial binding records an unverified caller-supplied grant fingerprint after
+  matching durable reserved-resource facts. The registered host owner authorizes
+  recording intent, not grant issuance or the fingerprint's provenance. The
+  persisted `:requested` fence is never an issued or active grant. Later intent
+  requests resolve the exact durable reference and current reserved resources.
+
+  P01 has no grant issuer. Authorization and operation admission stay dormant;
+  neither hashing nor durable binding permits runtime use or verified cleanup.
   """
 
   use GenServer
@@ -322,6 +331,7 @@ defmodule SymphonyElixir.AgentRuntime.AttemptBoundary do
   defp reply_authorization_request(false, state), do: {:reply, {:error, :invalid_request}, state}
 
   defp bind_validated_fence(ledger, issue_id, reference, state) do
+    # Matching reservations authorize recording fence intent, never grant issuance.
     case matching_resources(reference, state) do
       :ok ->
         result = AttemptLedger.bind_gate2_fence_from_boundary(ledger, issue_id, reference)

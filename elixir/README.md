@@ -194,6 +194,14 @@ Notes:
   resources or launch Codex. `gate2_enforced` returns `gate2_profile_incomplete` until the
   qualified components exist. Unknown mode names and nested keys fail configuration parsing.
   A Gate 2 ledger binding cannot be changed back to `legacy` by a workflow edit.
+- P01 grant digests are unverified fence-intent metadata. The registered host owner
+  can bind them after matching durable reserved-resource facts. Hashing and persistence
+  do not establish grant issuance or activation. Later fence requests resolve the exact
+  durable reference and can report only `requested`; runtime use and clean release remain denied.
+- Recovery reads the Linux host boot UUID from `/proc/sys/kernel/random/boot_id`.
+  A process restart retains that boot identity while advancing the recovery sequence and nonce.
+  A reboot changes boot identity; both cases reconcile resource facts without restoring live
+  authority. Unavailable boot identity or partial recovery blocks admission.
 - Attempt ledgers do not migrate during startup or workflow reload. A schema-1 project stays
   schema 1 until an operator runs the offline maintenance task while Symphony and its ledger
   handles are stopped. For authorized maintenance, the command forms are:

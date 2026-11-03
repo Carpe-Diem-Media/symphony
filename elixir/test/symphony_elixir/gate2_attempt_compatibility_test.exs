@@ -11,7 +11,7 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
     kind: :gate2,
     binding_version: 1,
     lineage_binding_id: "binding-a",
-    resource_ledger_namespace: "resources-a"
+    resource_ledger_namespace: @namespace
   }
 
   setup do
@@ -103,7 +103,7 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
     identity = %Identity{
       runtime_attempt_id: "attempt-requested",
       work_item_id: "requested-item",
-      lineage_generation: "lineage-requested",
+      lineage_generation: "lineage-requested-item",
       responsibility: "implementation",
       runtime_profile: "implementation"
     }
@@ -136,6 +136,45 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
       })
 
     assert {:ok, ^reference} = AttemptLedger.gate2_fence_reference(ledger, "requested-item")
+  end
+
+  @r01_corruptions ~w(
+    work_item lineage outer_identity reference_namespace binding_namespace binding_namespace_without_fence
+    outer_work_item_without_fence outer_lineage_without_fence
+    released_work_item_without_fence released_lineage_without_fence
+  )a
+  for corruption <- @r01_corruptions,
+      read_path <- [:current, :reference, :configured_schema, :reopen] do
+    @tag :r01_coherence
+    @tag r01_nonbound: corruption in [:released_work_item_without_fence, :released_lineage_without_fence]
+    @tag r01_outer: corruption in [:outer_work_item_without_fence, :outer_lineage_without_fence]
+    test "persisted Gate2 #{corruption} mismatch fails closed through #{read_path}", %{root: root} do
+      corruption = unquote(corruption)
+      read_path = unquote(read_path)
+      path = seed_committed_schema2(root)
+      {:ok, ledger} = AttemptLedger.open(@namespace, @identity, path: path)
+      ledger = install_coherent_gate2_record(ledger)
+      assert {:ok, original} = AttemptLedger.current(ledger, "coherent")
+      inconsistent = corrupt_gate2_identity(original, corruption)
+      assert :ok = :dets.insert(ledger.table, {{:current, "coherent"}, inconsistent})
+      assert :ok = :dets.sync(ledger.table)
+
+      assert_incoherent_read(read_path, ledger, path)
+    end
+  end
+
+  @tag :r01_coherence
+  test "Gate2 history without an embedded fence still enforces resource namespace", %{root: root} do
+    path = seed_committed_schema2(root)
+    {:ok, ledger} = AttemptLedger.open(@namespace, @identity, path: path)
+    [{key, history}] = :dets.match_object(ledger.table, {{:history, :_}, :_})
+    inconsistent = put_in(history.boundary_binding.resource_ledger_namespace, "other-project")
+    assert :ok = :dets.insert(ledger.table, {key, inconsistent})
+    assert :ok = :dets.sync(ledger.table)
+    assert {:error, {:corrupt_attempt_record, ^key, :invalid_record}} = AttemptLedger.history(ledger)
+    assert {:error, :storage_corrupt} = AttemptLedger.configured_schema(@namespace, @identity, path: path)
+    assert :ok = AttemptLedger.close(ledger)
+    assert {:error, :migration_in_progress} = AttemptLedger.open(@namespace, @identity, path: path)
   end
 
   test "durable Gate2 binding requires the boundary owner process", %{root: root} do
@@ -248,6 +287,69 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
     assert {:error, :attempt_resource_verification_required} = AttemptLedger.begin_attempt(ledger, "closed")
     assert {:error, :attempt_resource_verification_required} = AttemptLedger.fence_attempt(ledger, "closed")
     assert current!(ledger, "closed") == closed_before
+  end
+
+  defp assert_incoherent_read(:current, ledger, _path) do
+    assert {:error, :invalid_record} = AttemptLedger.current(ledger, "coherent")
+    AttemptLedger.close(ledger)
+  end
+
+  defp assert_incoherent_read(:reference, ledger, _path) do
+    assert {:error, :storage_corrupt} = AttemptLedger.gate2_fence_reference(ledger, "coherent")
+    AttemptLedger.close(ledger)
+  end
+
+  defp assert_incoherent_read(:configured_schema, ledger, path) do
+    assert {:error, :storage_corrupt} = AttemptLedger.configured_schema(@namespace, @identity, path: path)
+    AttemptLedger.close(ledger)
+  end
+
+  defp assert_incoherent_read(:reopen, ledger, path) do
+    assert :ok = AttemptLedger.close(ledger)
+    bytes = File.read!(path)
+    assert {:error, :migration_in_progress} = AttemptLedger.open(@namespace, @identity, path: path)
+    assert File.read!(path) == bytes
+  end
+
+  defp install_coherent_gate2_record(ledger) do
+    identity = %Identity{runtime_attempt_id: "a", work_item_id: "coherent", lineage_generation: "lineage-coherent"}
+    identity = %{identity | responsibility: "implementation", runtime_profile: "implementation"}
+    reference = %{grant_id: "coherent-grant", project_namespace: @namespace, runtime_identity: identity}
+    reference = Map.merge(reference, %{fence_epoch: 1, grant_sha256: String.duplicate("a", 64)})
+    intent = %{reference: reference, status: :requested}
+    fence = %{state: :bound, runtime_attempt: identity, route_fingerprint: nil, gate2_fence: intent}
+    install_gate2_record(ledger, "coherent", %{in_flight: true, authority_fence: fence})
+  end
+
+  defp corrupt_gate2_identity(record, :work_item), do: put_in(record.authority_fence.gate2_fence.reference.runtime_identity.work_item_id, "other-item")
+  defp corrupt_gate2_identity(record, :lineage), do: put_in(record.authority_fence.gate2_fence.reference.runtime_identity.lineage_generation, "other-lineage")
+  defp corrupt_gate2_identity(record, :outer_identity), do: put_in(record.authority_fence.runtime_attempt.runtime_attempt_id, "other-attempt")
+  defp corrupt_gate2_identity(record, :reference_namespace), do: put_in(record.authority_fence.gate2_fence.reference.project_namespace, "other-project")
+  defp corrupt_gate2_identity(record, :binding_namespace), do: put_in(record.boundary_binding.resource_ledger_namespace, "other-project")
+
+  defp corrupt_gate2_identity(record, :released_work_item_without_fence) do
+    record = corrupt_gate2_identity(record, :outer_work_item_without_fence)
+    %{record | in_flight: false, authority_fence: %{record.authority_fence | state: :released}}
+  end
+
+  defp corrupt_gate2_identity(record, :released_lineage_without_fence) do
+    record = corrupt_gate2_identity(record, :outer_lineage_without_fence)
+    %{record | in_flight: false, authority_fence: %{record.authority_fence | state: :released}}
+  end
+
+  defp corrupt_gate2_identity(record, :outer_work_item_without_fence) do
+    record = put_in(record.authority_fence.runtime_attempt.work_item_id, "other-item")
+    %{record | authority_fence: Map.delete(record.authority_fence, :gate2_fence)}
+  end
+
+  defp corrupt_gate2_identity(record, :outer_lineage_without_fence) do
+    record = put_in(record.authority_fence.runtime_attempt.lineage_generation, "other-lineage")
+    %{record | authority_fence: Map.delete(record.authority_fence, :gate2_fence)}
+  end
+
+  defp corrupt_gate2_identity(record, :binding_namespace_without_fence) do
+    record = corrupt_gate2_identity(record, :binding_namespace)
+    %{record | authority_fence: Map.delete(record.authority_fence, :gate2_fence)}
   end
 
   defp install_gate2_record(ledger, issue_id, overrides) do

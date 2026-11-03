@@ -120,6 +120,12 @@ defmodule SymphonyElixir.AgentRuntime.AttemptGrant do
 
   def new(_attrs), do: {:error, :invalid_request}
 
+  @doc """
+  Computes a canonical fingerprint of supplied grant-shaped metadata.
+
+  This pure function does not issue, persist, verify or activate a grant. A caller
+  can construct the input struct; the resulting reference is not a capability.
+  """
   @spec reference(t()) :: ref()
   def reference(%__MODULE__{} = grant) do
     canonical = {

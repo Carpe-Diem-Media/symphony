@@ -1424,20 +1424,42 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
   defp validate_gate2_fence_binding(record, ledger) do
     fence = Map.get(record, :authority_fence)
 
-    if is_map(fence) and Map.has_key?(fence, :gate2_fence),
-      do: validate_gate2_binding_record(Map.get(record, :boundary_binding), Map.get(fence, :gate2_fence), ledger),
-      else: :ok
+    with :ok <- validate_gate2_outer_identity(record) do
+      if is_map(fence) and Map.has_key?(fence, :gate2_fence),
+        do: validate_gate2_binding_record(record, Map.get(fence, :gate2_fence), ledger),
+        else: :ok
+    end
   end
 
+  defp validate_gate2_outer_identity(%{
+         boundary_binding: %{kind: :gate2},
+         authority_fence: %{runtime_attempt: identity},
+         issue_id: issue_id,
+         lineage_id: lineage_id
+       })
+       when not is_nil(identity) do
+    if strict_gate2_identity?(identity) and identity.work_item_id == issue_id and
+         identity.lineage_generation == lineage_id,
+       do: :ok,
+       else: {:error, :invalid_record}
+  end
+
+  defp validate_gate2_outer_identity(_record), do: :ok
+
   defp validate_gate2_binding_record(
-         %{kind: :gate2, resource_ledger_namespace: namespace},
+         %{boundary_binding: %{kind: :gate2, resource_ledger_namespace: namespace}} = record,
          gate2,
          ledger
        )
        when namespace == ledger.project_id do
+    reference = if is_map(gate2), do: Map.get(gate2, :reference)
+
     valid? =
-      is_map(gate2) and valid_requested_reason?(gate2) and
-        valid_gate2_reference?(Map.get(gate2, :reference))
+      is_map(gate2) and valid_requested_reason?(gate2) and valid_gate2_reference?(reference) and
+        reference.project_namespace == ledger.project_id and
+        reference.runtime_identity.work_item_id == record.issue_id and
+        reference.runtime_identity.lineage_generation == record.lineage_id and
+        reference.runtime_identity == get_in(record, [:authority_fence, :runtime_attempt])
 
     if valid?, do: :ok, else: {:error, :invalid_record}
   end
@@ -1471,7 +1493,7 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
              %{kind: :gate2, binding_version: 1, lineage_binding_id: id, resource_ledger_namespace: namespace} =
                binding
          },
-         %{schema_version: 2}
+         %{schema_version: 2, project_id: namespace}
        )
        when map_size(binding) == 4 and is_binary(id) and byte_size(id) in 1..128 and
               is_binary(namespace) and byte_size(namespace) in 1..128 do
@@ -1819,8 +1841,14 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
     kind, reason -> {:error, {:ledger_sync_failed, {kind, reason}}}
   end
 
-  defp all_records(%__MODULE__{table: table}) do
-    {:ok, :dets.foldl(fn record, records -> [record | records] end, [], table)}
+  defp all_records(%__MODULE__{table: table} = ledger) do
+    records = :dets.foldl(fn record, records -> [record | records] end, [], table)
+
+    if ledger.schema_version == 2 do
+      with :ok <- validate_stored_records(records, ledger), do: {:ok, records}
+    else
+      {:ok, records}
+    end
   catch
     kind, reason -> {:error, {:ledger_read_failed, {kind, reason}}}
   end

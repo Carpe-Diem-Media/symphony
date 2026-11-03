@@ -127,6 +127,27 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
     assert {:error, :cleanup_verifier_unavailable} = AttemptBoundary.release(context.boundary, evidence)
   end
 
+  @tag :r03_provenance
+  test "persisting a caller supplied digest records intent without issuing grant authority", context do
+    seed_resource(context.boundary)
+    supplied = %{grant_ref() | grant_sha256: String.duplicate("e", 64)}
+    assert :ok = AttemptLedger.bind_gate2_fence_sync(context.attempt_ledger, "item-1", supplied)
+    assert {:ok, ^supplied} = AttemptLedger.gate2_fence_reference(context.attempt_ledger, "item-1")
+    assert {:error, :gate2_dormant} = AttemptBoundary.authorize(context.boundary, identity(), authorization_request())
+    operation_result = AttemptBoundary.authorize_operation(context.boundary, supplied, operation_request())
+    assert {:error, :gate2_dormant} = operation_result
+    assert {:ok, %{status: :requested}} = AttemptBoundary.fence(context.boundary, %{grant_ref: supplied, reason: :failure})
+    {:ok, generation} = AttemptBoundary.reconcile_startup(context.boundary)
+    evidence = cleanup_ref(generation)
+    assert {:error, :cleanup_verifier_unavailable} = AttemptBoundary.release(context.boundary, evidence)
+    release_result = AttemptLedger.release_gate2_authority_fence(context.attempt_ledger, "item-1", identity(), evidence)
+    assert {:error, :attempt_resource_verification_required} = release_result
+    assert {:ok, record} = AttemptLedger.current(context.attempt_ledger, "item-1")
+    assert record.authority_fence.state == :bound
+    assert record.authority_fence.gate2_fence.status == :requested
+    assert record.authority_fence.gate2_fence.reference == supplied
+  end
+
   test "malformed typed cleanup evidence and operation requests cannot cross admission", context do
     {:ok, generation} = AttemptBoundary.reconcile_startup(context.boundary)
     malformed = %{cleanup_ref(generation) | verification_generation: :forged}

@@ -363,13 +363,115 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
     assert :ok = AttemptResourceLedger.close(ledger)
   end
 
-  test "startup rejects a ledger configured for another generation", context do
+  test "startup reconciles a newer same-boot generation", context do
     {:ok, ledger} = start_ledger(context)
     assert :ok = AttemptResourceLedger.close(ledger)
 
     {:ok, other_generation} = RecoveryGeneration.new(generation(2))
-    assert {:error, :schema_mismatch} = start_ledger(context, current_generation: other_generation)
-    assert_file_reopenable(context.path)
+    {:ok, recovered} = start_ledger(context, current_generation: other_generation)
+    assert {:ok, ^other_generation} = AttemptResourceLedger.current_generation(recovered)
+    assert :ok = AttemptResourceLedger.close(recovered)
+  end
+
+  test "legacy boot identifiers remain readable while host boot identity uses a UUID" do
+    assert {:ok, legacy_generation} =
+             RecoveryGeneration.new(%{generation(1) | boot_id: "boot-1"})
+
+    assert legacy_generation.boot_id == "boot-1"
+    assert {:ok, generation} = RecoveryGeneration.new(generation(1))
+    assert generation.boot_id == kernel_boot_id()
+  end
+
+  test "same-boot restart creates a fresh generation and quarantines old resource facts", context do
+    resource = resource()
+    {:ok, ledger} = start_ledger(context)
+    {:ok, old_generation} = AttemptResourceLedger.current_generation(ledger)
+    assert {:ok, ^resource} = AttemptResourceLedger.reserve_sync(ledger, resource)
+    assert :ok = AttemptResourceLedger.close(ledger)
+
+    {:ok, restarted} = start_ledger(context, startup_recovery: true, current_generation: old_generation)
+    {:ok, fresh_generation} = AttemptResourceLedger.current_generation(restarted)
+
+    assert fresh_generation.boot_id == old_generation.boot_id
+    assert fresh_generation.sequence == old_generation.sequence + 1
+    refute fresh_generation.nonce == old_generation.nonce
+    assert {:ok, quarantined} = AttemptResourceLedger.fetch(restarted, resource.resource_id)
+    assert quarantined.state == :quarantined
+    assert quarantined.quarantine.reason == :stale_generation
+    assert quarantined.reconciliation_generation == fresh_generation
+    assert :ok = AttemptResourceLedger.close(restarted)
+  end
+
+  test "same-boot recovery rejects replayed nonce and unadvanced sequence", context do
+    {:ok, ledger} = start_ledger(context)
+    {:ok, old} = AttemptResourceLedger.current_generation(ledger)
+    assert :ok = AttemptResourceLedger.close(ledger)
+    before = File.read!(context.path)
+
+    for replay <- [%{old | sequence: old.sequence + 1}, %{old | nonce: "fresh-but-stale-sequence"}] do
+      assert {:error, :schema_mismatch} = start_ledger(context, current_generation: replay)
+      assert File.read!(context.path) == before
+    end
+  end
+
+  test "boot reader failures reject startup without changing persisted facts", context do
+    resource = resource()
+    {:ok, ledger} = start_ledger(context)
+    assert {:ok, ^resource} = AttemptResourceLedger.reserve_sync(ledger, resource)
+    assert :ok = AttemptResourceLedger.close(ledger)
+    before = File.read!(context.path)
+
+    for reader <- [fn -> {:error, :unavailable} end, fn -> {:ok, "malformed"} end, fn -> raise "reader failed" end] do
+      assert {:error, :boundary_unavailable} =
+               start_ledger(context, startup_recovery: true, boot_id_reader: reader)
+
+      assert File.read!(context.path) == before
+    end
+  end
+
+  test "recovery rejects stale old-boot authority and quarantines its resource", context do
+    old_boot = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+    old = %{generation(1) | boot_id: old_boot}
+    {:ok, old_generation} = RecoveryGeneration.new(old)
+    resource = resource(reconciliation_generation: old, creation_generation: old)
+    {:ok, ledger} = start_ledger(context, current_generation: old_generation, boot_id_reader: boot_reader(old_boot))
+    assert {:ok, ^resource} = AttemptResourceLedger.reserve_sync(ledger, resource)
+    assert :ok = AttemptResourceLedger.close(ledger)
+
+    {:ok, recovered} = start_ledger(context, startup_recovery: true)
+
+    {:ok, recovered_generation} = AttemptResourceLedger.current_generation(recovered)
+    assert recovered_generation.boot_id == kernel_boot_id()
+    refute recovered_generation.boot_id == old_generation.boot_id
+    assert recovered_generation.sequence == old_generation.sequence + 1
+    refute recovered_generation.nonce == old_generation.nonce
+    assert {:ok, quarantined} = AttemptResourceLedger.fetch(recovered, resource.resource_id)
+    assert quarantined.state == :quarantined
+    assert quarantined.creation_generation == old_generation
+    assert quarantined.reconciliation_generation == recovered_generation
+
+    assert {:error, :recovery_generation_mismatch} =
+             AttemptResourceLedger.transition_sync(
+               recovered,
+               resource.resource_id,
+               quarantined.revision,
+               transition(:fencing, old_generation)
+             )
+
+    assert :ok = AttemptResourceLedger.close(recovered)
+  end
+
+  test "explicit generation cannot override the host boot identity", context do
+    foreign_boot = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+    {:ok, foreign_generation} = RecoveryGeneration.new(%{generation(1) | boot_id: foreign_boot})
+
+    assert {:error, :boundary_unavailable} =
+             start_ledger(context,
+               current_generation: foreign_generation,
+               boot_id_reader: boot_reader(kernel_boot_id())
+             )
+
+    refute File.exists?(context.path)
   end
 
   test "startup reconciles old facts into a fresh generation and restores no active authority", context do
@@ -378,10 +480,11 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
     assert {:ok, ^resource} = AttemptResourceLedger.reserve_sync(ledger, resource)
     assert :ok = AttemptResourceLedger.close(ledger)
 
-    {:ok, fresh_generation} =
-      RecoveryGeneration.new(%{generation(2) | boot_id: "boot-2"})
+    reboot_id = "11111111-2222-4333-8444-555555555555"
+    {:ok, fresh_generation} = RecoveryGeneration.new(%{generation(2) | boot_id: reboot_id})
 
-    {:ok, recovered} = start_ledger(context, current_generation: fresh_generation)
+    recovery_opts = [current_generation: fresh_generation, boot_id_reader: boot_reader(reboot_id)]
+    {:ok, recovered} = start_ledger(context, recovery_opts)
     assert {:ok, quarantined} = AttemptResourceLedger.fetch(recovered, resource.resource_id)
     assert quarantined.state == :quarantined
     assert quarantined.creation_generation == resource.creation_generation
@@ -411,8 +514,10 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
     assert :ok = :dets.close(table)
     before = File.read!(context.path)
 
-    {:ok, fresh_generation} = RecoveryGeneration.new(%{generation(2) | boot_id: "boot-2"})
-    assert {:error, :storage_corrupt} = start_ledger(context, current_generation: fresh_generation)
+    reboot_id = "11111111-2222-4333-8444-555555555555"
+    {:ok, fresh_generation} = RecoveryGeneration.new(%{generation(2) | boot_id: reboot_id})
+    recovery_opts = [current_generation: fresh_generation, boot_id_reader: boot_reader(reboot_id)]
+    assert {:error, :storage_corrupt} = start_ledger(context, recovery_opts)
     assert File.read!(context.path) == before
     assert_file_reopenable(context.path)
   end
@@ -480,10 +585,11 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
     assert :ok = :dets.close(table)
 
     before = File.read!(context.path)
-    {:ok, fresh_generation} = RecoveryGeneration.new(%{generation(2) | boot_id: "boot-2"})
+    reboot_id = "11111111-2222-4333-8444-555555555555"
+    {:ok, fresh_generation} = RecoveryGeneration.new(%{generation(2) | boot_id: reboot_id})
 
     assert {:error, :storage_corrupt} =
-             start_ledger(context, current_generation: fresh_generation)
+             start_ledger(context, current_generation: fresh_generation, boot_id_reader: boot_reader(reboot_id))
 
     assert File.read!(context.path) == before
     assert_file_reopenable(context.path)
@@ -577,11 +683,13 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
       end
     end
 
-    {:ok, fresh_generation} = RecoveryGeneration.new(%{generation(2) | boot_id: "boot-2"})
+    reboot_id = "11111111-2222-4333-8444-555555555555"
+    {:ok, fresh_generation} = RecoveryGeneration.new(%{generation(2) | boot_id: reboot_id})
 
     assert {:error, :write_failed} =
              start_ledger(context,
                current_generation: fresh_generation,
+               boot_id_reader: boot_reader(reboot_id),
                write_fun: write_fun
              )
 
@@ -974,8 +1082,9 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
       stored = %{original | state: :quarantined, quarantine: quarantine}
       assert :ok = :dets.insert(table, {{:resource, original.resource_id}, stored})
       assert :ok = AttemptResourceLedger.close(ledger)
-      {:ok, fresh} = RecoveryGeneration.new(%{generation(2) | boot_id: "boot-2"})
-      {:ok, recovered} = start_ledger(context, current_generation: fresh)
+      reboot_id = "11111111-2222-4333-8444-555555555555"
+      {:ok, fresh} = RecoveryGeneration.new(%{generation(2) | boot_id: reboot_id})
+      {:ok, recovered} = start_ledger(context, current_generation: fresh, boot_id_reader: boot_reader(reboot_id))
       assert {:ok, row} = AttemptResourceLedger.fetch(recovered, original.resource_id)
       assert row.quarantine == quarantine
       assert row.creation_generation == original.creation_generation
@@ -992,7 +1101,10 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
                )
 
       assert :ok = AttemptResourceLedger.close(recovered)
-      {:ok, reopened} = start_ledger(context, current_generation: fresh)
+
+      {:ok, reopened} =
+        start_ledger(context, current_generation: fresh, boot_id_reader: boot_reader(reboot_id))
+
       assert {:ok, ^row} = AttemptResourceLedger.fetch(reopened, original.resource_id)
       assert :ok = AttemptResourceLedger.close(reopened)
     end
@@ -1152,11 +1264,19 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
       schema_version: 1,
       project_namespace: "project-1",
       host_id: "host-1",
-      boot_id: "boot-1",
+      boot_id: kernel_boot_id(),
       sequence: sequence,
       nonce: "nonce-#{sequence}"
     }
   end
+
+  defp kernel_boot_id do
+    "/proc/sys/kernel/random/boot_id"
+    |> File.read!()
+    |> String.trim()
+  end
+
+  defp boot_reader(boot_id), do: fn -> {:ok, boot_id} end
 
   defp transition(to, generation, quarantine \\ nil) do
     quarantine = quarantine || clear_quarantine(generation)

@@ -517,7 +517,7 @@ defmodule SymphonyElixir.Gate2AttemptMigrationTest do
                 kind: :gate2,
                 binding_version: 1,
                 lineage_binding_id: "binding-b",
-                resource_ledger_namespace: "resources-test"
+                resource_ledger_namespace: @namespace
               },
               schema_version: 2
             }} =
@@ -741,7 +741,7 @@ defmodule SymphonyElixir.Gate2AttemptMigrationTest do
           kind: :gate2,
           binding_version: 1,
           lineage_binding_id: "binding-b",
-          resource_ledger_namespace: "resources-test"
+          resource_ledger_namespace: @namespace
         }
       })
 

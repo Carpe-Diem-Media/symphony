@@ -10,6 +10,9 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
   P01 denies allocation, activation, destruction and verified absence. Fencing
   only reduces authority. Quarantine dispositions retain their meaning across recovery generations,
   and a quarantined resource cannot return to fencing.
+
+  Production reads and validates the fixed `/proc/sys/kernel/random/boot_id` source. The
+  `boot_id_reader` option is a trusted-host I/O test seam and runtime configuration cannot select it.
   """
 
   use GenServer
@@ -88,14 +91,17 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
     with {:ok, path} <- required_path(opts),
          {:ok, namespace} <- required_id(opts, :project_namespace),
          {:ok, host_id} <- required_id(opts, :host_id),
+         {:ok, host_boot_id} <- host_boot_id(opts),
          {:ok, current_generation} <- startup_generation_option(opts),
+         :ok <- supplied_generation_boot(current_generation, host_boot_id),
          {:ok, owner_name} <- owner_name(opts),
          {:ok, owner_pid} <- registered_pid(owner_name),
          {:ok, recovery_owner_name} <- recovery_owner_name(opts),
          {:ok, recovery_owner_pid} <- optional_registered_pid(recovery_owner_name),
          {:ok, table, path_lock_id} <- open_table(path),
          :ok <- ensure_no_recovery_pending(table),
-         {:ok, current_generation} <- choose_startup_generation(table, namespace, host_id, current_generation, opts),
+         {:ok, current_generation} <-
+           choose_startup_generation(table, namespace, host_id, host_boot_id, current_generation, opts),
          :ok <- prepare_table(table, path_lock_id, namespace, host_id, current_generation, opts) do
       owner_ref = Process.monitor(owner_pid)
 
@@ -645,7 +651,6 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
       old.host_id == fresh.host_id and old.current_generation.project_namespace == fresh.project_namespace and
       old.current_generation.host_id == fresh.host_id and
       fresh.current_generation.sequence > old.current_generation.sequence and
-      fresh.current_generation.boot_id != old.current_generation.boot_id and
       fresh.current_generation.nonce != old.current_generation.nonce
   end
 
@@ -944,6 +949,34 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
     end
   end
 
+  defp host_boot_id(opts) do
+    reader = Keyword.get(opts, :boot_id_reader, fn -> File.read("/proc/sys/kernel/random/boot_id") end)
+
+    try do
+      case reader.() do
+        {:ok, boot_id} when is_binary(boot_id) ->
+          boot_id = String.trim(boot_id)
+
+          if RecoveryGeneration.valid_boot_id?(boot_id),
+            do: {:ok, boot_id},
+            else: {:error, :boundary_unavailable}
+
+        _ ->
+          {:error, :boundary_unavailable}
+      end
+    rescue
+      _ -> {:error, :boundary_unavailable}
+    catch
+      _, _ -> {:error, :boundary_unavailable}
+    end
+  end
+
+  defp supplied_generation_boot(nil, _host_boot_id), do: :ok
+
+  defp supplied_generation_boot(%RecoveryGeneration{boot_id: host_boot_id}, host_boot_id), do: :ok
+
+  defp supplied_generation_boot(%RecoveryGeneration{}, _host_boot_id), do: {:error, :boundary_unavailable}
+
   defp required_id(opts, key) do
     case Keyword.get(opts, key) do
       value when is_binary(value) and byte_size(value) in 1..256 -> {:ok, value}
@@ -969,19 +1002,19 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
     end
   end
 
-  defp choose_startup_generation(_table, namespace, host_id, %RecoveryGeneration{} = generation, _opts) do
-    if generation.project_namespace == namespace and generation.host_id == host_id,
+  defp choose_startup_generation(_table, namespace, host_id, boot_id, %RecoveryGeneration{} = generation, _opts) do
+    if generation.project_namespace == namespace and generation.host_id == host_id and generation.boot_id == boot_id,
       do: {:ok, generation},
       else: {:error, :namespace_mismatch}
   end
 
-  defp choose_startup_generation(table, namespace, host_id, nil, opts) do
+  defp choose_startup_generation(table, namespace, host_id, host_boot_id, nil, _opts) do
     case safe_storage_call(&:dets.lookup/2, [table, {:meta, :ledger}]) do
       {:ok, []} ->
-        fresh_generation(namespace, host_id, 1, opts)
+        fresh_generation(namespace, host_id, host_boot_id, 1)
 
       {:ok, [{{:meta, :ledger}, metadata}]} ->
-        next_startup_generation(metadata, namespace, host_id, opts)
+        next_startup_generation(metadata, namespace, host_id, host_boot_id)
 
       {:ok, _} ->
         {:error, :storage_corrupt}
@@ -991,11 +1024,11 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
     end
   end
 
-  defp next_startup_generation(metadata, namespace, host_id, opts) do
+  defp next_startup_generation(metadata, namespace, host_id, host_boot_id) do
     with true <- valid_startup_metadata?(metadata, namespace, host_id),
          %RecoveryGeneration{} = generation <- Map.get(metadata, :current_generation),
          {:ok, validated} <- RecoveryGeneration.new(Map.from_struct(generation)) do
-      fresh_generation(namespace, host_id, validated.sequence + 1, opts)
+      fresh_generation(namespace, host_id, host_boot_id, validated.sequence + 1)
     else
       _ -> {:error, :storage_corrupt}
     end
@@ -1009,12 +1042,12 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
 
   defp valid_startup_metadata?(_, _, _), do: false
 
-  defp fresh_generation(namespace, host_id, sequence, _opts) do
+  defp fresh_generation(namespace, host_id, boot_id, sequence) do
     RecoveryGeneration.new(%{
       schema_version: 1,
       project_namespace: namespace,
       host_id: host_id,
-      boot_id: Base.encode16(:crypto.strong_rand_bytes(16), case: :lower),
+      boot_id: boot_id,
       sequence: sequence,
       nonce: Base.encode16(:crypto.strong_rand_bytes(16), case: :lower)
     })
