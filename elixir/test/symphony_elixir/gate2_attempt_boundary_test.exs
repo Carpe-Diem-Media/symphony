@@ -86,6 +86,9 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
     assert is_nil(fence.evidence_ref)
     assert {:ok, record} = AttemptLedger.current(context.attempt_ledger, "item-1")
     assert record.authority_fence.gate2_fence.requested_reason == :cancellation
+    assert record.route_fingerprint == nil
+    assert record.authority_fence.route_fingerprint == nil
+    assert Enum.sort(Map.keys(record.authority_fence)) == [:gate2_fence, :route_fingerprint, :runtime_attempt, :state]
 
     if context[:fresh_gate2] do
       binding = record.boundary_binding
@@ -569,12 +572,12 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
       safety_counters: %{ordinary_failures: 0, ordinary_retries: 0, review_cycles: 0},
       status: :open,
       stop_reason: nil,
-      route_fingerprint: "route-1",
+      route_fingerprint: nil,
       in_flight: true,
       authority_fence: %{
         state: :bound,
         runtime_attempt: identity,
-        route_fingerprint: "route-1",
+        route_fingerprint: nil,
         gate2_fence: %{reference: grant_ref(), status: :requested}
       },
       close_pending: false,

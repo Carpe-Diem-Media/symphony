@@ -319,6 +319,41 @@ defmodule SymphonyElixir.Gate2AttemptConfigTest do
     assert {:error, :migration_in_progress} = Config.validate_attempt_boundary(settings, options)
   end
 
+  for envelope <- [:unsupported_key, :route_mismatch] do
+    @tag :r05_envelope
+    test "startup rejects #{envelope} before restoring Gate2 reconciliation facts" do
+      root = temp_root()
+      project_id = "t6-r05-startup"
+      identity = %{tracker_kind: "memory", provider_scope: %{}}
+      path = AttemptLedger.path_for(project_id, root: root)
+      seed_gate2_binding(path, project_id, identity)
+      {:ok, ledger} = AttemptLedger.open(project_id, identity, path: path)
+      {:ok, record} = AttemptLedger.current(ledger, "item-1")
+
+      record =
+        case unquote(envelope) do
+          :unsupported_key -> put_in(record.authority_fence, Map.put(record.authority_fence, :cleanup_verified, true))
+          :route_mismatch -> %{record | route_fingerprint: "future-route"}
+        end
+
+      assert :ok = :dets.insert(ledger.table, {{:current, "item-1"}, record})
+      assert :ok = :dets.sync(ledger.table)
+      assert :ok = AttemptLedger.close(ledger)
+      before = File.read!(path)
+      on_exit(fn -> File.rm_rf(root) end)
+      config_attrs = %{tracker: %{kind: "memory"}, symphony: %{project_id: project_id}, agent: %{routing: "routed"}}
+      {:ok, config} = Schema.parse(config_attrs)
+      initial = %Orchestrator.State{}
+      options = [attempt_ledger_opts: [path: path]]
+      state = Orchestrator.initialize_attempt_ledger_for_test(initial, config, options)
+      on_exit(fn -> if state.attempt_ledger, do: AttemptLedger.close(state.attempt_ledger) end)
+      assert state.attempt_ledger_status == {:blocked, {:attempt_ledger_unavailable, :migration_in_progress}}
+      assert state.attempt_lineages == %{}
+      assert state.durable_in_flight == MapSet.new()
+      assert File.read!(path) == before
+    end
+  end
+
   defp temp_root do
     Path.join(System.tmp_dir!(), "symphony-gate2-config-" <> Base.encode16(:crypto.strong_rand_bytes(12), case: :lower))
   end

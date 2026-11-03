@@ -155,6 +155,21 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
     assert {:ok, ^reference} = AttemptLedger.gate2_fence_reference(ledger, "requested-item")
   end
 
+  @r05_envelopes [:unsupported_key, :record_route_only, :fence_route_only, :future_route_pair, :missing_record_route]
+  for envelope <- @r05_envelopes,
+      read_path <- [:current, :open_lineages, :reference, :configured_schema, :snapshot, :reopen] do
+    @tag :r05_envelope
+    test "unsupported Gate2 envelope #{envelope} fails through #{read_path}", %{root: root} do
+      path = seed_committed_schema2(root)
+      {:ok, ledger} = AttemptLedger.open(@namespace, @identity, path: path)
+      ledger = install_coherent_gate2_record(ledger)
+      record = current!(ledger, "coherent") |> unsupported_gate2_envelope(unquote(envelope))
+      assert :ok = :dets.insert(ledger.table, {{:current, "coherent"}, record})
+      assert :ok = :dets.sync(ledger.table)
+      assert_incoherent_read(unquote(read_path), ledger, path)
+    end
+  end
+
   @r04_states [:missing_fence, :armed, :bound_without_reference, :released, :closed_missing, :closed_released]
   for state <- @r04_states,
       read_path <- [:current, :open_lineages, :reference, :configured_schema, :reopen] do
@@ -321,6 +336,19 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
     assert current!(ledger, "gate2") == before
   end
 
+  defp unsupported_gate2_envelope(record, :unsupported_key),
+    do: put_in(record.authority_fence, Map.put(record.authority_fence, :cleanup_verified, true))
+
+  defp unsupported_gate2_envelope(record, :record_route_only), do: %{record | route_fingerprint: "future-route"}
+  defp unsupported_gate2_envelope(record, :fence_route_only), do: put_in(record.authority_fence.route_fingerprint, "future-route")
+
+  defp unsupported_gate2_envelope(record, :future_route_pair) do
+    record = unsupported_gate2_envelope(record, :fence_route_only)
+    %{record | route_fingerprint: "future-route"}
+  end
+
+  defp unsupported_gate2_envelope(record, :missing_record_route), do: Map.delete(record, :route_fingerprint)
+
   defp impossible_gate2_state(record, :bound_requested), do: record
 
   defp impossible_gate2_state(record, :missing_fence), do: %{record | in_flight: false, authority_fence: nil}
@@ -337,6 +365,12 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
 
   defp impossible_gate2_state(record, :closed_released),
     do: %{impossible_gate2_state(record, :released) | status: :closed}
+
+  defp assert_incoherent_read(:snapshot, ledger, _path) do
+    rows = :dets.foldl(fn row, acc -> [row | acc] end, [], ledger.table)
+    assert {:error, :storage_corrupt} = AttemptLedger.validate_snapshot(@namespace, @identity, rows, 2)
+    AttemptLedger.close(ledger)
+  end
 
   defp assert_incoherent_read(:open_lineages, ledger, _path) do
     assert {:error, {:corrupt_attempt_record, {:current, "coherent"}, :invalid_record}} =

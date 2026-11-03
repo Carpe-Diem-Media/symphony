@@ -1428,10 +1428,18 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
            status: :open,
            in_flight: true,
            close_pending: false,
-           authority_fence: %{state: :bound, gate2_fence: gate2}
+           route_fingerprint: nil,
+           authority_fence:
+             %{
+               state: :bound,
+               runtime_attempt: %Identity{},
+               route_fingerprint: nil,
+               gate2_fence: gate2
+             } = fence
          } = record,
          ledger
-       ) do
+       )
+       when map_size(fence) == 4 do
     with :ok <- validate_gate2_outer_identity(record),
          do: validate_gate2_binding_record(record, gate2, ledger)
   end

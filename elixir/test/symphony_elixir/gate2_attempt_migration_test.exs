@@ -748,6 +748,7 @@ defmodule SymphonyElixir.Gate2AttemptMigrationTest do
       |> Map.merge(%{
         issue_id: "issue-b",
         lineage_id: "lineage-b",
+        route_fingerprint: nil,
         in_flight: true,
         authority_fence: %{
           state: :bound,

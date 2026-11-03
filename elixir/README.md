@@ -198,6 +198,9 @@ Notes:
   Missing, armed, released or closed Gate 2 fence states are corrupt persisted state,
   not clean release. P01 has no Gate 2 history producer; history requires a future
   qualified release/rearm transaction. Legacy schema-1 and schema-2 states remain supported.
+  The Gate 2 outer fence has exactly `state`, `runtime_attempt`, `route_fingerprint`
+  and `gate2_fence` keys. Both record and fence route fingerprints are explicitly `nil`
+  in P01. Extra fields, missing routes and non-nil routes fail validation without repair.
 - P01 grant digests are unverified fence-intent metadata. The registered host owner
   can bind them after matching durable reserved-resource facts. Hashing and persistence
   do not establish grant issuance or activation. Later fence requests resolve the exact
