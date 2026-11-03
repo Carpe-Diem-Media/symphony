@@ -365,37 +365,24 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
   test "owner shutdown stops the boundary", context do
     assert :ok = GenServer.stop(context.boundary)
 
-    owner_name = String.to_atom("gate2_boundary_child_#{System.unique_integer([:positive])}")
-    test_pid = self()
-
-    owner =
-      spawn(fn ->
-        Process.register(self(), owner_name)
-
-        resource_opts = [
-          path: Path.join(Path.dirname(context.attempt_path), "owner-resources.dets"),
-          project_namespace: "project-1",
-          host_id: "host-1"
-        ]
-
-        {:ok, boundary} =
-          AttemptBoundary.start_link(
-            owner_name: owner_name,
-            attempt_ledger: context.attempt_ledger,
-            resource_ledger_opts: resource_opts
-          )
-
-        send(test_pid, {:child_boundary_started, boundary})
-        receive do: (:stop -> :ok)
-      end)
-
-    assert_receive {:child_boundary_started, boundary}
+    owner = start_child_owner(context)
+    assert_receive {:child_boundary_started, boundary}, 5_000
     owner_ref = Process.monitor(owner)
     boundary_ref = Process.monitor(boundary)
     send(owner, :stop)
 
-    assert_receive {:DOWN, ^owner_ref, :process, ^owner, :normal}
-    assert_receive {:DOWN, ^boundary_ref, :process, ^boundary, :normal}
+    assert_receive {:DOWN, ^owner_ref, :process, ^owner, :normal}, 5_000
+    assert_receive {:DOWN, ^boundary_ref, :process, ^boundary, :normal}, 5_000
+  end
+
+  test "owner cleanup during delayed startup leaves no boundary for the next test", context do
+    assert :ok = GenServer.stop(context.boundary)
+    owner = start_child_owner(context)
+    assert_receive :child_boot_read_started, 5_000
+    stop_child_owner(owner)
+    ref = Process.monitor(owner)
+    assert_receive {:DOWN, ^ref, :process, ^owner, :noproc}, 5_000
+    assert Process.whereis(AttemptBoundary) == nil
   end
 
   test "partial grant binding and ambiguous ownership block reuse", context do
@@ -473,6 +460,64 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
     assert_receive {:resource_ledger_closed, :ok}
     assert {:error, :boundary_unavailable} = AttemptBoundary.reconcile_startup(context.boundary)
     assert {:error, :storage_unavailable} = AttemptBoundary.reconcile_startup(context.boundary)
+  end
+
+  defp start_child_owner(context) do
+    owner_name = String.to_atom("gate2_boundary_child_#{System.unique_integer([:positive])}")
+    test_pid = self()
+
+    owner =
+      spawn(fn ->
+        Process.register(self(), owner_name)
+
+        resource_opts = [
+          path: Path.join(Path.dirname(context.attempt_path), "owner-resources.dets"),
+          project_namespace: "project-1",
+          host_id: "host-1",
+          boot_id_reader: fn ->
+            send(test_pid, :child_boot_read_started)
+            Process.sleep(150)
+            File.read("/proc/sys/kernel/random/boot_id")
+          end
+        ]
+
+        {:ok, boundary} =
+          AttemptBoundary.start_link(
+            owner_name: owner_name,
+            attempt_ledger: context.attempt_ledger,
+            resource_ledger_opts: resource_opts
+          )
+
+        send(test_pid, {:child_boundary_started, boundary})
+        receive do: (:stop -> :ok)
+      end)
+
+    on_exit(fn -> stop_child_owner(owner) end)
+    owner
+  end
+
+  defp stop_child_owner(owner) do
+    owner_ref = Process.monitor(owner)
+    send(owner, :stop)
+
+    receive do
+      {:DOWN, ^owner_ref, :process, ^owner, _reason} -> :ok
+    after
+      5_000 ->
+        Process.exit(owner, :kill)
+        assert_receive {:DOWN, ^owner_ref, :process, ^owner, _reason}, 5_000
+    end
+
+    # Startup can register the boundary after cleanup begins. Inspect it only
+    # after the owner has stopped so a late child cannot leak into the next test.
+    case Process.whereis(AttemptBoundary) do
+      nil ->
+        :ok
+
+      boundary ->
+        ref = Process.monitor(boundary)
+        assert_receive {:DOWN, ^ref, :process, ^boundary, _reason}, 5_000
+    end
   end
 
   defp identity do
