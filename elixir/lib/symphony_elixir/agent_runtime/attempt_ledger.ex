@@ -91,10 +91,14 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
 
   def configured_mode("legacy", project_id, tracker_identity, opts) do
     case configured_schema(project_id, tracker_identity, opts) do
-      {:ok, 2, true} -> {:error, :binding_downgrade_denied}
-      {:ok, _version, _has_gate2_binding} -> :ok
-      {:error, :migration_required} -> :ok
-      {:error, reason} -> {:error, reason}
+      {:error, :identity_mismatch} ->
+        # Existing identity-drift reconciliation must see legacy config changes.
+        # The stored identity resolves the binding; caller identity cannot hide it.
+        path = path_for(project_id, opts)
+        path |> configured_schema_for_existing_file(project_id, :stored_identity) |> legacy_mode_decision()
+
+      result ->
+        legacy_mode_decision(result)
     end
   end
 
@@ -112,10 +116,16 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
   def configured_mode(_mode, _project_id, _tracker_identity, _opts),
     do: {:error, :invalid_request}
 
+  defp legacy_mode_decision({:ok, 2, true}), do: {:error, :binding_downgrade_denied}
+  defp legacy_mode_decision({:ok, _version, _has_gate2_binding}), do: :ok
+  defp legacy_mode_decision({:error, :migration_required}), do: :ok
+  defp legacy_mode_decision({:error, reason}), do: {:error, reason}
+
   defp read_configured_schema(path, project_id, tracker_identity) do
     # Validate the locked snapshot before checking its receipt. Reopening an
     # already-owned read-write table as read-only would reject a healthy ledger.
     with {:ok, rows} <- read_configured_rows(path),
+         {:ok, tracker_identity} <- configured_snapshot_identity(rows, project_id, tracker_identity),
          {:ok, version} <- configured_rows_schema(rows),
          :ok <- validate_snapshot(project_id, tracker_identity, rows, version),
          :ok <- AttemptLedgerMigration.admission_check(path, project_id, tracker_identity, version) do
@@ -130,6 +140,15 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
       {:error, reason} -> {:error, normalize_configured_schema_error(reason)}
     end
   end
+
+  defp configured_snapshot_identity(rows, project_id, :stored_identity) do
+    case Enum.find(rows, &match?({{:meta, ^project_id}, _metadata}, &1)) do
+      {{:meta, ^project_id}, %{tracker_identity: identity}} when is_map(identity) -> {:ok, identity}
+      _ -> {:error, :storage_corrupt}
+    end
+  end
+
+  defp configured_snapshot_identity(_rows, _project_id, identity) when is_map(identity), do: {:ok, identity}
 
   defp read_configured_rows(path) do
     if :dets.info(path) == :undefined,

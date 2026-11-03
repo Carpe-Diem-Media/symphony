@@ -249,6 +249,76 @@ defmodule SymphonyElixir.Gate2AttemptConfigTest do
     assert {:error, :namespace_mismatch} = AttemptLedger.configured_schema("other-project", identity, path: ledger.path)
   end
 
+  @tag :scope01_identity_reload
+  test "legacy identity drift reaches existing reconciliation without hiding Gate2 bindings" do
+    root = temp_root()
+    project_id = "t6-legacy-reload"
+    old_identity = %{tracker_kind: "memory", provider_scope: %{project_slug: "before"}}
+    new_identity = %{tracker_kind: "memory", provider_scope: %{project_slug: "after"}}
+    {:ok, settings} = Schema.parse(%{})
+    {:ok, ledger} = AttemptLedger.open(project_id, old_identity, root: root)
+    assert {:ok, _record} = AttemptLedger.begin_attempt(ledger, "legacy-item")
+    assert :ok = AttemptLedger.close(ledger)
+    on_exit(fn -> File.rm_rf(root) end)
+
+    options = [project_id: project_id, tracker_identity: new_identity, root: root]
+    assert :ok = Config.validate_attempt_boundary(settings, options)
+
+    assert {:error, :identity_mismatch} = AttemptLedger.configured_schema(project_id, new_identity, root: root)
+    {:ok, reopened} = AttemptLedger.open(project_id, old_identity, root: root)
+    state = %Orchestrator.State{attempt_ledger: reopened, attempt_ledger_status: :ready}
+    {:ok, routed} = Schema.parse(%{tracker: %{kind: "memory"}, symphony: %{project_id: project_id}, agent: %{routing: "routed"}})
+    updated = Orchestrator.synchronize_attempt_ledger_config_for_test(state, routed)
+    assert match?({:blocked, _}, updated.attempt_ledger_status)
+    assert updated.attempt_ledger == reopened
+    assert :ok = AttemptLedger.close(reopened)
+  end
+
+  @tag :scope01_identity_reload
+  test "legacy identity drift cannot hide a stored Gate2 binding from configuration admission" do
+    root = temp_root()
+    project_id = "t6-gate2-reload"
+    old_identity = %{tracker_kind: "memory", provider_scope: %{project_slug: "before"}}
+    new_identity = %{tracker_kind: "memory", provider_scope: %{project_slug: "after"}}
+    seed_gate2_binding(AttemptLedger.path_for(project_id, root: root), project_id, old_identity)
+    on_exit(fn -> File.rm_rf(root) end)
+    {:ok, settings} = Schema.parse(%{})
+
+    options = [project_id: project_id, tracker_identity: new_identity, root: root]
+    assert {:error, :binding_downgrade_denied} = Config.validate_attempt_boundary(settings, options)
+  end
+
+  test "legacy identity fallback rejects corrupt rows before admitting configuration" do
+    root = temp_root()
+    project_id = "t6-corrupt-reload"
+    old_identity = %{tracker_kind: "memory", provider_scope: %{project_slug: "before"}}
+    new_identity = %{tracker_kind: "memory", provider_scope: %{project_slug: "after"}}
+    {:ok, settings} = Schema.parse(%{})
+    {:ok, ledger} = AttemptLedger.open(project_id, old_identity, root: root)
+    assert :ok = :dets.insert(ledger.table, {{:current, "item-1"}, :corrupt})
+    on_exit(fn -> File.rm_rf(root) end)
+
+    options = [project_id: project_id, tracker_identity: new_identity, root: root]
+    assert {:error, :storage_corrupt} = Config.validate_attempt_boundary(settings, options)
+
+    assert :ok = AttemptLedger.close(ledger)
+  end
+
+  test "legacy identity fallback cannot bypass the schema2 committed receipt" do
+    root = temp_root()
+    project_id = "t6-receipt-reload"
+    old_identity = %{tracker_kind: "memory", provider_scope: %{project_slug: "before"}}
+    new_identity = %{tracker_kind: "memory", provider_scope: %{project_slug: "after"}}
+    path = AttemptLedger.path_for(project_id, root: root)
+    seed_gate2_binding(path, project_id, old_identity)
+    File.rm!(path <> ".migration-journal")
+    on_exit(fn -> File.rm_rf(root) end)
+    {:ok, settings} = Schema.parse(%{})
+
+    options = [project_id: project_id, tracker_identity: new_identity, root: root]
+    assert {:error, :migration_in_progress} = Config.validate_attempt_boundary(settings, options)
+  end
+
   defp temp_root do
     Path.join(System.tmp_dir!(), "symphony-gate2-config-" <> Base.encode16(:crypto.strong_rand_bytes(12), case: :lower))
   end
