@@ -3,6 +3,7 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
 
   alias SymphonyElixir.AgentRuntime.AttemptResource
   alias SymphonyElixir.AgentRuntime.AttemptResourceLedger
+  alias SymphonyElixir.AgentRuntime.CleanupEvidenceRef
   alias SymphonyElixir.AgentRuntime.QuarantineDisposition
   alias SymphonyElixir.AgentRuntime.RecoveryGeneration
   alias SymphonyElixir.AgentRuntime.RuntimeAttempt.Identity
@@ -727,6 +728,76 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
              )
 
     assert :ok = AttemptResourceLedger.close(reopened)
+  end
+
+  test "a shaped cleanup reference cannot authorize a resource transition", context do
+    original = resource()
+    {:ok, ledger} = start_ledger(context)
+    assert {:ok, ^original} = AttemptResourceLedger.reserve_sync(ledger, original)
+
+    {:ok, reference} =
+      CleanupEvidenceRef.new(%{
+        schema_version: 1,
+        evidence_id: "shape-only",
+        evidence_sha256: String.duplicate("a", 64),
+        project_namespace: original.project_namespace,
+        grant_id: original.grant_id,
+        runtime_identity: original.runtime_identity,
+        fence_epoch: 1,
+        resource_set_sha256: String.duplicate("b", 64),
+        verification_generation: original.reconciliation_generation,
+        verifier_implementation_sha256: String.duplicate("c", 64)
+      })
+
+    request = transition(:fencing, original.reconciliation_generation)
+
+    assert {:error, :cleanup_verifier_unavailable} =
+             AttemptResourceLedger.transition_sync(ledger, original.resource_id, 0, %{request | cleanup_ref: reference})
+
+    for {malformed, error} <- [
+          {nil, :invalid_request},
+          {%{request | cleanup_ref: %{}}, :invalid_request},
+          {%{request | quarantine: %{}}, :invalid_request},
+          {%{request | evidence_ref: "unverified-reference"}, :transition_invalid}
+        ] do
+      assert {:error, ^error} = AttemptResourceLedger.transition_sync(ledger, original.resource_id, 0, malformed)
+    end
+
+    assert {:ok, ^original} = AttemptResourceLedger.fetch(ledger, original.resource_id)
+    assert :ok = AttemptResourceLedger.close(ledger)
+  end
+
+  test "reservation validation denies foreign ownership and non-dormant intent without poisoning", context do
+    {:ok, ledger} = start_ledger(context)
+    valid = resource()
+
+    for {request, error} <- [
+          {%{valid | project_namespace: "other-project"}, :namespace_mismatch},
+          {%{valid | owner_host_id: "other-host"}, :namespace_mismatch},
+          {%{valid | state: :active}, :invalid_request},
+          {%{valid | allocation_identity_sha256: String.duplicate("a", 64)}, :invalid_request},
+          {%{valid | class: :unknown}, :invalid_request},
+          {Map.put(valid, :bearer_token, "rejected-test-value"), :invalid_request},
+          {Map.from_struct(valid), :invalid_request}
+        ] do
+      assert {:error, ^error} = AttemptResourceLedger.reserve_sync(ledger, request)
+    end
+
+    assert {:error, :invalid_request} = AttemptResourceLedger.fetch(ledger, "")
+    assert {:error, :invalid_request} = AttemptResourceLedger.list_for_grant(ledger, "")
+    assert {:ok, []} = AttemptResourceLedger.list_for_grant(ledger, valid.grant_id)
+    assert {:ok, ^valid} = AttemptResourceLedger.reserve_sync(ledger, valid)
+    assert :ok = AttemptResourceLedger.close(ledger)
+  end
+
+  @tag :transition_error_contract
+  test "missing resource and malformed transition identity have distinct stable errors", context do
+    {:ok, ledger} = start_ledger(context)
+    request = transition(:fencing, resource().reconciliation_generation)
+    assert {:error, :resource_not_found} = AttemptResourceLedger.transition_sync(ledger, "missing-resource", 0, request)
+    assert {:error, :invalid_request} = AttemptResourceLedger.transition_sync(ledger, "", 0, request)
+    assert {:error, :invalid_request} = AttemptResourceLedger.transition_sync(ledger, "missing-resource", -1, request)
+    assert :ok = AttemptResourceLedger.close(ledger)
   end
 
   test "write failure blocks reads until close and restart", context do

@@ -345,6 +345,51 @@ defmodule SymphonyElixir.Gate2AttemptMigrationTest do
     assert {:error, :migration_in_progress} = AttemptLedger.open(@namespace, @identity)
   end
 
+  @tag :maintenance_environment
+  test "missing host lock tooling cannot create migration intent", %{path: path, root: root} do
+    seed_v1(path)
+    tools = Path.join(root, "empty-tools")
+    File.mkdir_p!(tools)
+    assert {:error, :migration_lock_unavailable} = migrate_isolated(path, @request, maintenance_path: tools)
+    refute File.exists?(path <> ".migration-journal")
+    assert Enum.all?(rows(path), fn {_key, row} -> row.schema_version == 1 end)
+  end
+
+  @tag :maintenance_environment
+  test "missing handle inspection tooling blocks maintenance", %{path: path, root: root} do
+    seed_v1(path)
+    tools = Path.join(root, "lock-only-tools")
+    File.mkdir_p!(tools)
+    File.ln_s!(System.find_executable("flock"), Path.join(tools, "flock"))
+    assert {:error, :ledger_in_use} = migrate_isolated(path, @request, maintenance_path: tools)
+    refute File.exists?(path <> ".migration-journal")
+    assert Enum.all?(rows(path), fn {_key, row} -> row.schema_version == 1 end)
+  end
+
+  @tag :maintenance_environment
+  test "host lock without an acquisition handshake times out fail closed", %{path: path, root: root} do
+    seed_v1(path)
+    tools = Path.join(root, "unresponsive-lock-tools")
+    File.mkdir_p!(tools)
+    executable = Path.join(tools, "flock")
+    File.write!(executable, "#!/bin/sh\n/bin/sleep 6\n")
+    File.chmod!(executable, 0o700)
+    assert {:error, :migration_lock_unavailable} = migrate_isolated(path, @request, maintenance_path: tools)
+    refute File.exists?(path <> ".migration-journal")
+    assert Enum.all?(rows(path), fn {_key, row} -> row.schema_version == 1 end)
+  end
+
+  @tag :maintenance_environment
+  test "replaced journal cannot reconstruct a missing target from unchanged v1", %{path: path} do
+    seed_v1(path)
+    assert :simulated_crash = migrate_isolated(path, @request, crash_at: :journal_synced)
+    write_journal(path, Map.put(read_journal(path), :phase, :replaced))
+    before = rows(path)
+    assert {:error, :migration_target_invalid} = maintenance_isolated(:resume, path, @request)
+    assert rows(path) == before
+    assert {:error, :migration_in_progress} = AttemptLedger.open(@namespace, @identity)
+  end
+
   test "path admission requires a valid committed snapshot and receipt", %{path: path} do
     seed_v1(path)
     assert :ok = AttemptLedgerMigration.admission_check(path)
@@ -828,6 +873,7 @@ defmodule SymphonyElixir.Gate2AttemptMigrationTest do
     Application.put_env(:symphony_elixir, :attempt_ledger_root, root)
     request = encoded_request |> Base.decode64!() |> :erlang.binary_to_term([:safe])
     opts = encoded_opts |> Base.decode64!() |> :erlang.binary_to_term()
+    if maintenance_path = Keyword.get(opts, :maintenance_path), do: System.put_env("PATH", maintenance_path)
     Process.put(:attempt_ledger_migration_crash_at, Keyword.get(opts, :crash_at))
     Process.put(:attempt_ledger_migration_fault, Keyword.get(opts, :fault))
     migration = SymphonyElixir.AgentRuntime.AttemptLedgerMigration

@@ -51,6 +51,13 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
     assert {:error, :gate2_profile_incomplete} = AttemptLedger.configured_mode("gate2_enforced", @namespace, @identity, root: root)
   end
 
+  test "legacy mode checks stored identity before deciding whether Gate2 is present", %{root: root} do
+    changed_identity = %{tracker_kind: "memory", provider_scope: %{project_slug: "changed-project"}}
+
+    assert {:error, :identity_mismatch} = AttemptLedger.configured_schema(@namespace, changed_identity, root: root)
+    assert :ok = AttemptLedger.configured_mode("legacy", @namespace, changed_identity, root: root)
+  end
+
   test "configured mode detects Gate2 history in an admitted schema two ledger", %{root: root} do
     path = seed_committed_schema2(root)
 

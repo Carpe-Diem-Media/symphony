@@ -20,7 +20,8 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
     {:ok, attempt_ledger} =
       AttemptLedger.open("project-1", %{tracker_kind: "memory", provider_scope: %{project_slug: "project-1"}}, path: attempt_path)
 
-    resource_opts = [path: Path.join(root, "resources.dets"), project_namespace: "project-1", host_id: "host-1"]
+    resource_path = Path.join(root, "resources.dets")
+    resource_opts = [path: resource_path, project_namespace: "project-1", host_id: "host-1"]
 
     sync_control = if context[:sync_fault], do: :atomics.new(1, []), else: nil
 
@@ -61,6 +62,7 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
       boundary: boundary,
       attempt_ledger: attempt_ledger,
       attempt_path: attempt_path,
+      resource_path: resource_path,
       owner_name: name,
       sync_control: sync_control
     }
@@ -77,6 +79,7 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
   @tag fresh_gate2: true
   test "foundation fence reports requested not verified", context do
     seed_resource(context.boundary)
+    assert :ok = AttemptLedger.bind_gate2_fence_sync(context.attempt_ledger, "item-1", grant_ref())
     assert :ok = AttemptLedger.bind_gate2_fence_sync(context.attempt_ledger, "item-1", grant_ref())
     assert {:ok, fence} = AttemptBoundary.fence(context.boundary, %{grant_ref: grant_ref(), reason: :cancellation})
     assert fence.status == :requested
@@ -124,6 +127,39 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
     assert {:error, :cleanup_verifier_unavailable} = AttemptBoundary.release(context.boundary, evidence)
   end
 
+  test "malformed typed cleanup evidence and operation requests cannot cross admission", context do
+    {:ok, generation} = AttemptBoundary.reconcile_startup(context.boundary)
+    malformed = %{cleanup_ref(generation) | verification_generation: :forged}
+    assert {:error, :cleanup_reference_invalid} = AttemptBoundary.release(context.boundary, malformed)
+
+    assert {:error, :cleanup_reference_invalid} =
+             AttemptLedger.release_gate2_authority_fence(context.attempt_ledger, "item-1", identity(), malformed)
+
+    assert {:error, :invalid_request} = AttemptBoundary.authorize_operation(context.boundary, grant_ref(), nil)
+    assert {:error, :invalid_request} = GenServer.call(context.boundary, {:unknown_authority_request, "rejected"})
+    assert {:ok, ^generation} = AttemptBoundary.reconcile_startup(context.boundary)
+  end
+
+  test "a boundary without an attempt ledger cannot resolve cleanup or fence authority", context do
+    assert :ok = GenServer.stop(context.boundary)
+
+    {:ok, boundary} =
+      AttemptBoundary.start_link(
+        owner_name: context.owner_name,
+        resource_ledger_opts: [
+          path: Path.join(Path.dirname(context.attempt_path), "no-attempt-resources.dets"),
+          project_namespace: "project-1",
+          host_id: "host-1"
+        ]
+      )
+
+    on_exit(fn -> if Process.alive?(boundary), do: GenServer.stop(boundary) end)
+    {:ok, generation} = AttemptBoundary.reconcile_startup(boundary)
+    assert {:error, :cleanup_reference_stale} = AttemptBoundary.release(boundary, cleanup_ref(generation))
+    assert {:error, :grant_not_found} = AttemptBoundary.fence(boundary, %{grant_ref: grant_ref(), reason: :failure})
+    assert {:error, :gate2_dormant} = AttemptBoundary.authorize(boundary, identity(), authorization_request())
+  end
+
   test "durable cleanup reference cannot substitute epoch or verification generation", context do
     seed_resource(context.boundary)
     assert :ok = AttemptLedger.bind_gate2_fence_sync(context.attempt_ledger, "item-1", grant_ref())
@@ -153,6 +189,21 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
     assert {:error, :binding_downgrade_denied} = AttemptBoundary.fence(context.boundary, %{request | reason: :completion})
     assert {:ok, record} = AttemptLedger.current(context.attempt_ledger, "item-1")
     assert record.authority_fence.gate2_fence.requested_reason == :failure
+  end
+
+  test "a durable fence cannot substitute a different grant digest", context do
+    seed_resource(context.boundary)
+    reference = grant_ref()
+    assert :ok = AttemptLedger.bind_gate2_fence_sync(context.attempt_ledger, "item-1", reference)
+
+    substituted = %{reference | grant_sha256: String.duplicate("b", 64)}
+
+    assert {:error, :binding_downgrade_denied} =
+             AttemptLedger.bind_gate2_fence_sync(context.attempt_ledger, "item-1", substituted)
+
+    assert {:ok, record} = AttemptLedger.current(context.attempt_ledger, "item-1")
+    assert record.authority_fence.gate2_fence.reference == reference
+    assert record.authority_fence.gate2_fence.status == :requested
   end
 
   @tag fresh_gate2: true
@@ -333,6 +384,9 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
     assert {:error, :resource_conflict} = AttemptBoundary.reserve_resource_sync(context.boundary, duplicate)
     assert {:error, :ownership_ambiguous} = AttemptBoundary.fence(context.boundary, %{grant_ref: reference, reason: :restart})
 
+    {:ok, generation} = AttemptBoundary.reconcile_startup(context.boundary)
+    assert {:error, :cleanup_resource_set_mismatch} = AttemptBoundary.release(context.boundary, cleanup_ref(generation))
+
     forged_identity = Map.put(identity(), :secret, "must-not-be-persisted")
     forged_reference = Map.put(reference, :runtime_identity, forged_identity)
     result = AttemptLedger.bind_gate2_fence_sync(context.attempt_ledger, "item-1", forged_reference)
@@ -369,6 +423,17 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
 
     request = authorization_request()
     assert {:error, :storage_unavailable} = AttemptBoundary.authorize(context.boundary, identity(), request)
+  end
+
+  test "corrupt resource rows poison cleanup and block later boundary calls", context do
+    seed_resource(context.boundary)
+    assert :ok = AttemptLedger.bind_gate2_fence_sync(context.attempt_ledger, "item-1", grant_ref())
+    assert :ok = :dets.insert(context.resource_path, {{:resource, "corrupt"}, :not_a_resource})
+
+    assert {:error, :storage_corrupt} =
+             AttemptBoundary.fence(context.boundary, %{grant_ref: grant_ref(), reason: :failure})
+
+    assert {:error, :storage_unavailable} = AttemptBoundary.reconcile_startup(context.boundary)
   end
 
   test "reconciliation blocks the boundary after its resource ledger exits", context do

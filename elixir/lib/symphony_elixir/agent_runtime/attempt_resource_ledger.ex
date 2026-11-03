@@ -236,8 +236,8 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
       updated = apply_transition(resource, transition)
       persist(state, {:resource, resource_id}, updated)
     else
-      true -> {:reply, {:error, :invalid_request}, state}
-      false -> {:reply, {:error, :resource_not_found}, state}
+      true -> {:reply, {:error, :resource_not_found}, state}
+      false -> {:reply, {:error, :invalid_request}, state}
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
   end
