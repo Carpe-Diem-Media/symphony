@@ -112,7 +112,7 @@
   "refinements": [
     {
       "id": "G2-HERDR-Q01",
-      "name": "PROCESS_INCARCATION_AND_REPLACEMENT_NEGATIVE_CONTROLS",
+      "name": "PROCESS_INCARNATION_AND_REPLACEMENT_NEGATIVE_CONTROLS",
       "title": "Process incarnation and replacement",
       "source_pattern": "M1",
       "target_packages": [
@@ -286,7 +286,19 @@
           "CANCELLED"
         ],
         [
+          "TRUNCATED_DRAINING",
+          "CANCELLED"
+        ],
+        [
+          "OPEN",
+          "INCOMPLETE"
+        ],
+        [
           "CAPTURING",
+          "INCOMPLETE"
+        ],
+        [
+          "TRUNCATED_DRAINING",
           "INCOMPLETE"
         ]
       ],
@@ -299,7 +311,99 @@
       ],
       "mandatory": true,
       "implementation_status": "NOT_IMPLEMENTED",
-      "qualification_status": "NOT_PROVEN"
+      "qualification_status": "NOT_PROVEN",
+      "transition_contract": [
+        {
+          "from": [
+            "OPEN"
+          ],
+          "to": "CAPTURING",
+          "owner": "Trusted diagnostic collector under the current Symphony decision.",
+          "guard": "A qualified bounded channel and current acquisition identity/readiness are established.",
+          "side_effect": "Begin bounded concurrent drainage of all required streams.",
+          "failure_transition": "INCOMPLETE if setup, collector or channel state cannot be established.",
+          "restart_interpretation": "Interrupted acquisition becomes INCOMPLETE on recovery; restore no capture authority.",
+          "terminal_meaning": "Nonterminal acquisition has begun; no complete-evidence or cleanup claim exists."
+        },
+        {
+          "from": [
+            "CAPTURING"
+          ],
+          "to": "CLOSED",
+          "owner": "Trusted diagnostic collector under the current Symphony decision.",
+          "guard": "All required streams reached qualified completion without truncation or incompleteness; completion metadata can be durably finalized.",
+          "side_effect": "Finalize and persist capture metadata with an untruncated transport-completion disposition.",
+          "failure_transition": "INCOMPLETE if completion, attribution or metadata persistence is uncertain.",
+          "restart_interpretation": "Retain CLOSED only from durable qualified completion facts; missing or ambiguous facts produce an INCOMPLETE recovered observation. Restore no capture authority.",
+          "terminal_meaning": "Terminal capture-transport completion only. Evidence eligibility still requires its independent qualification and attribution checks; process/resource cleanup is not established."
+        },
+        {
+          "from": [
+            "CAPTURING"
+          ],
+          "to": "TRUNCATED_DRAINING",
+          "owner": "Trusted diagnostic collector under the current Symphony decision.",
+          "guard": "The retained-byte bound is reached.",
+          "side_effect": "Record truncation, stop retaining additional payload, and continue bounded drainage where required.",
+          "failure_transition": "INCOMPLETE if drainage, bounds, truncation recording or collector state becomes uncertain.",
+          "restart_interpretation": "Retain the truncation fact and mark interrupted acquisition INCOMPLETE; do not resume capture or restore authority.",
+          "terminal_meaning": "Nonterminal transport handling continues; diagnostic evidence is truncated and cannot be complete evidence."
+        },
+        {
+          "from": [
+            "TRUNCATED_DRAINING"
+          ],
+          "to": "CLOSED",
+          "owner": "Trusted diagnostic collector under the current Symphony decision.",
+          "guard": "Drainage reaches qualified termination and the TRUNCATED disposition can be durably finalized.",
+          "side_effect": "Persist final transport metadata and the sticky TRUNCATED disposition.",
+          "failure_transition": "INCOMPLETE if termination or disposition persistence cannot be verified.",
+          "restart_interpretation": "Retain CLOSED with TRUNCATED only from durable facts; uncertainty produces an INCOMPLETE recovered observation while preserving known truncation. Never promote truncated output to complete evidence.",
+          "terminal_meaning": "Terminal transport handling is complete; evidence remains truncated. CLOSED does not erase truncation or establish process/resource cleanup."
+        },
+        {
+          "from": [
+            "CAPTURING",
+            "TRUNCATED_DRAINING"
+          ],
+          "to": "CANCELLED",
+          "owner": "Trusted diagnostic collector under the current Symphony decision.",
+          "guard": "The trusted owner issues a cancellation/deadline decision under the qualified bounded contract.",
+          "side_effect": "Cancel/drain and reap the owned child according to the collector ownership contract; persist cancellation and any prior truncation. Scope cleanup remains separately verified.",
+          "failure_transition": "INCOMPLETE if the bounded cancellation/drain/reap contract or disposition persistence cannot be established; retain unresolved cleanup obligations.",
+          "restart_interpretation": "Preserve CANCELLED and any known truncation. Uncertain recovery facts remain INCOMPLETE; restart must never reinterpret cancellation as CLOSED or complete evidence.",
+          "terminal_meaning": "Terminal diagnostic acquisition was cancelled and is never complete evidence. Cancellation does not certify process/resource cleanliness."
+        },
+        {
+          "from": [
+            "OPEN",
+            "CAPTURING",
+            "TRUNCATED_DRAINING"
+          ],
+          "to": "INCOMPLETE",
+          "owner": "Trusted diagnostic collector under the current Symphony decision.",
+          "guard": "Any nonterminal observation, channel or collector state becomes uncertain, including an interrupted acquisition discovered on restart.",
+          "side_effect": "Record an explicit incomplete disposition, preserve known truncation/cancellation facts, and retain unresolved resource obligations.",
+          "failure_transition": "Remain INCOMPLETE on persistence/recovery failure; block evidence use and apply existing cleanup uncertainty/quarantine rules as applicable.",
+          "restart_interpretation": "Preserve INCOMPLETE and restore no capture authority. Do not reinterpret it as CLOSED or complete evidence.",
+          "terminal_meaning": "Terminal acquisition cannot satisfy an evidence requirement. A fresh qualified observation with current authorization and a new acquisition identity is required."
+        }
+      ],
+      "terminal_contract": {
+        "nonterminal_states": [
+          "OPEN",
+          "CAPTURING",
+          "TRUNCATED_DRAINING"
+        ],
+        "final_states": [
+          "CLOSED",
+          "CANCELLED",
+          "INCOMPLETE"
+        ],
+        "closed_meaning": "CLOSED records capture transport termination, not a process/resource cleanup verdict or an automatic complete-evidence verdict.",
+        "sticky_dispositions": "TRUNCATED, CANCELLED and INCOMPLETE facts cannot be erased by closure or restart. Evidence completion must not be inferred from a transport state.",
+        "restart_rule": "No acquisition authority is restored. A new acquisition requires a fresh acquisition identity and current Symphony authorization; it cannot relabel a prior terminal record."
+      }
     },
     {
       "id": "G2-HERDR-Q05",
@@ -463,8 +567,8 @@
   },
   "normative_document": {
     "path": "docs/symphony-hardening-playbook-v4.1/GATE2_HERDR_QUALIFICATION_REFINEMENT_2026-11-03.md",
-    "git_blob": "775c20d9da099d1d068b7c80a378ab02685a660c",
-    "raw_bytes": 19042,
-    "raw_sha256": "aea9d32c56285b06d6e8c778fbc154be35f57625787bca651166fbb6d1a2ed75"
+    "git_blob": "1f33baa3a940b7c7731e677303b8987d43366462",
+    "raw_bytes": 23993,
+    "raw_sha256": "3beb42d4cd42b1e4ed233d107a5859d8423fbc7614325b80ec6aa7c600cc8300"
   }
 }
