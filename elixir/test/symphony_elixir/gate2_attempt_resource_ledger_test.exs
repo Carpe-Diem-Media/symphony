@@ -71,6 +71,26 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
     assert :ok = AttemptResourceLedger.close(reopened)
   end
 
+  test "a repeated conflict with quarantined ownership syncs without rewriting it", context do
+    resource = resource()
+    counter = :atomics.new(1, [])
+    {:ok, ledger} = start_ledger(context, sync_fun: counting_sync_fun(counter))
+    assert {:ok, ^resource} = AttemptResourceLedger.reserve_sync(ledger, resource)
+
+    assert {:error, :resource_conflict} =
+             AttemptResourceLedger.reserve_sync(ledger, %{resource | stable_locator: "other-locator"})
+
+    {:ok, quarantined} = AttemptResourceLedger.fetch(ledger, resource.resource_id)
+    :atomics.put(counter, 1, 0)
+
+    assert {:error, :resource_conflict} =
+             AttemptResourceLedger.reserve_sync(ledger, %{resource | resource_id: "resource-2"})
+
+    assert :atomics.get(counter, 1) == 1
+    assert {:ok, ^quarantined} = AttemptResourceLedger.fetch(ledger, resource.resource_id)
+    assert :ok = AttemptResourceLedger.close(ledger)
+  end
+
   test "transition rejects stale revision and generation", context do
     resource = resource(reconciliation_generation: generation(2), creation_generation: generation(2))
     {:ok, current_generation} = RecoveryGeneration.new(generation(2))
@@ -106,6 +126,90 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
 
     assert_receive {:unauthorized_result, {:error, :unauthorized_caller}}
     assert :ok = Task.await(task)
+    assert :ok = AttemptResourceLedger.close(ledger)
+  end
+
+  test "only the registered owner can start a ledger without opening its path", context do
+    task =
+      Task.async(fn ->
+        start_ledger(context)
+      end)
+
+    assert {:error, :unauthorized_caller} = Task.await(task)
+    refute File.exists?(context.path)
+  end
+
+  test "startup validates required options and owner registrations before opening the ledger", context do
+    {:ok, current_generation} = RecoveryGeneration.new(generation(1))
+
+    valid = [
+      path: context.path,
+      owner_name: context.owner_name,
+      project_namespace: "project-1",
+      host_id: "host-1",
+      current_generation: current_generation
+    ]
+
+    invalid_options = [
+      {Keyword.delete(valid, :path), :invalid_request},
+      {Keyword.delete(valid, :project_namespace), :invalid_request},
+      {Keyword.delete(valid, :host_id), :invalid_request},
+      {Keyword.delete(valid, :current_generation), :invalid_request},
+      {Keyword.put(valid, :owner_name, "not-an-owner-name"), :invalid_request},
+      {Keyword.put(valid, :recovery_owner_name, "not-a-recovery-owner-name"), :invalid_request},
+      {
+        Keyword.put(
+          valid,
+          :owner_name,
+          String.to_atom("gate2_missing_owner_#{System.unique_integer([:positive])}")
+        ),
+        :unauthorized_caller
+      }
+    ]
+
+    for {opts, expected_error} <- invalid_options do
+      assert {:error, ^expected_error} = AttemptResourceLedger.start_link(opts)
+    end
+
+    refute File.exists?(context.path)
+  end
+
+  test "startup rejects generation namespace and host mismatches and releases the path", context do
+    mismatches = [
+      %{generation(1) | project_namespace: "other-project"},
+      %{generation(1) | host_id: "other-host"}
+    ]
+
+    for generation_attrs <- mismatches do
+      {:ok, mismatched_generation} = RecoveryGeneration.new(generation_attrs)
+
+      assert {:error, :boundary_unavailable} =
+               start_ledger(context, current_generation: mismatched_generation)
+    end
+
+    {:ok, ledger} = start_ledger(context)
+    assert {:ok, []} = AttemptResourceLedger.list_for_grant(ledger, "grant-1")
+    assert :ok = AttemptResourceLedger.close(ledger)
+  end
+
+  test "recovery authority remains bound to its registered process", context do
+    resource = resource()
+    recovery_name = String.to_atom("gate2_recovery_owner_#{System.unique_integer([:positive])}")
+    recovery_owner = start_recovery_owner(recovery_name)
+    on_exit(fn -> if Process.alive?(recovery_owner), do: Process.exit(recovery_owner, :kill) end)
+
+    {:ok, ledger} = start_ledger(context, recovery_owner_name: recovery_name)
+    assert {:ok, ^resource} = AttemptResourceLedger.reserve_sync(ledger, resource)
+    assert {:ok, ^resource} = fetch_as(recovery_owner, ledger, resource.resource_id)
+
+    recovery_ref = Process.monitor(recovery_owner)
+    Process.exit(recovery_owner, :kill)
+    assert_receive {:DOWN, ^recovery_ref, :process, ^recovery_owner, :killed}
+
+    replacement = start_recovery_owner(recovery_name)
+    on_exit(fn -> if Process.alive?(replacement), do: Process.exit(replacement, :kill) end)
+
+    assert {:error, :unauthorized_caller} = fetch_as(replacement, ledger, resource.resource_id)
     assert :ok = AttemptResourceLedger.close(ledger)
   end
 
@@ -161,6 +265,7 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
     {:ok, ledger} = start_ledger(context, close_fun: close_fun)
 
     assert {:error, :storage_unavailable} = AttemptResourceLedger.close(ledger)
+    assert {:error, :storage_unavailable} = AttemptResourceLedger.fetch(ledger, "resource-1")
     assert :ok = GenServer.stop(ledger)
   end
 
@@ -311,6 +416,120 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
     assert_file_reopenable(context.path)
   end
 
+  test "startup refuses resource facts when ledger metadata is missing", context do
+    table = String.to_atom("gate2_orphan_resource_#{System.unique_integer([:positive])}")
+    row = resource()
+
+    assert {:ok, ^table} = :dets.open_file(table, file: String.to_charlist(context.path), type: :set)
+    assert :ok = :dets.insert(table, {{:resource, row.resource_id}, row})
+    assert :ok = :dets.sync(table)
+    assert :ok = :dets.close(table)
+
+    before = File.read!(context.path)
+    assert {:error, :storage_corrupt} = start_ledger(context)
+    assert File.read!(context.path) == before
+    assert_file_reopenable(context.path)
+  end
+
+  test "startup rejects metadata with unknown fields without changing the ledger", context do
+    {:ok, ledger} = start_ledger(context)
+    assert :ok = AttemptResourceLedger.close(ledger)
+
+    table = String.to_atom("gate2_extra_metadata_#{System.unique_integer([:positive])}")
+    assert {:ok, ^table} = :dets.open_file(table, file: String.to_charlist(context.path), type: :set)
+    [{{:meta, :ledger}, metadata}] = :dets.lookup(table, {:meta, :ledger})
+
+    assert :ok = :dets.insert(table, {{:meta, :ledger}, Map.put(metadata, :unexpected, true)})
+    assert :ok = :dets.sync(table)
+    assert :ok = :dets.close(table)
+
+    before = File.read!(context.path)
+    assert {:error, :storage_corrupt} = start_ledger(context)
+    assert File.read!(context.path) == before
+    assert_file_reopenable(context.path)
+  end
+
+  test "startup rejects a malformed recovery pending marker without rewriting it", context do
+    {:ok, ledger} = start_ledger(context)
+    assert :ok = AttemptResourceLedger.close(ledger)
+
+    table = String.to_atom("gate2_bad_recovery_marker_#{System.unique_integer([:positive])}")
+    assert {:ok, ^table} = :dets.open_file(table, file: String.to_charlist(context.path), type: :set)
+    assert :ok = :dets.insert(table, {{:meta, :recovery_pending}, :unexpected})
+    assert :ok = :dets.sync(table)
+    assert :ok = :dets.close(table)
+
+    before = File.read!(context.path)
+    assert {:error, :storage_corrupt} = start_ledger(context)
+    assert File.read!(context.path) == before
+    assert_file_reopenable(context.path)
+  end
+
+  test "startup rejects duplicate grant identity with distinct stable locators", context do
+    original = resource()
+    {:ok, ledger} = start_ledger(context)
+    assert {:ok, ^original} = AttemptResourceLedger.reserve_sync(ledger, original)
+    assert :ok = AttemptResourceLedger.close(ledger)
+
+    duplicate = %{original | resource_id: "resource-2", stable_locator: "locator-2"}
+    table = String.to_atom("gate2_duplicate_identity_#{System.unique_integer([:positive])}")
+    assert {:ok, ^table} = :dets.open_file(table, file: String.to_charlist(context.path), type: :set)
+    assert :ok = :dets.insert(table, {{:resource, duplicate.resource_id}, duplicate})
+    assert :ok = :dets.sync(table)
+    assert :ok = :dets.close(table)
+
+    before = File.read!(context.path)
+    {:ok, fresh_generation} = RecoveryGeneration.new(%{generation(2) | boot_id: "boot-2"})
+
+    assert {:error, :storage_corrupt} =
+             start_ledger(context, current_generation: fresh_generation)
+
+    assert File.read!(context.path) == before
+    assert_file_reopenable(context.path)
+  end
+
+  test "a DETS open failure releases the path lock", context do
+    table = String.to_atom("gate2_external_resource_table_#{System.unique_integer([:positive])}")
+    assert {:ok, ^table} = :dets.open_file(table, file: String.to_charlist(context.path), type: :set)
+
+    assert {:error, :storage_unavailable} = start_ledger(context)
+    assert :ok = :dets.close(table)
+
+    {:ok, ledger} = start_ledger(context)
+    assert {:ok, []} = AttemptResourceLedger.list_for_grant(ledger, "grant-1")
+    assert :ok = AttemptResourceLedger.close(ledger)
+  end
+
+  test "a symlinked resource path reopens the same durable ledger", context do
+    alias_root = Path.join(context.root, "alias")
+    File.ln_s!(context.root, alias_root)
+    alias_path = Path.join(alias_root, Path.basename(context.path))
+    resource = resource()
+
+    {:ok, ledger} = start_ledger(context, path: alias_path)
+    assert {:ok, ^resource} = AttemptResourceLedger.reserve_sync(ledger, resource)
+    assert :ok = AttemptResourceLedger.close(ledger)
+
+    {:ok, reopened} = start_ledger(context)
+    assert {:ok, ^resource} = AttemptResourceLedger.fetch(reopened, resource.resource_id)
+    assert :ok = AttemptResourceLedger.close(reopened)
+  end
+
+  test "stable locator conflicts across grants quarantine the existing owner", context do
+    original = resource()
+    {:ok, ledger} = start_ledger(context)
+    assert {:ok, ^original} = AttemptResourceLedger.reserve_sync(ledger, original)
+
+    other_grant = %{original | resource_id: "resource-2", grant_id: "grant-2"}
+    assert {:error, :resource_conflict} = AttemptResourceLedger.reserve_sync(ledger, other_grant)
+
+    assert {:ok, quarantined} = AttemptResourceLedger.fetch(ledger, original.resource_id)
+    assert quarantined.state == :quarantined
+    assert quarantined.quarantine.reason == :identity_conflict
+    assert quarantined.grant_id == original.grant_id
+    assert :ok = AttemptResourceLedger.close(ledger)
+  end
+
   test "startup sync uncertainty leaves a durable recovery block", context do
     resource = resource()
     {:ok, ledger} = start_ledger(context)
@@ -338,6 +557,89 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
                startup_recovery: true
              )
 
+    assert_file_reopenable(context.path)
+  end
+
+  test "startup row write failure retains the pending recovery marker", context do
+    resource = resource()
+    {:ok, ledger} = start_ledger(context)
+    assert {:ok, ^resource} = AttemptResourceLedger.reserve_sync(ledger, resource)
+    assert :ok = AttemptResourceLedger.close(ledger)
+
+    counter = :atomics.new(1, [])
+
+    write_fun = fn table, row ->
+      if :atomics.add_get(counter, 1, 1) == 2 do
+        {:error, :simulated}
+      else
+        :dets.insert(table, row)
+      end
+    end
+
+    {:ok, fresh_generation} = RecoveryGeneration.new(%{generation(2) | boot_id: "boot-2"})
+
+    assert {:error, :write_failed} =
+             start_ledger(context,
+               current_generation: fresh_generation,
+               write_fun: write_fun
+             )
+
+    assert {:error, :storage_unavailable} =
+             AttemptResourceLedger.start_link(
+               path: context.path,
+               owner_name: context.owner_name,
+               project_namespace: "project-1",
+               host_id: "host-1",
+               startup_recovery: true
+             )
+
+    assert_file_reopenable(context.path)
+  end
+
+  test "startup recovery rejects malformed persisted generation metadata without rewriting it", context do
+    {:ok, ledger} = start_ledger(context)
+    assert :ok = AttemptResourceLedger.close(ledger)
+
+    table = String.to_atom("gate2_malformed_generation_#{System.unique_integer([:positive])}")
+    assert {:ok, ^table} = :dets.open_file(table, file: String.to_charlist(context.path), type: :set)
+    [{{:meta, :ledger}, metadata}] = :dets.lookup(table, {:meta, :ledger})
+    malformed_generation = %{metadata.current_generation | sequence: 0}
+
+    assert :ok =
+             :dets.insert(table, {{:meta, :ledger}, %{metadata | current_generation: malformed_generation}})
+
+    assert :ok = :dets.sync(table)
+    assert :ok = :dets.close(table)
+
+    before = File.read!(context.path)
+
+    assert {:error, :storage_corrupt} =
+             AttemptResourceLedger.start_link(
+               path: context.path,
+               owner_name: context.owner_name,
+               project_namespace: "project-1",
+               host_id: "host-1",
+               startup_recovery: true
+             )
+
+    assert File.read!(context.path) == before
+    assert_file_reopenable(context.path)
+  end
+
+  test "startup rejects unsupported schema without changing the ledger", context do
+    {:ok, ledger} = start_ledger(context)
+    assert :ok = AttemptResourceLedger.close(ledger)
+
+    table = String.to_atom("gate2_unsupported_resource_#{System.unique_integer([:positive])}")
+    assert {:ok, ^table} = :dets.open_file(table, file: String.to_charlist(context.path), type: :set)
+    [{{:meta, :ledger}, metadata}] = :dets.lookup(table, {:meta, :ledger})
+    assert :ok = :dets.insert(table, {{:meta, :ledger}, %{metadata | schema_version: 2}})
+    assert :ok = :dets.sync(table)
+    assert :ok = :dets.close(table)
+
+    before = File.read!(context.path)
+    assert {:error, :unsupported_schema} = start_ledger(context)
+    assert File.read!(context.path) == before
     assert_file_reopenable(context.path)
   end
 
@@ -425,6 +727,154 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
              )
 
     assert :ok = AttemptResourceLedger.close(reopened)
+  end
+
+  test "write failure blocks reads until close and restart", context do
+    resource = resource()
+    {:ok, ledger} = start_ledger(context, write_fun: fn _table, _row -> {:error, :simulated} end)
+
+    assert {:error, :write_failed} = AttemptResourceLedger.reserve_sync(ledger, resource)
+    assert {:error, :storage_unavailable} = AttemptResourceLedger.fetch(ledger, resource.resource_id)
+    assert :ok = AttemptResourceLedger.close(ledger)
+
+    {:ok, reopened} = start_ledger(context)
+    assert :not_found = AttemptResourceLedger.fetch(reopened, resource.resource_id)
+    assert :ok = AttemptResourceLedger.close(reopened)
+  end
+
+  test "write callbacks that raise or throw return stable errors and release the ledger on close", context do
+    resource = resource()
+
+    for failure <- [:raise, :throw] do
+      write_fun = fn _table, _row ->
+        case failure do
+          :raise -> raise "injected write failure"
+          :throw -> throw(:injected_write_failure)
+        end
+      end
+
+      {:ok, ledger} = start_ledger(context, write_fun: write_fun)
+      assert {:error, :write_failed} = AttemptResourceLedger.reserve_sync(ledger, resource)
+      assert {:error, :storage_unavailable} = AttemptResourceLedger.fetch(ledger, resource.resource_id)
+      assert :ok = AttemptResourceLedger.close(ledger)
+
+      {:ok, reopened} = start_ledger(context)
+      assert :not_found = AttemptResourceLedger.fetch(reopened, resource.resource_id)
+      assert :ok = AttemptResourceLedger.close(reopened)
+    end
+  end
+
+  test "a throwing close callback blocks authority and termination releases the path", context do
+    close_fun = fn _table -> throw(:injected_close_failure) end
+    {:ok, ledger} = start_ledger(context, close_fun: close_fun)
+
+    assert {:error, :storage_unavailable} = AttemptResourceLedger.close(ledger)
+    assert {:error, :storage_unavailable} = AttemptResourceLedger.fetch(ledger, "resource-1")
+    assert :ok = GenServer.stop(ledger)
+
+    {:ok, reopened} = start_ledger(context)
+    assert {:ok, []} = AttemptResourceLedger.list_for_grant(reopened, "grant-1")
+    assert :ok = AttemptResourceLedger.close(reopened)
+  end
+
+  test "an absent verified identity conflict poisons authority without rewriting the fact", context do
+    original = resource()
+    {:ok, ledger} = start_ledger(context)
+    assert {:ok, ^original} = AttemptResourceLedger.reserve_sync(ledger, original)
+
+    table = :sys.get_state(ledger).table
+    absent = %{original | state: :absent_verified}
+    assert :ok = :dets.insert(table, {{:resource, original.resource_id}, absent})
+    assert :ok = :dets.sync(table)
+
+    conflict = %{original | resource_id: "resource-2"}
+    assert {:error, :ownership_ambiguous} = AttemptResourceLedger.reserve_sync(ledger, conflict)
+    assert {:error, :storage_unavailable} = AttemptResourceLedger.fetch(ledger, original.resource_id)
+    assert :ok = AttemptResourceLedger.close(ledger)
+
+    {:ok, reopened} = start_ledger(context)
+    assert {:ok, ^absent} = AttemptResourceLedger.fetch(reopened, original.resource_id)
+    assert :ok = AttemptResourceLedger.close(reopened)
+  end
+
+  test "quarantine progression accepts one step and rejects skips and regressions", context do
+    resource = resource()
+    {:ok, ledger} = start_ledger(context)
+    assert {:ok, ^resource} = AttemptResourceLedger.reserve_sync(ledger, resource)
+
+    quarantined = quarantine_for(:quarantined, resource.reconciliation_generation)
+
+    assert {:ok, first} =
+             AttemptResourceLedger.transition_sync(
+               ledger,
+               resource.resource_id,
+               0,
+               transition(:quarantined, resource.reconciliation_generation, quarantined)
+             )
+
+    skipped = quarantine_for(:operator_resolution_pending, resource.reconciliation_generation)
+
+    assert {:error, :transition_invalid} =
+             AttemptResourceLedger.transition_sync(
+               ledger,
+               resource.resource_id,
+               first.revision,
+               transition(:quarantined, resource.reconciliation_generation, skipped)
+             )
+
+    block_reuse = quarantine_for(:block_reuse, resource.reconciliation_generation)
+
+    assert {:ok, second} =
+             AttemptResourceLedger.transition_sync(
+               ledger,
+               resource.resource_id,
+               first.revision,
+               transition(:quarantined, resource.reconciliation_generation, block_reuse)
+             )
+
+    assert second.quarantine.state == :block_reuse
+
+    assert {:error, :transition_invalid} =
+             AttemptResourceLedger.transition_sync(
+               ledger,
+               resource.resource_id,
+               second.revision,
+               transition(:quarantined, resource.reconciliation_generation, quarantined)
+             )
+
+    pending = quarantine_for(:operator_resolution_pending, resource.reconciliation_generation)
+
+    assert {:ok, third} =
+             AttemptResourceLedger.transition_sync(
+               ledger,
+               resource.resource_id,
+               second.revision,
+               transition(:quarantined, resource.reconciliation_generation, pending)
+             )
+
+    remains = quarantine_for(:remains_quarantined, resource.reconciliation_generation)
+
+    assert {:ok, fourth} =
+             AttemptResourceLedger.transition_sync(
+               ledger,
+               resource.resource_id,
+               third.revision,
+               transition(:quarantined, resource.reconciliation_generation, remains)
+             )
+
+    released = quarantine_for(:released_for_new_authorization, resource.reconciliation_generation)
+
+    assert {:error, :transition_invalid} =
+             AttemptResourceLedger.transition_sync(
+               ledger,
+               resource.resource_id,
+               fourth.revision,
+               transition(:quarantined, resource.reconciliation_generation, released)
+             )
+
+    assert fourth.quarantine.state == :remains_quarantined
+    assert {:ok, ^fourth} = AttemptResourceLedger.fetch(ledger, resource.resource_id)
+    assert :ok = AttemptResourceLedger.close(ledger)
   end
 
   for disposition <- [
@@ -547,6 +997,38 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
     AttemptResourceLedger.start_link(Keyword.merge(defaults, extra))
   end
 
+  defp start_recovery_owner(name) do
+    parent = self()
+
+    pid =
+      spawn(fn ->
+        Process.register(self(), name)
+        send(parent, {:recovery_owner_registered, self()})
+        recovery_owner_loop()
+      end)
+
+    assert_receive {:recovery_owner_registered, ^pid}
+    pid
+  end
+
+  defp recovery_owner_loop do
+    receive do
+      {:fetch, ledger, resource_id, caller, reference} ->
+        send(caller, {reference, AttemptResourceLedger.fetch(ledger, resource_id)})
+        recovery_owner_loop()
+
+      :stop ->
+        :ok
+    end
+  end
+
+  defp fetch_as(owner, ledger, resource_id) do
+    reference = make_ref()
+    send(owner, {:fetch, ledger, resource_id, self(), reference})
+    assert_receive {^reference, result}
+    result
+  end
+
   defp resource(overrides \\ []) do
     identity = %Identity{
       runtime_attempt_id: "attempt-1",
@@ -623,6 +1105,19 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
       QuarantineDisposition.new(%{
         state: :clear,
         reason: nil,
+        evidence_ref: nil,
+        generation: generation,
+        resolution_ref: nil
+      })
+
+    quarantine
+  end
+
+  defp quarantine_for(state, generation) do
+    {:ok, quarantine} =
+      QuarantineDisposition.new(%{
+        state: state,
+        reason: :operator_resolution_required,
         evidence_ref: nil,
         generation: generation,
         resolution_ref: nil

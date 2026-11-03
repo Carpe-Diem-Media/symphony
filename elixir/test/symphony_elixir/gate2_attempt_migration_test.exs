@@ -1,6 +1,7 @@
 defmodule SymphonyElixir.Gate2AttemptMigrationTest do
   use ExUnit.Case, async: false
 
+  alias Mix.Tasks.Symphony.AttemptMigrate
   alias SymphonyElixir.AgentRuntime.{AttemptLedger, AttemptLedgerMigration, AttemptPolicy}
 
   @namespace "migration-test"
@@ -186,6 +187,37 @@ defmodule SymphonyElixir.Gate2AttemptMigrationTest do
     end
   end
 
+  test "maintenance command validates usage without touching the ledger", %{path: path} do
+    assert_raise Mix.Error, ~r/usage: mix symphony.attempt_migrate/, fn ->
+      AttemptMigrate.run([])
+    end
+
+    refute File.exists?(path)
+    refute File.exists?(path <> ".migration-journal")
+  end
+
+  test "maintenance command migrates and resumes only through a committed receipt", %{path: path} do
+    seed_v1(path)
+    assert :ok = maintenance_isolated(:cli_migrate, path, @request)
+    assert :ok = maintenance_isolated(:cli_resume, path, @request)
+    assert {:ok, ledger} = AttemptLedger.open(@namespace, @identity)
+    assert AttemptLedger.schema_version(ledger) == 2
+    assert {:ok, %{schema_version: 2}} = AttemptLedger.current(ledger, "issue-a")
+    assert :ok = AttemptLedger.close(ledger)
+    assert {:error, message} = maintenance_isolated(:cli_abort, path, @request)
+    assert message == "attempt ledger maintenance failed: migration_not_permitted"
+  end
+
+  test "maintenance command aborts a pre-replacement journal without changing v1", %{path: path} do
+    seed_v1(path)
+    assert :simulated_crash = migrate_isolated(path, @request, crash_at: :journal_synced)
+    assert :ok = maintenance_isolated(:cli_abort, path, @request)
+    assert {:ok, ledger} = AttemptLedger.open(@namespace, @identity)
+    assert AttemptLedger.schema_version(ledger) == 1
+    assert :ok = AttemptLedger.close(ledger)
+    refute File.exists?(path <> ".migration-journal")
+  end
+
   test "new binary opens populated v1 without implicit migration", %{path: path} do
     seed_v1(path)
     assert {:ok, ledger} = AttemptLedger.open(@namespace, @identity)
@@ -310,6 +342,57 @@ defmodule SymphonyElixir.Gate2AttemptMigrationTest do
     seed_v2_mixed(path)
     commit_fixture_receipt(path)
     write_journal(path, Map.put(read_journal(path), :phase, :replaced))
+    assert {:error, :migration_in_progress} = AttemptLedger.open(@namespace, @identity)
+  end
+
+  test "path admission requires a valid committed snapshot and receipt", %{path: path} do
+    seed_v1(path)
+    assert :ok = AttemptLedgerMigration.admission_check(path)
+    assert {:ok, _receipt} = migrate_isolated(path, @request)
+    assert :ok = AttemptLedgerMigration.admission_check(path)
+    rewrite_row(path, {:current, "issue-a"}, &Map.put(&1, :schema_version, 1))
+    assert {:error, :migration_in_progress} = AttemptLedgerMigration.admission_check(path)
+    assert {:error, :migration_commit_uncertain} = maintenance_isolated(:resume, path, @request)
+  end
+
+  test "maintenance requests reject non-map authority and non-path input" do
+    for operation <- [:migrate_v1_to_v2, :resume_v1_to_v2, :abort_v1_to_v2] do
+      assert {:error, :migration_not_permitted} = apply(AttemptLedgerMigration, operation, [nil, @request])
+      assert {:error, :migration_not_permitted} = apply(AttemptLedgerMigration, operation, ["unused", nil])
+    end
+  end
+
+  test "resume and abort reject missing journals without modifying v1", %{path: path} do
+    seed_v1(path)
+    original = rows(path)
+    assert {:error, :migration_in_progress} = maintenance_isolated(:resume, path, @request)
+    assert {:error, :migration_not_permitted} = maintenance_isolated(:abort, path, @request)
+    assert rows(path) == original
+    refute File.exists?(path <> ".migration-journal")
+  end
+
+  test "changed source after journal cannot be resumed or aborted", %{path: path} do
+    seed_v1(path)
+    assert :simulated_crash = migrate_isolated(path, @request, crash_at: :journal_synced)
+    rewrite_row(path, {:current, "issue-a"}, &Map.put(&1, :updated_at, &1.updated_at + 1))
+    changed = rows(path)
+    assert {:error, :migration_commit_uncertain} = maintenance_isolated(:resume, path, @request)
+    assert {:error, :migration_not_permitted} = maintenance_isolated(:abort, path, @request)
+    assert rows(path) == changed
+    assert {:error, :migration_in_progress} = AttemptLedger.open(@namespace, @identity)
+  end
+
+  test "journal authority cannot be replaced by a resume or abort caller", %{path: path} do
+    seed_v1(path)
+    assert :simulated_crash = migrate_isolated(path, @request, crash_at: :journal_synced)
+    original = rows(path)
+
+    for request <- [%{@request | authority_ref: "other-authority"}, %{@request | tracker_identity_sha256: String.duplicate("0", 64)}] do
+      assert {:error, :migration_not_permitted} = maintenance_isolated(:resume, path, request)
+      assert {:error, :migration_not_permitted} = maintenance_isolated(:abort, path, request)
+    end
+
+    assert rows(path) == original
     assert {:error, :migration_in_progress} = AttemptLedger.open(@namespace, @identity)
   end
 
@@ -739,6 +822,7 @@ defmodule SymphonyElixir.Gate2AttemptMigrationTest do
       {:ok, _cover_pid} = :cover.start()
       :cover.compile_beam(SymphonyElixir.AgentRuntime.AttemptLedger)
       :cover.compile_beam(SymphonyElixir.AgentRuntime.AttemptLedgerMigration)
+      :cover.compile_beam(Mix.Tasks.Symphony.AttemptMigrate)
     end
     Code.ensure_loaded!(SymphonyElixir.AgentRuntime.AttemptLedgerMigration)
     Application.put_env(:symphony_elixir, :attempt_ledger_root, root)
@@ -751,6 +835,20 @@ defmodule SymphonyElixir.Gate2AttemptMigrationTest do
       "migrate" -> migration.migrate_v1_to_v2(path, request)
       "resume" -> migration.resume_v1_to_v2(path, request)
       "abort" -> migration.abort_v1_to_v2(path, request)
+      cli when cli in ["cli_migrate", "cli_resume", "cli_abort"] ->
+        Mix.start()
+        args = [request.project_namespace, request.tracker_identity_sha256, request.authority_ref]
+        args = case cli do
+          "cli_resume" -> ["--resume" | args]
+          "cli_abort" -> ["--abort" | args]
+          _ -> args
+        end
+        try do
+          Mix.Tasks.Symphony.AttemptMigrate.run(args)
+          :ok
+        rescue
+          error in Mix.Error -> {:error, error.message}
+        end
     end
     if retain_cover, do: :cover.export(cover_file)
     IO.puts("T3_RESULT=" <> Base.encode64(:erlang.term_to_binary(result, [:deterministic])))

@@ -4,6 +4,7 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
   alias SymphonyElixir.AgentRuntime.AttemptBoundary
   alias SymphonyElixir.AgentRuntime.AttemptLedger
   alias SymphonyElixir.AgentRuntime.AttemptResource
+  alias SymphonyElixir.AgentRuntime.AttemptResourceLedger
   alias SymphonyElixir.AgentRuntime.CleanupEvidenceRef
   alias SymphonyElixir.AgentRuntime.QuarantineDisposition
   alias SymphonyElixir.AgentRuntime.RuntimeAttempt.Identity
@@ -21,14 +22,25 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
 
     resource_opts = [path: Path.join(root, "resources.dets"), project_namespace: "project-1", host_id: "host-1"]
 
+    sync_control = if context[:sync_fault], do: :atomics.new(1, []), else: nil
+
     resource_opts =
-      if context[:resource_fault] do
-        Keyword.put(resource_opts, :write_fun, fn
-          _table, {{:resource, _id}, _resource} -> {:error, :injected_write_failure}
-          table, row -> :dets.insert(table, row)
-        end)
-      else
-        resource_opts
+      cond do
+        context[:resource_fault] ->
+          Keyword.put(resource_opts, :write_fun, fn
+            _table, {{:resource, _id}, _resource} -> {:error, :injected_write_failure}
+            table, row -> :dets.insert(table, row)
+          end)
+
+        context[:sync_fault] ->
+          Keyword.put(resource_opts, :sync_fun, fn table ->
+            if :atomics.get(sync_control, 1) == 1,
+              do: {:error, :injected_sync_failure},
+              else: :dets.sync(table)
+          end)
+
+        true ->
+          resource_opts
       end
 
     {:ok, boundary} =
@@ -45,7 +57,15 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
       File.rm_rf!(root)
     end)
 
-    {:ok, boundary: boundary, attempt_ledger: attempt_ledger, attempt_path: attempt_path}
+    test_context = %{
+      boundary: boundary,
+      attempt_ledger: attempt_ledger,
+      attempt_path: attempt_path,
+      owner_name: name,
+      sync_control: sync_control
+    }
+
+    {:ok, test_context}
   end
 
   test "foundation cannot mint active grant or usable permit", context do
@@ -81,6 +101,16 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
   test "release rejects missing forged stale and matching-shaped references", context do
     assert {:error, :cleanup_reference_missing} = AttemptBoundary.release(context.boundary, nil)
     assert {:error, :cleanup_reference_invalid} = AttemptBoundary.release(context.boundary, %{})
+    wrong_ledger = %{context.attempt_ledger | project_id: "different-project"}
+
+    assert {:error, :gate2_boundary_required} =
+             AttemptBoundary.release_gate2_authority_fence(
+               wrong_ledger,
+               "item-1",
+               identity(),
+               cleanup_ref(AttemptBoundary.reconcile_startup(context.boundary) |> elem(1))
+             )
+
     generation = AttemptBoundary.reconcile_startup(context.boundary) |> elem(1)
     stale_evidence = cleanup_ref(generation, fence_epoch: 2)
     assert {:error, :cleanup_reference_stale} = AttemptBoundary.release(context.boundary, stale_evidence)
@@ -92,6 +122,37 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
              AttemptLedger.release_gate2_authority_fence(context.attempt_ledger, "item-1", identity(), evidence)
 
     assert {:error, :cleanup_verifier_unavailable} = AttemptBoundary.release(context.boundary, evidence)
+  end
+
+  test "durable cleanup reference cannot substitute epoch or verification generation", context do
+    seed_resource(context.boundary)
+    assert :ok = AttemptLedger.bind_gate2_fence_sync(context.attempt_ledger, "item-1", grant_ref())
+    {:ok, generation} = AttemptBoundary.reconcile_startup(context.boundary)
+    evidence = cleanup_ref(generation)
+
+    for forged <- [
+          %{evidence | fence_epoch: evidence.fence_epoch + 1},
+          %{evidence | verification_generation: %{generation | sequence: generation.sequence + 1}},
+          %{evidence | grant_id: "different-grant"}
+        ] do
+      assert {:error, :cleanup_reference_stale} = AttemptBoundary.release(context.boundary, forged)
+    end
+
+    assert {:error, :cleanup_verifier_unavailable} = AttemptBoundary.release(context.boundary, evidence)
+    assert {:ok, record} = AttemptLedger.current(context.attempt_ledger, "item-1")
+    assert record.authority_fence.state == :bound
+    assert record.authority_fence.gate2_fence.status == :requested
+  end
+
+  test "fence reason is immutable after its first synchronized request", context do
+    seed_resource(context.boundary)
+    assert :ok = AttemptLedger.bind_gate2_fence_sync(context.attempt_ledger, "item-1", grant_ref())
+    request = %{grant_ref: grant_ref(), reason: :failure}
+    assert {:ok, %{status: :requested}} = AttemptBoundary.fence(context.boundary, request)
+    assert {:ok, %{status: :requested}} = AttemptBoundary.fence(context.boundary, request)
+    assert {:error, :binding_downgrade_denied} = AttemptBoundary.fence(context.boundary, %{request | reason: :completion})
+    assert {:ok, record} = AttemptLedger.current(context.attempt_ledger, "item-1")
+    assert record.authority_fence.gate2_fence.requested_reason == :failure
   end
 
   @tag fresh_gate2: true
@@ -112,6 +173,27 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
       assert {:error, :invalid_request} = AttemptBoundary.fence(context.boundary, request)
     end
 
+    assert {:error, :invalid_request} = AttemptBoundary.fence(context.boundary, nil)
+
+    assert {:ok, _generation} = AttemptBoundary.reconcile_startup(context.boundary)
+  end
+
+  test "resource reservation rejects malformed and stale-generation records", context do
+    assert {:error, :invalid_request} = AttemptBoundary.reserve_resource_sync(context.boundary, %{})
+
+    current = resource(context.boundary)
+
+    stale = %{
+      current
+      | reconciliation_generation: %{
+          current.reconciliation_generation
+          | sequence: current.reconciliation_generation.sequence + 1
+        }
+    }
+
+    assert {:error, :recovery_generation_mismatch} =
+             AttemptBoundary.reserve_resource_sync(context.boundary, stale)
+
     assert {:ok, _generation} = AttemptBoundary.reconcile_startup(context.boundary)
   end
 
@@ -122,10 +204,122 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
              AttemptBoundary.start_link(options)
   end
 
+  test "startup rejects an owner name that is not registered to the caller", context do
+    owner_name = String.to_atom("missing_boundary_owner_#{System.unique_integer([:positive])}")
+
+    assert {:error, :unauthorized_caller} =
+             AttemptBoundary.start_link(
+               owner_name: owner_name,
+               resource_ledger_opts: [path: context.attempt_path, project_namespace: "project-1", host_id: "host-1"]
+             )
+
+    assert {:ok, _generation} = AttemptBoundary.reconcile_startup(context.boundary)
+  end
+
+  test "startup fails closed when the resource ledger file is corrupt", context do
+    assert :ok = GenServer.stop(context.boundary)
+    path = Path.join(Path.dirname(context.attempt_path), "corrupt-resources.dets")
+    File.write!(path, "not a DETS table")
+
+    trap_exit = Process.flag(:trap_exit, true)
+
+    try do
+      assert {:error, :storage_unavailable} =
+               AttemptBoundary.start_link(
+                 owner_name: context.owner_name,
+                 attempt_ledger: context.attempt_ledger,
+                 resource_ledger_opts: [path: path, project_namespace: "project-1", host_id: "host-1"]
+               )
+
+      refute Process.whereis(AttemptBoundary)
+    after
+      receive do
+        {:EXIT, _pid, :storage_unavailable} -> :ok
+      after
+        0 -> :ok
+      end
+
+      Process.flag(:trap_exit, trap_exit)
+    end
+  end
+
   test "startup syncs new generation and restores no active authority", context do
     assert {:ok, generation} = AttemptBoundary.reconcile_startup(context.boundary)
     assert generation.sequence >= 1
     assert {:error, :gate2_dormant} = AttemptBoundary.authorize(context.boundary, identity(), authorization_request())
+  end
+
+  test "requests from a different process cannot use the boundary", context do
+    owner = self()
+
+    spawn(fn ->
+      result = AttemptBoundary.reconcile_startup(context.boundary)
+      send(owner, {:unauthorized_result, result})
+    end)
+
+    assert_receive {:unauthorized_result, {:error, :unauthorized_caller}}
+    assert {:ok, _generation} = AttemptBoundary.reconcile_startup(context.boundary)
+  end
+
+  test "registered owner replacement invalidates the captured owner", context do
+    Process.unregister(context.owner_name)
+    test_pid = self()
+
+    replacement =
+      spawn(fn ->
+        Process.register(self(), context.owner_name)
+        send(test_pid, :replacement_registered)
+        receive do: (:stop -> :ok)
+      end)
+
+    assert_receive :replacement_registered
+
+    try do
+      assert {:error, :unauthorized_caller} = AttemptBoundary.reconcile_startup(context.boundary)
+    after
+      replacement_ref = Process.monitor(replacement)
+      send(replacement, :stop)
+      assert_receive {:DOWN, ^replacement_ref, :process, ^replacement, :normal}
+      Process.register(self(), context.owner_name)
+    end
+
+    assert {:ok, _generation} = AttemptBoundary.reconcile_startup(context.boundary)
+  end
+
+  test "owner shutdown stops the boundary", context do
+    assert :ok = GenServer.stop(context.boundary)
+
+    owner_name = String.to_atom("gate2_boundary_child_#{System.unique_integer([:positive])}")
+    test_pid = self()
+
+    owner =
+      spawn(fn ->
+        Process.register(self(), owner_name)
+
+        resource_opts = [
+          path: Path.join(Path.dirname(context.attempt_path), "owner-resources.dets"),
+          project_namespace: "project-1",
+          host_id: "host-1"
+        ]
+
+        {:ok, boundary} =
+          AttemptBoundary.start_link(
+            owner_name: owner_name,
+            attempt_ledger: context.attempt_ledger,
+            resource_ledger_opts: resource_opts
+          )
+
+        send(test_pid, {:child_boundary_started, boundary})
+        receive do: (:stop -> :ok)
+      end)
+
+    assert_receive {:child_boundary_started, boundary}
+    owner_ref = Process.monitor(owner)
+    boundary_ref = Process.monitor(boundary)
+    send(owner, :stop)
+
+    assert_receive {:DOWN, ^owner_ref, :process, ^owner, :normal}
+    assert_receive {:DOWN, ^boundary_ref, :process, ^boundary, :normal}
   end
 
   test "partial grant binding and ambiguous ownership block reuse", context do
@@ -145,11 +339,50 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
     assert {:error, :invalid_request} = result
   end
 
+  test "resource ownership mismatch cannot bind a durable fence", context do
+    wrong_identity = %{identity() | runtime_attempt_id: "other-attempt"}
+    mismatched_resource = resource(context.boundary, runtime_identity: wrong_identity)
+
+    assert {:ok, ^mismatched_resource} =
+             AttemptBoundary.reserve_resource_sync(context.boundary, mismatched_resource)
+
+    assert {:error, :ownership_ambiguous} =
+             AttemptLedger.bind_gate2_fence_sync(context.attempt_ledger, "item-1", grant_ref())
+
+    assert {:ok, record} = AttemptLedger.current(context.attempt_ledger, "item-1")
+    assert is_nil(Map.get(record.authority_fence, :gate2_fence))
+  end
+
   @tag resource_fault: true
   test "poisoned resource ledger blocks boundary reuse", context do
     assert {:error, :write_failed} = AttemptBoundary.reserve_resource_sync(context.boundary, resource(context.boundary))
     request = authorization_request()
     assert {:error, :storage_unavailable} = AttemptBoundary.authorize(context.boundary, identity(), request)
+  end
+
+  @tag sync_fault: true
+  test "failed resource sync poisons later boundary calls", context do
+    :atomics.put(context.sync_control, 1, 1)
+
+    assert {:error, :sync_failed} =
+             AttemptBoundary.reserve_resource_sync(context.boundary, resource(context.boundary))
+
+    request = authorization_request()
+    assert {:error, :storage_unavailable} = AttemptBoundary.authorize(context.boundary, identity(), request)
+  end
+
+  test "reconciliation blocks the boundary after its resource ledger exits", context do
+    test_pid = self()
+
+    :sys.replace_state(context.boundary, fn state ->
+      result = AttemptResourceLedger.close(state.ledger)
+      send(test_pid, {:resource_ledger_closed, result})
+      state
+    end)
+
+    assert_receive {:resource_ledger_closed, :ok}
+    assert {:error, :boundary_unavailable} = AttemptBoundary.reconcile_startup(context.boundary)
+    assert {:error, :storage_unavailable} = AttemptBoundary.reconcile_startup(context.boundary)
   end
 
   defp identity do
@@ -298,7 +531,7 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
         resource_id: Keyword.get(overrides, :resource_id, "resource-1"),
         project_namespace: "project-1",
         grant_id: "grant-1",
-        runtime_identity: identity(),
+        runtime_identity: Keyword.get(overrides, :runtime_identity, identity()),
         class: :workspace,
         state: :reserved,
         revision: 0,

@@ -1636,6 +1636,7 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
   defp id?(value), do: is_binary(value) and byte_size(value) in 1..256 and String.trim(value) != ""
   defp digest?(value), do: is_binary(value) and Regex.match?(~r/\A[a-f0-9]{64}\z/, value)
 
+  defp normalize_gate2_error(:gate2_boundary_required), do: :gate2_boundary_required
   defp normalize_gate2_error(:ledger_project_namespace_mismatch), do: :namespace_mismatch
   defp normalize_gate2_error(:corrupt_attempt_record), do: :storage_corrupt
   defp normalize_gate2_error({:ledger_write_failed, _}), do: :write_failed

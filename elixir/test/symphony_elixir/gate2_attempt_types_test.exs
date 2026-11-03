@@ -38,6 +38,22 @@ defmodule SymphonyElixir.Gate2AttemptTypesTest do
     assert evidence.runtime_identity.lineage_generation == "lineage-1"
   end
 
+  test "quarantine dispositions reject unknown states and malformed evidence references" do
+    valid = quarantine()
+
+    for invalid <- [
+          %{valid | state: :unknown},
+          %{valid | reason: :unknown},
+          %{valid | evidence_ref: " "},
+          %{valid | resolution_ref: " "},
+          %{valid | generation: Map.put(generation(), :sequence, 0)}
+        ] do
+      assert {:error, :invalid_request} = QuarantineDisposition.new(invalid)
+    end
+
+    assert {:error, :invalid_request} = QuarantineDisposition.new(:invalid)
+  end
+
   test "unknown and secret-bearing fields are rejected" do
     assert {:error, :invalid_request} =
              RecoveryGeneration.new(Map.put(generation(), :extra, "value"))
