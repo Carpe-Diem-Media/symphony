@@ -319,8 +319,8 @@ defmodule SymphonyElixir.Gate2AttemptConfigTest do
     assert {:error, :migration_in_progress} = Config.validate_attempt_boundary(settings, options)
   end
 
-  for envelope <- [:unsupported_key, :route_mismatch] do
-    @tag :r05_envelope
+  for envelope <- [:unsupported_key, :route_mismatch, :nonzero_counters, :nil_requested_reason] do
+    @tag if(envelope in [:nonzero_counters, :nil_requested_reason], do: :r06_admission, else: :r05_envelope)
     test "startup rejects #{envelope} before restoring Gate2 reconciliation facts" do
       root = temp_root()
       project_id = "t6-r05-startup"
@@ -332,8 +332,18 @@ defmodule SymphonyElixir.Gate2AttemptConfigTest do
 
       record =
         case unquote(envelope) do
-          :unsupported_key -> put_in(record.authority_fence, Map.put(record.authority_fence, :cleanup_verified, true))
-          :route_mismatch -> %{record | route_fingerprint: "future-route"}
+          :unsupported_key ->
+            put_in(record.authority_fence, Map.put(record.authority_fence, :cleanup_verified, true))
+
+          :route_mismatch ->
+            %{record | route_fingerprint: "future-route"}
+
+          :nonzero_counters ->
+            counters = %{ordinary_failures: 1, ordinary_retries: 1, review_cycles: 0}
+            %{record | safety_counters: counters}
+
+          :nil_requested_reason ->
+            put_in(record, [:authority_fence, :gate2_fence, :requested_reason], nil)
         end
 
       assert :ok = :dets.insert(ledger.table, {{:current, "item-1"}, record})

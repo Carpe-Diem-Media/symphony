@@ -42,9 +42,11 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
     assert {:ok, %{boundary_binding: %{kind: :legacy}}} = AttemptLedger.begin_attempt(ledger, "legacy-two")
     assert :ok = AttemptLedger.release_armed_authority_fence(ledger, "legacy-two")
     assert {:ok, %{authority_fence: %{state: :released}}} = AttemptLedger.current(ledger, "legacy-two")
+    counters = %{ordinary_failures: 1, ordinary_retries: 1, review_cycles: 2}
+    assert {:ok, %{safety_counters: ^counters}} = AttemptLedger.persist_safety(ledger, "legacy-two", counters)
     assert :ok = AttemptLedger.clear_in_flight(ledger, "legacy-two")
     assert :ok = AttemptLedger.close_lineage(ledger, "legacy-two")
-    assert {:ok, %{status: :closed}} = AttemptLedger.current(ledger, "legacy-two")
+    assert {:ok, %{status: :closed, safety_counters: ^counters}} = AttemptLedger.current(ledger, "legacy-two")
     assert {:ok, [%{issue_id: "compatibility-current"}]} = AttemptLedger.open_lineages(ledger)
     assert {:ok, [%{boundary_binding: %{kind: :legacy}}]} = AttemptLedger.history(ledger)
     assert :ok = AttemptLedger.close(ledger)
@@ -153,6 +155,31 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
       })
 
     assert {:ok, ^reference} = AttemptLedger.gate2_fence_reference(ledger, "requested-item")
+  end
+
+  for corruption <- [:nonzero_counters, :nil_requested_reason],
+      read_path <- [:current, :open_lineages, :reference, :configured_schema, :snapshot, :reopen] do
+    @tag :r06_admission
+    test "R06 Gate2 #{corruption} fails through #{read_path}", %{root: root} do
+      path = seed_committed_schema2(root)
+      {:ok, ledger} = AttemptLedger.open(@namespace, @identity, path: path)
+      ledger = install_coherent_gate2_record(ledger)
+      record = current!(ledger, "coherent")
+
+      record =
+        case unquote(corruption) do
+          :nonzero_counters ->
+            counters = %{ordinary_failures: 1, ordinary_retries: 1, review_cycles: 0}
+            %{record | safety_counters: counters}
+
+          :nil_requested_reason ->
+            put_in(record, [:authority_fence, :gate2_fence, :requested_reason], nil)
+        end
+
+      assert :ok = :dets.insert(ledger.table, {{:current, "coherent"}, record})
+      assert :ok = :dets.sync(ledger.table)
+      assert_incoherent_read(unquote(read_path), ledger, path)
+    end
   end
 
   @r05_envelopes [:unsupported_key, :record_route_only, :fence_route_only, :future_route_pair, :missing_record_route]

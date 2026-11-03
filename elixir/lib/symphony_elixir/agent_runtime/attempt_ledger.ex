@@ -1428,6 +1428,7 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
            status: :open,
            in_flight: true,
            close_pending: false,
+           safety_counters: %{ordinary_failures: 0, ordinary_retries: 0, review_cycles: 0},
            route_fingerprint: nil,
            authority_fence:
              %{
@@ -1665,8 +1666,16 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
   defp valid_gate2_reference?(_), do: false
 
   defp valid_requested_reason?(%{status: :requested} = gate2) do
-    Enum.sort(Map.keys(gate2)) in [[:reference, :status], [:reference, :requested_reason, :status]] and
-      Map.get(gate2, :requested_reason) in [nil, :completion, :cancellation, :failure, :restart, :publication]
+    case Enum.sort(Map.keys(gate2)) do
+      [:reference, :status] ->
+        true
+
+      [:reference, :requested_reason, :status] ->
+        gate2.requested_reason in [:completion, :cancellation, :failure, :restart, :publication]
+
+      _ ->
+        false
+    end
   end
 
   defp valid_requested_reason?(_), do: false

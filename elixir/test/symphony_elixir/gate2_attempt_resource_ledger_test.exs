@@ -24,6 +24,107 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
     {:ok, root: root, path: path, owner_name: name}
   end
 
+  for invalid <- [
+        :allocating,
+        :allocated,
+        :active,
+        :fenced,
+        :destroying,
+        :absent_verified,
+        :cleanup_unverified,
+        :reserved_revision,
+        :fencing_revision,
+        :allocation_evidence,
+        :clear_reason,
+        :released_disposition,
+        :quarantined_clear,
+        :quarantined_reason,
+        :quarantined_evidence,
+        :quarantined_generation,
+        :fencing_evidence
+      ],
+      read_path <- [:fetch, :list, :reopen, :recovery] do
+    @tag :r06_resource
+    test "R06 unsupported resource #{invalid} rejected through #{read_path}", context do
+      original = resource()
+      {:ok, ledger} = start_ledger(context)
+      assert {:ok, ^original} = AttemptResourceLedger.reserve_sync(ledger, original)
+
+      stored =
+        case unquote(invalid) do
+          :reserved_revision ->
+            %{original | revision: 1}
+
+          :fencing_revision ->
+            %{original | state: :fencing}
+
+          :allocation_evidence ->
+            %{original | allocation_identity_sha256: digest()}
+
+          :clear_reason ->
+            %{original | quarantine: %{original.quarantine | reason: :cleanup_unverified}}
+
+          :quarantined_clear ->
+            %{original | state: :quarantined, revision: 1}
+
+          :quarantined_reason ->
+            %{original | state: :quarantined, revision: 1, quarantine: %{original.quarantine | state: :quarantined}}
+
+          :quarantined_evidence ->
+            %{
+              original
+              | state: :quarantined,
+                revision: 1,
+                last_evidence_ref: "contradictory-reference",
+                quarantine: quarantine_for(:quarantined, original.reconciliation_generation)
+            }
+
+          :quarantined_generation ->
+            {:ok, future} = RecoveryGeneration.new(generation(2))
+            %{original | state: :quarantined, revision: 1, quarantine: quarantine_for(:quarantined, future)}
+
+          :fencing_evidence ->
+            %{original | state: :fencing, revision: 1, last_evidence_ref: "unsupported-evidence"}
+
+          :released_disposition ->
+            %{
+              original
+              | state: :quarantined,
+                revision: 1,
+                quarantine: quarantine_for(:released_for_new_authorization, original.reconciliation_generation)
+            }
+
+          state ->
+            %{original | state: state, revision: 1}
+        end
+
+      table = :sys.get_state(ledger).table
+      assert :ok = :dets.insert(table, {{:resource, original.resource_id}, stored})
+      assert :ok = :dets.sync(table)
+
+      case unquote(read_path) do
+        :fetch ->
+          assert {:error, :storage_corrupt} = AttemptResourceLedger.fetch(ledger, original.resource_id)
+          assert :ok = :dets.insert(table, {{:resource, original.resource_id}, original})
+          assert {:error, :storage_unavailable} = AttemptResourceLedger.reserve_sync(ledger, original)
+          assert :ok = AttemptResourceLedger.close(ledger)
+
+        :list ->
+          assert {:error, :storage_corrupt} = AttemptResourceLedger.list_for_grant(ledger, original.grant_id)
+          assert :ok = AttemptResourceLedger.close(ledger)
+
+        :reopen ->
+          assert :ok = AttemptResourceLedger.close(ledger)
+          assert {:error, :storage_corrupt} = start_ledger(context)
+
+        :recovery ->
+          assert :ok = AttemptResourceLedger.close(ledger)
+          {:ok, fresh} = RecoveryGeneration.new(generation(2))
+          assert {:error, :storage_corrupt} = start_ledger(context, current_generation: fresh)
+      end
+    end
+  end
+
   test "reservation is synchronized before success", context do
     resource = resource()
     counter = :atomics.new(1, [])
@@ -318,6 +419,10 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
              AttemptResourceLedger.transition_sync(ledger, resource.resource_id, 0, fencing)
 
     assert fenced_intent.state == :fencing
+    assert {:ok, ^fenced_intent} = AttemptResourceLedger.fetch(ledger, resource.resource_id)
+    assert :ok = AttemptResourceLedger.close(ledger)
+    {:ok, ledger} = start_ledger(context)
+    assert {:ok, ^fenced_intent} = AttemptResourceLedger.fetch(ledger, resource.resource_id)
 
     {:ok, quarantined} =
       QuarantineDisposition.new(%{
@@ -956,24 +1061,61 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
     assert :ok = AttemptResourceLedger.close(reopened)
   end
 
-  test "an absent verified identity conflict poisons authority without rewriting the fact", context do
+  test "an absent verified identity conflict blocks corrupt storage without rewriting the fact", context do
     original = resource()
     {:ok, ledger} = start_ledger(context)
     assert {:ok, ^original} = AttemptResourceLedger.reserve_sync(ledger, original)
-
     table = :sys.get_state(ledger).table
     absent = %{original | state: :absent_verified}
     assert :ok = :dets.insert(table, {{:resource, original.resource_id}, absent})
     assert :ok = :dets.sync(table)
-
     conflict = %{original | resource_id: "resource-2"}
-    assert {:error, :ownership_ambiguous} = AttemptResourceLedger.reserve_sync(ledger, conflict)
+    assert {:error, :storage_corrupt} = AttemptResourceLedger.reserve_sync(ledger, conflict)
+    assert [{{:resource, "resource-1"}, ^absent}] = :dets.lookup(table, {:resource, original.resource_id})
     assert {:error, :storage_unavailable} = AttemptResourceLedger.fetch(ledger, original.resource_id)
     assert :ok = AttemptResourceLedger.close(ledger)
+    assert {:error, :storage_corrupt} = start_ledger(context)
+  end
 
-    {:ok, reopened} = start_ledger(context)
-    assert {:ok, ^absent} = AttemptResourceLedger.fetch(reopened, original.resource_id)
-    assert :ok = AttemptResourceLedger.close(reopened)
+  # Master Gate P01_RELEASED_DISPOSITION_INADMISSIBLE supersedes the old
+  # positive release-disposition restart fixture. References cannot authorize it.
+  for recovery <- [false, true], references <- [false, true] do
+    @tag :r06_resource
+    test "released disposition rejects recovery=#{recovery} references=#{references} without rewriting storage", context do
+      original = resource()
+      {:ok, ledger} = start_ledger(context)
+      assert {:ok, ^original} = AttemptResourceLedger.reserve_sync(ledger, original)
+      table = :sys.get_state(ledger).table
+      quarantine = quarantine_for(:released_for_new_authorization, original.reconciliation_generation)
+
+      quarantine =
+        if unquote(references) do
+          %{quarantine | evidence_ref: "claimed-evidence", resolution_ref: "claimed-resolution"}
+        else
+          quarantine
+        end
+
+      stored = %{
+        original
+        | state: :quarantined,
+          revision: 5,
+          quarantine: quarantine,
+          last_evidence_ref: quarantine.evidence_ref
+      }
+
+      assert :ok = :dets.insert(table, {{:resource, original.resource_id}, stored})
+      rows = :dets.foldl(fn row, acc -> [row | acc] end, [], table) |> Enum.sort()
+      assert :ok = AttemptResourceLedger.close(ledger)
+      bytes = File.read!(context.path)
+      {:ok, fresh} = RecoveryGeneration.new(generation(2))
+      opts = if unquote(recovery), do: [current_generation: fresh], else: []
+      assert {:error, :storage_corrupt} = start_ledger(context, opts)
+      assert File.read!(context.path) == bytes
+      assert {:error, :storage_corrupt} = start_ledger(context, opts)
+      {:ok, raw} = :dets.open_file(:r06_released_fixture, file: String.to_charlist(context.path), repair: false)
+      assert :dets.foldl(fn row, acc -> [row | acc] end, [], raw) |> Enum.sort() == rows
+      assert :ok = :dets.close(raw)
+    end
   end
 
   test "quarantine progression accepts one step and rejects skips and regressions", context do
@@ -1060,7 +1202,6 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
         :quarantined,
         :block_reuse,
         :operator_resolution_pending,
-        :released_for_new_authorization,
         :remains_quarantined
       ] do
     @tag :scope01_quarantine
@@ -1079,7 +1220,16 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
           resolution_ref: "untrusted-resolution-reference"
       }
 
-      stored = %{original | state: :quarantined, quarantine: quarantine}
+      revision = %{quarantined: 1, block_reuse: 2, operator_resolution_pending: 3, remains_quarantined: 4}[disposition]
+
+      stored = %{
+        original
+        | state: :quarantined,
+          revision: revision,
+          quarantine: quarantine,
+          last_evidence_ref: quarantine.evidence_ref
+      }
+
       assert :ok = :dets.insert(table, {{:resource, original.resource_id}, stored})
       assert :ok = AttemptResourceLedger.close(ledger)
       reboot_id = "11111111-2222-4333-8444-555555555555"

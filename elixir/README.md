@@ -201,6 +201,13 @@ Notes:
   The Gate 2 outer fence has exactly `state`, `runtime_attempt`, `route_fingerprint`
   and `gate2_fence` keys. Both record and fence route fingerprints are explicitly `nil`
   in P01. Extra fields, missing routes and non-nil routes fail validation without repair.
+  Gate 2 counters remain zero. The optional requested reason is absent or a permitted
+  nonnil atom; an explicit nil reason is invalid.
+- Resource storage admits only coherent `reserved`, `fencing` and `quarantined` facts.
+  Generic value types still model future states, but P01 rejects their persisted use.
+  `released_for_new_authorization` is inadmissible even with supplied evidence or resolution
+  references. Validation precedes recovery writes, so rejected records are preserved and
+  recovery does not advance. Other restrictive dispositions retain their exact semantics.
 - P01 grant digests are unverified fence-intent metadata. The registered host owner
   can bind them after matching durable reserved-resource facts. Hashing and persistence
   do not establish grant issuance or activation. Later fence requests resolve the exact

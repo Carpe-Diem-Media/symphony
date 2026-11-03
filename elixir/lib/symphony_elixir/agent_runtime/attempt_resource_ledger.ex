@@ -502,9 +502,7 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
          true <- normalized == resource,
          true <- resource.state == :reserved and resource.revision == 0,
          true <- is_nil(resource.allocation_identity_sha256) and is_nil(resource.last_evidence_ref),
-         true <- resource.quarantine.state == :clear,
-         true <- is_nil(resource.allocation_identity_sha256) and is_nil(resource.last_evidence_ref),
-         true <- resource.quarantine.state == :clear,
+         true <- p01_persisted_resource?(resource),
          true <- resource.project_namespace == state.namespace,
          true <- resource.owner_host_id == state.host_id,
          true <- resource.creation_generation.project_namespace == state.namespace,
@@ -541,14 +539,54 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
   end
 
   defp normalize_stored_resource(resource) do
-    if is_struct(resource, AttemptResource) and exact_struct?(resource, AttemptResource) do
-      case AttemptResource.new(Map.from_struct(resource)) do
-        {:ok, ^resource} -> {:ok, resource}
-        _ -> {:error, :storage_corrupt}
-      end
+    with true <- is_struct(resource, AttemptResource) and exact_struct?(resource, AttemptResource),
+         {:ok, ^resource} <- AttemptResource.new(Map.from_struct(resource)),
+         true <- p01_persisted_resource?(resource) do
+      {:ok, resource}
     else
-      {:error, :storage_corrupt}
+      _ -> {:error, :storage_corrupt}
     end
+  end
+
+  # Value schemas model the complete lifecycle. P01 storage admits only facts
+  # its dormant writers can produce, before recovery can alter any stored row.
+  defp p01_persisted_resource?(resource) do
+    is_nil(resource.allocation_identity_sha256) and
+      generation_precedes?(resource.creation_generation, resource.reconciliation_generation) and
+      p01_resource_state?(resource)
+  end
+
+  defp p01_resource_state?(%AttemptResource{state: state} = resource) when state in [:reserved, :fencing] do
+    expected_revision = if state == :reserved, do: 0, else: 1
+    q = resource.quarantine
+
+    resource.revision == expected_revision and resource.last_evidence_ref == nil and
+      resource.creation_generation == resource.reconciliation_generation and
+      q.state == :clear and q.reason == nil and q.evidence_ref == nil and q.resolution_ref == nil and
+      q.generation == resource.reconciliation_generation
+  end
+
+  defp p01_resource_state?(%AttemptResource{state: :quarantined} = resource) do
+    q = resource.quarantine
+    minimum_revision = %{quarantined: 1, block_reuse: 2, operator_resolution_pending: 3, remains_quarantined: 4}
+
+    case Map.fetch(minimum_revision, q.state) do
+      {:ok, minimum} ->
+        resource.revision >= minimum and q.reason != nil and
+          resource.last_evidence_ref == q.evidence_ref and
+          generation_precedes?(resource.creation_generation, q.generation) and
+          generation_precedes?(q.generation, resource.reconciliation_generation)
+
+      :error ->
+        false
+    end
+  end
+
+  defp p01_resource_state?(_resource), do: false
+
+  defp generation_precedes?(older, newer) do
+    older.project_namespace == newer.project_namespace and older.host_id == newer.host_id and
+      (older == newer or older.sequence < newer.sequence)
   end
 
   defp read_all(table) do
