@@ -3,6 +3,8 @@ defmodule SymphonyElixir.Config do
   Runtime configuration loaded from `WORKFLOW.md`.
   """
 
+  alias SymphonyElixir.AgentRuntime.AttemptBoundary
+  alias SymphonyElixir.AgentRuntime.AttemptLedger
   alias SymphonyElixir.AgentRuntime.Profile
   alias SymphonyElixir.Codex.IsolationProfile
   alias SymphonyElixir.Config.Schema
@@ -216,6 +218,12 @@ defmodule SymphonyElixir.Config do
   @doc false
   @spec validate_settings(Schema.t()) :: :ok | {:error, term()}
   def validate_settings(settings) do
+    with :ok <- validate_attempt_boundary(settings) do
+      validate_tracker_settings(settings)
+    end
+  end
+
+  defp validate_tracker_settings(settings) do
     if is_nil(settings.tracker.kind) do
       {:error, :missing_tracker_kind}
     else
@@ -228,6 +236,66 @@ defmodule SymphonyElixir.Config do
         Schema.validate_project_identity(settings)
       end
     end
+  end
+
+  @doc false
+  @spec validate_attempt_boundary(Schema.t(), keyword()) :: :ok | {:error, AttemptBoundary.error()}
+  def validate_attempt_boundary(settings, opts \\ []) do
+    mode = settings.agent.attempt_boundary.mode
+
+    cond do
+      mode == "gate2_enforced" ->
+        {:error, :gate2_profile_incomplete}
+
+      mode == "legacy" ->
+        case attempt_boundary_identity(settings, opts) do
+          {:ok, project_id, tracker_identity} ->
+            AttemptLedger.configured_mode(mode, project_id, tracker_identity, attempt_ledger_options(opts))
+
+          :missing_project ->
+            :ok
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+
+      mode == "gate2_foundation" ->
+        with {:ok, project_id, tracker_identity} <- attempt_boundary_identity(settings, opts) do
+          AttemptLedger.configured_mode(mode, project_id, tracker_identity, attempt_ledger_options(opts))
+        end
+
+      true ->
+        {:error, :invalid_request}
+    end
+  end
+
+  defp attempt_boundary_identity(settings, opts) do
+    project_id = Keyword.get(opts, :project_id, settings.symphony.project_id)
+
+    cond do
+      not is_binary(project_id) and settings.agent.attempt_boundary.mode == "legacy" ->
+        :missing_project
+
+      not is_binary(project_id) ->
+        {:error, :namespace_mismatch}
+
+      not Schema.valid_project_id?(project_id) ->
+        {:error, :invalid_request}
+
+      true ->
+        tracker_identity =
+          case Keyword.fetch(opts, :tracker_identity) do
+            {:ok, identity} -> identity
+            :error -> Tracker.identity(settings.tracker)
+          end
+
+        {:ok, project_id, tracker_identity}
+    end
+  end
+
+  defp attempt_ledger_options(opts) do
+    opts
+    |> Keyword.take([:root, :path])
   end
 
   defp validate_plane_runtime_mode(%{tracker: %{kind: "plane"}, agent: %{routing: "legacy"}}),

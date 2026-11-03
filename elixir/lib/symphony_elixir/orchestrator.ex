@@ -19,6 +19,8 @@ defmodule SymphonyElixir.Orchestrator do
     Workspace
   }
 
+  alias SymphonyElixir.Config.Schema
+
   alias SymphonyElixir.Workspace.OwnershipLedger
 
   alias SymphonyElixir.AgentRuntime.{
@@ -146,6 +148,7 @@ defmodule SymphonyElixir.Orchestrator do
     defstruct [
       :poll_interval_ms,
       :max_concurrent_agents,
+      :attempt_boundary_mode,
       :next_poll_due_at_ms,
       :poll_check_in_progress,
       :tick_timer_ref,
@@ -218,45 +221,54 @@ defmodule SymphonyElixir.Orchestrator do
   def init(opts) do
     case Config.settings() do
       {:ok, config} ->
-        now_ms = System.monotonic_time(:millisecond)
-
-        state = %State{
-          poll_interval_ms: config.polling.interval_ms,
-          max_concurrent_agents: config.agent.max_concurrent_agents,
-          next_poll_due_at_ms: now_ms,
-          poll_check_in_progress: false,
-          tick_timer_ref: nil,
-          tick_token: nil,
-          tracker: Keyword.get(opts, :tracker, Tracker),
-          read_scheduler: Keyword.get(opts, :read_scheduler_name, Keyword.get(opts, :read_scheduler, SymphonyElixir.Plane.ReadScheduler)),
-          task_supervisor: Keyword.get(opts, :task_supervisor, SymphonyElixir.TaskSupervisor),
-          agent_runner: Keyword.get(opts, :agent_runner, AgentRunner),
-          transition_coordinator: Keyword.get(opts, :transition_coordinator, TransitionCoordinator),
-          work_control: initial_work_control(Keyword.get(opts, :work_control, %{})),
-          project_contract_evidence: ProjectContractEvidence.new(config.provider_project_contract),
-          plane_webhook_dedup: WebhookDedupRegistry.new(),
-          plane_webhook_metrics: initial_plane_webhook_metrics(),
-          startup_reconciliation: startup_reconciliation_initial_state(config.agent.routing),
-          codex_totals: @empty_codex_totals,
-          codex_rate_limits: nil
-        }
-
-        state = initialize_attempt_ledger(state, config, opts)
-        state = initialize_recovery_ledger(state, config, opts)
-        state = initialize_workspace_ownership_ledger(state, config, opts)
-
-        state =
-          if Keyword.get(opts, :start_quiesced, false) do
-            state
-          else
-            schedule_tick(state, 0)
-          end
-
-        {:ok, state}
+        case SymphonyElixir.runtime_start_decision(config) do
+          :legacy -> initialize_runtime_state(config, opts)
+          :gate2_dormant -> {:stop, :gate2_dormant}
+          {:error, reason} -> {:stop, reason}
+        end
 
       {:error, reason} ->
         {:stop, reason}
     end
+  end
+
+  defp initialize_runtime_state(config, opts) do
+    now_ms = System.monotonic_time(:millisecond)
+
+    state = %State{
+      poll_interval_ms: config.polling.interval_ms,
+      max_concurrent_agents: config.agent.max_concurrent_agents,
+      attempt_boundary_mode: config.agent.attempt_boundary.mode,
+      next_poll_due_at_ms: now_ms,
+      poll_check_in_progress: false,
+      tick_timer_ref: nil,
+      tick_token: nil,
+      tracker: Keyword.get(opts, :tracker, Tracker),
+      read_scheduler: Keyword.get(opts, :read_scheduler_name, Keyword.get(opts, :read_scheduler, SymphonyElixir.Plane.ReadScheduler)),
+      task_supervisor: Keyword.get(opts, :task_supervisor, SymphonyElixir.TaskSupervisor),
+      agent_runner: Keyword.get(opts, :agent_runner, AgentRunner),
+      transition_coordinator: Keyword.get(opts, :transition_coordinator, TransitionCoordinator),
+      work_control: initial_work_control(Keyword.get(opts, :work_control, %{})),
+      project_contract_evidence: ProjectContractEvidence.new(config.provider_project_contract),
+      plane_webhook_dedup: WebhookDedupRegistry.new(),
+      plane_webhook_metrics: initial_plane_webhook_metrics(),
+      startup_reconciliation: startup_reconciliation_initial_state(config.agent.routing),
+      codex_totals: @empty_codex_totals,
+      codex_rate_limits: nil
+    }
+
+    state = initialize_attempt_ledger(state, config, opts)
+    state = initialize_recovery_ledger(state, config, opts)
+    state = initialize_workspace_ownership_ledger(state, config, opts)
+
+    state =
+      if Keyword.get(opts, :start_quiesced, false) do
+        state
+      else
+        schedule_tick(state, 0)
+      end
+
+    {:ok, state}
   end
 
   defp startup_reconciliation_initial_state(_routing), do: :pending
@@ -285,8 +297,22 @@ defmodule SymphonyElixir.Orchestrator do
     :ok
   end
 
-  defp initialize_attempt_ledger(%State{} = state, %{agent: %{routing: "legacy"}}, _opts) do
-    %{state | attempt_ledger_status: :disabled, attempt_ledger_opts: []}
+  @doc false
+  @spec initialize_attempt_ledger_for_test(State.t(), SymphonyElixir.Config.Schema.t(), keyword()) :: State.t()
+  def initialize_attempt_ledger_for_test(state, config, opts), do: initialize_attempt_ledger(state, config, opts)
+
+  defp initialize_attempt_ledger(%State{} = state, %{agent: %{routing: "legacy"}} = config, opts) do
+    project_id = config.symphony.project_id
+    ledger_opts = Keyword.get(opts, :attempt_ledger_opts, [])
+
+    if Schema.valid_project_id?(project_id) and is_binary(config.tracker.kind) do
+      case AttemptLedger.configured_mode("legacy", project_id, Tracker.identity(config.tracker), ledger_opts) do
+        :ok -> %{state | attempt_ledger_status: :disabled, attempt_ledger_opts: []}
+        {:error, reason} -> block_ledger(%{state | attempt_ledger_opts: ledger_opts}, reason)
+      end
+    else
+      %{state | attempt_ledger_status: :disabled, attempt_ledger_opts: []}
+    end
   end
 
   defp initialize_attempt_ledger(%State{} = state, config, opts) do
@@ -7345,10 +7371,52 @@ defmodule SymphonyElixir.Orchestrator do
     end
   end
 
-  defp begin_durable_attempt(%State{attempt_ledger_status: :disabled} = state, _issue, _route),
+  @doc false
+  @spec attempt_boundary_dispatch_decision(State.t(), String.t()) ::
+          :ok | {:error, SymphonyElixir.AgentRuntime.AttemptBoundary.error()}
+  def attempt_boundary_dispatch_decision(%State{attempt_boundary_mode: "gate2_foundation"}, _issue_id),
+    do: {:error, :gate2_dormant}
+
+  def attempt_boundary_dispatch_decision(%State{attempt_boundary_mode: "gate2_enforced"}, _issue_id),
+    do: {:error, :gate2_profile_incomplete}
+
+  def attempt_boundary_dispatch_decision(%State{attempt_ledger: %AttemptLedger{} = ledger}, issue_id) do
+    with current when is_tuple(current) or current == :not_found <- AttemptLedger.current(ledger, issue_id),
+         {:ok, history} <- AttemptLedger.history(ledger) do
+      gate2_current? = match?({:ok, %{boundary_binding: %{kind: :gate2}}}, current)
+      gate2_history? = Enum.any?(history, &(&1.issue_id == issue_id and match?(%{kind: :gate2}, Map.get(&1, :boundary_binding))))
+
+      case current do
+        {:error, {:ledger_read_failed, _}} -> {:error, :storage_unavailable}
+        {:error, _} -> {:error, :storage_corrupt}
+        _ when gate2_current? or gate2_history? -> {:error, :gate2_dormant}
+        _ -> :ok
+      end
+    else
+      {:error, {:ledger_read_failed, _}} -> {:error, :storage_unavailable}
+      _ -> {:error, :storage_corrupt}
+    end
+  end
+
+  def attempt_boundary_dispatch_decision(%State{}, _issue_id), do: :ok
+
+  defp begin_durable_attempt(state, issue, route) do
+    case attempt_boundary_dispatch_decision(state, issue.id) do
+      :ok -> begin_checked_durable_attempt(state, issue, route)
+      {:error, reason} -> {:error, state, reason}
+    end
+  end
+
+  defp begin_checked_durable_attempt(%State{attempt_boundary_mode: "gate2_foundation"} = state, _issue, _route),
+    do: {:error, state, :gate2_dormant}
+
+  defp begin_checked_durable_attempt(%State{attempt_boundary_mode: "gate2_enforced"} = state, _issue, _route),
+    do: {:error, state, :gate2_profile_incomplete}
+
+  defp begin_checked_durable_attempt(%State{attempt_ledger_status: :disabled} = state, _issue, _route),
     do: {:ok, state, nil}
 
-  defp begin_durable_attempt(
+  defp begin_checked_durable_attempt(
          %State{attempt_ledger_status: :ready, attempt_ledger: %AttemptLedger{} = ledger} = state,
          issue,
          route
@@ -7369,10 +7437,10 @@ defmodule SymphonyElixir.Orchestrator do
     end
   end
 
-  defp begin_durable_attempt(%State{attempt_ledger_status: {:blocked, reason}} = state, _issue, _route),
+  defp begin_checked_durable_attempt(%State{attempt_ledger_status: {:blocked, reason}} = state, _issue, _route),
     do: {:error, state, reason}
 
-  defp begin_durable_attempt(%State{} = state, _issue, _route) do
+  defp begin_checked_durable_attempt(%State{} = state, _issue, _route) do
     reason = :invalid_ledger_status
     {:error, block_ledger(state, reason), reason}
   end
@@ -7418,6 +7486,13 @@ defmodule SymphonyElixir.Orchestrator do
          worker_host,
          runtime_attempt
        ) do
+    case attempt_boundary_dispatch_decision(state, issue.id) do
+      :ok -> spawn_after_boundary_mode_check(state, issue, route, attempt, recipient, worker_host, runtime_attempt)
+      {:error, reason} -> block_issue_from_entry(state, issue.id, dispatch_entry(issue, route, attempt, worker_host), reason)
+    end
+  end
+
+  defp spawn_after_boundary_mode_check(state, issue, route, attempt, recipient, worker_host, runtime_attempt) do
     case bind_runtime_attempt_before_spawn(state, issue.id, runtime_attempt) do
       {:ok, state} ->
         do_spawn_prepared_issue_on_worker_host(state, issue, route, attempt, recipient, worker_host, runtime_attempt)
@@ -11643,10 +11718,17 @@ defmodule SymphonyElixir.Orchestrator do
   defp refresh_runtime_config(%State{} = state) do
     config = Config.settings!()
 
+    case SymphonyElixir.runtime_start_decision(config) do
+      :legacy -> :ok
+      :gate2_dormant -> exit({:shutdown, :gate2_dormant})
+      {:error, reason} -> exit({:shutdown, reason})
+    end
+
     state = %{
       state
       | poll_interval_ms: config.polling.interval_ms,
-        max_concurrent_agents: config.agent.max_concurrent_agents
+        max_concurrent_agents: config.agent.max_concurrent_agents,
+        attempt_boundary_mode: config.agent.attempt_boundary.mode
     }
 
     state
@@ -11793,16 +11875,20 @@ defmodule SymphonyElixir.Orchestrator do
 
   defp project_contract_changed?(_previous, next), do: not is_nil(next)
 
+  @doc false
+  @spec synchronize_attempt_ledger_config_for_test(State.t(), SymphonyElixir.Config.Schema.t()) :: State.t()
+  def synchronize_attempt_ledger_config_for_test(state, config), do: synchronize_attempt_ledger_config(state, config)
+
   defp synchronize_attempt_ledger_config(%State{} = state, %{agent: %{routing: "legacy"}}) do
     case state.attempt_ledger do
       nil ->
-        %{state | attempt_ledger_status: :disabled, attempt_ledger_opts: []}
+        case state.attempt_ledger_status do
+          {:blocked, _reason} -> state
+          _ -> %{state | attempt_ledger_status: :disabled, attempt_ledger_opts: []}
+        end
 
       %AttemptLedger{} = ledger ->
-        case AttemptLedger.close(ledger) do
-          :ok -> %{state | attempt_ledger: nil, attempt_ledger_status: :disabled, attempt_ledger_opts: []}
-          {:error, reason} -> block_ledger(state, {:ledger_close_failed, reason})
-        end
+        disable_legacy_attempt_ledger(state, ledger)
     end
   end
 
@@ -11826,6 +11912,20 @@ defmodule SymphonyElixir.Orchestrator do
 
       _ ->
         block_ledger(state, :invalid_ledger_status)
+    end
+  end
+
+  defp disable_legacy_attempt_ledger(state, ledger) do
+    case AttemptLedger.configured_mode("legacy", ledger.project_id, ledger.tracker_identity, path: ledger.path) do
+      :ok -> close_legacy_attempt_ledger(state, ledger)
+      {:error, reason} -> block_ledger(state, reason)
+    end
+  end
+
+  defp close_legacy_attempt_ledger(state, ledger) do
+    case AttemptLedger.close(ledger) do
+      :ok -> %{state | attempt_ledger: nil, attempt_ledger_status: :disabled, attempt_ledger_opts: []}
+      {:error, reason} -> block_ledger(state, {:ledger_close_failed, reason})
     end
   end
 

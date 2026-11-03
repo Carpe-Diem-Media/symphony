@@ -189,6 +189,26 @@ Notes:
   state routes and requires `symphony.project_id`. The shipped `WORKFLOW.md` is a
   legacy Linear compatibility sample. Plane is the hardened V1 primary routed provider. Workflows
   without `agent.profiles` retain the legacy compatibility path.
+- `agent.attempt_boundary.mode` defaults to `legacy`. `gate2_foundation` requires an
+  existing schema-2 attempt ledger and keeps runtime admission dormant. It cannot allocate
+  resources or launch Codex. `gate2_enforced` returns `gate2_profile_incomplete` until the
+  qualified components exist. Unknown mode names and nested keys fail configuration parsing.
+  A Gate 2 ledger binding cannot be changed back to `legacy` by a workflow edit.
+- Attempt ledgers do not migrate during startup or workflow reload. A schema-1 project stays
+  schema 1 until an operator runs the offline maintenance task while Symphony and its ledger
+  handles are stopped. For authorized maintenance, the command forms are:
+
+  ```bash
+  mix symphony.attempt_migrate PROJECT_NAMESPACE TRACKER_IDENTITY_SHA256 AUTHORITY_REF
+  mix symphony.attempt_migrate --resume PROJECT_NAMESPACE TRACKER_IDENTITY_SHA256 AUTHORITY_REF
+  mix symphony.attempt_migrate --abort PROJECT_NAMESPACE TRACKER_IDENTITY_SHA256 AUTHORITY_REF
+  ```
+
+  Resume completes a migration after the canonical ledger was replaced. Abort is valid only
+  before replacement, while the original schema-1 file remains unchanged. A pending journal or
+  missing completion receipt blocks startup. These command examples document maintenance
+  syntax; they do not authorize a deployment migration. P01 does not qualify runtime, cleanup,
+  or Gate 2 activation.
 - Routed safety lineage is stored in a deterministic DETS file outside the
   repository, workspace, and default `/tmp` directory. The namespace is keyed by
   `symphony.project_id`, while tracker/repository identity is checked on open.

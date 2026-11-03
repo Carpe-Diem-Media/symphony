@@ -37,6 +37,8 @@ agent:
   max_concurrent_agents: 10
   max_turns: 20
   routing: legacy
+  attempt_boundary:
+    mode: legacy
 codex:
   command: codex app-server
   approval_policy: never
