@@ -732,11 +732,29 @@ defmodule SymphonyElixir.Gate2AttemptMigrationTest do
       updated_at: 1_700_000_000_000
     }
 
+    identity = %SymphonyElixir.AgentRuntime.RuntimeAttempt.Identity{
+      runtime_attempt_id: "attempt-b",
+      work_item_id: "issue-b",
+      lineage_generation: "lineage-b",
+      responsibility: "implementation",
+      runtime_profile: "implementation"
+    }
+
+    reference = %{grant_id: "grant-b", project_namespace: @namespace, runtime_identity: identity}
+    reference = Map.merge(reference, %{fence_epoch: 1, grant_sha256: String.duplicate("a", 64)})
+
     gate2 =
       legacy
       |> Map.merge(%{
         issue_id: "issue-b",
         lineage_id: "lineage-b",
+        in_flight: true,
+        authority_fence: %{
+          state: :bound,
+          runtime_attempt: identity,
+          route_fingerprint: nil,
+          gate2_fence: %{reference: reference, status: :requested}
+        },
         boundary_binding: %{
           kind: :gate2,
           binding_version: 1,

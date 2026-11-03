@@ -128,6 +128,7 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
   end
 
   @tag :r03_provenance
+  @tag fresh_gate2: true
   test "persisting a caller supplied digest records intent without issuing grant authority", context do
     seed_resource(context.boundary)
     supplied = %{grant_ref() | grant_sha256: String.duplicate("e", 64)}
@@ -425,7 +426,7 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
              AttemptLedger.bind_gate2_fence_sync(context.attempt_ledger, "item-1", grant_ref())
 
     assert {:ok, record} = AttemptLedger.current(context.attempt_ledger, "item-1")
-    assert is_nil(Map.get(record.authority_fence, :gate2_fence))
+    assert record.authority_fence.gate2_fence.reference == grant_ref()
   end
 
   @tag resource_fault: true
@@ -570,7 +571,12 @@ defmodule SymphonyElixir.Gate2AttemptBoundaryTest do
       stop_reason: nil,
       route_fingerprint: "route-1",
       in_flight: true,
-      authority_fence: %{state: :bound, runtime_attempt: identity, route_fingerprint: "route-1"},
+      authority_fence: %{
+        state: :bound,
+        runtime_attempt: identity,
+        route_fingerprint: "route-1",
+        gate2_fence: %{reference: grant_ref(), status: :requested}
+      },
       close_pending: false,
       updated_at: 1_700_000_000_000,
       boundary_binding: %{kind: :gate2, binding_version: 1, lineage_binding_id: "binding-1", resource_ledger_namespace: "project-1"}

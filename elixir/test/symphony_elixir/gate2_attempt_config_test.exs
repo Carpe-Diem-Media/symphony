@@ -186,7 +186,7 @@ defmodule SymphonyElixir.Gate2AttemptConfigTest do
              Schema.parse(%{agent: %{attempt_boundary: %{mode: nil}}})
   end
 
-  test "live reload cannot discard Gate2 history when the new config removes project identity" do
+  test "live reload cannot discard Gate2 binding when the new config removes project identity" do
     root = temp_root()
     identity = %{tracker_kind: "memory", provider_scope: %{project_slug: "project-1"}}
     path = AttemptLedger.path_for("t6-config-project", root: root)
@@ -203,7 +203,7 @@ defmodule SymphonyElixir.Gate2AttemptConfigTest do
     updated = Orchestrator.synchronize_attempt_ledger_config_for_test(state, config)
     assert updated.attempt_ledger == ledger
     assert updated.attempt_ledger_status == {:blocked, {:attempt_ledger_unavailable, :binding_downgrade_denied}}
-    assert {:ok, [_]} = AttemptLedger.history(ledger)
+    assert {:ok, [_]} = AttemptLedger.open_lineages(ledger)
   end
 
   test "disabled ledger and stale mode cannot dispatch a Gate2-bound work item" do
@@ -345,23 +345,35 @@ defmodule SymphonyElixir.Gate2AttemptConfigTest do
     {output, 0} = System.cmd(System.find_executable("elixir"), code_args ++ ["-e", script, "--", path, encoded], stderr_to_stdout: true)
     assert output =~ "{:ok,"
 
+    runtime_identity = %SymphonyElixir.AgentRuntime.RuntimeAttempt.Identity{
+      runtime_attempt_id: "attempt-1",
+      work_item_id: "item-1",
+      lineage_generation: "lineage-1",
+      responsibility: "implementation",
+      runtime_profile: "implementation"
+    }
+
+    reference = %{grant_id: "grant-1", project_namespace: project_id, runtime_identity: runtime_identity}
+    reference = Map.merge(reference, %{fence_epoch: 1, grant_sha256: String.duplicate("a", 64)})
+
     record = %{
       schema_version: 2,
       project_namespace: project_id,
       issue_id: "item-1",
       lineage_id: "lineage-1",
       safety_counters: %{ordinary_failures: 0, ordinary_retries: 0, review_cycles: 0},
-      status: :closed,
+      status: :open,
       stop_reason: nil,
       route_fingerprint: nil,
-      in_flight: false,
-      authority_fence: nil,
+      in_flight: true,
+      authority_fence: %{
+        state: :bound,
+        runtime_attempt: runtime_identity,
+        route_fingerprint: nil,
+        gate2_fence: %{reference: reference, status: :requested}
+      },
       close_pending: false,
       updated_at: 1_700_000_000_000,
-      closed_reason: :completed,
-      rearm_reason: nil,
-      rearmed_by: nil,
-      rearmed_at: nil,
       boundary_binding: %{
         kind: :gate2,
         binding_version: 1,
@@ -372,7 +384,7 @@ defmodule SymphonyElixir.Gate2AttemptConfigTest do
 
     table = :t6_gate2_config_fixture
     {:ok, ^table} = :dets.open_file(table, file: String.to_charlist(path), type: :set)
-    :ok = :dets.insert(table, {{:history, "lineage-1"}, record})
+    :ok = :dets.insert(table, {{:current, "item-1"}, record})
     :ok = :dets.sync(table)
     :ok = :dets.close(table)
   end

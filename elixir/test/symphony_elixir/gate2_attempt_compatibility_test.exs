@@ -36,6 +36,23 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
     assert released.schema_version == record.schema_version
   end
 
+  test "schema two preserves legacy release and close alongside unresolved Gate2", %{root: root} do
+    path = seed_committed_schema2(root)
+    {:ok, ledger} = AttemptLedger.open(@namespace, @identity, path: path)
+    assert {:ok, %{boundary_binding: %{kind: :legacy}}} = AttemptLedger.begin_attempt(ledger, "legacy-two")
+    assert :ok = AttemptLedger.release_armed_authority_fence(ledger, "legacy-two")
+    assert {:ok, %{authority_fence: %{state: :released}}} = AttemptLedger.current(ledger, "legacy-two")
+    assert :ok = AttemptLedger.clear_in_flight(ledger, "legacy-two")
+    assert :ok = AttemptLedger.close_lineage(ledger, "legacy-two")
+    assert {:ok, %{status: :closed}} = AttemptLedger.current(ledger, "legacy-two")
+    assert {:ok, [%{issue_id: "compatibility-current"}]} = AttemptLedger.open_lineages(ledger)
+    assert {:ok, [%{boundary_binding: %{kind: :legacy}}]} = AttemptLedger.history(ledger)
+    assert :ok = AttemptLedger.close(ledger)
+    assert {:ok, reopened} = AttemptLedger.open(@namespace, @identity, path: path)
+    assert {:ok, [%{issue_id: "compatibility-current"}]} = AttemptLedger.open_lineages(reopened)
+    assert :ok = AttemptLedger.close(reopened)
+  end
+
   test "configured schema and mode preserve legacy and missing-file outcomes", %{root: root} do
     assert {:ok, 1, false} = AttemptLedger.configured_schema(@namespace, @identity, root: root)
     assert :ok = AttemptLedger.configured_mode("legacy", @namespace, @identity, root: root)
@@ -58,7 +75,7 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
     assert :ok = AttemptLedger.configured_mode("legacy", @namespace, changed_identity, root: root)
   end
 
-  test "configured mode detects Gate2 history in an admitted schema two ledger", %{root: root} do
+  test "configured mode detects Gate2 current binding alongside legacy history", %{root: root} do
     path = seed_committed_schema2(root)
 
     assert {:ok, 2, true} = AttemptLedger.configured_schema(@namespace, @identity, path: path)
@@ -71,7 +88,7 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
              AttemptLedger.configured_mode("gate2_enforced", @namespace, @identity, path: path)
   end
 
-  test "configured schema rejects malformed Gate2 history", %{root: root} do
+  test "configured schema rejects malformed schema two history", %{root: root} do
     path = seed_committed_schema2(root, true)
 
     assert {:error, :storage_corrupt} = AttemptLedger.configured_schema(@namespace, @identity, path: path)
@@ -81,7 +98,7 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
   end
 
   test "configured schema denies schema two metadata without a committed receipt", %{ledger: ledger, root: root} do
-    _ledger = install_gate2_record(ledger, "uncommitted", %{in_flight: false, authority_fence: nil})
+    _ledger = install_gate2_record(ledger, "uncommitted", %{})
 
     assert {:error, :migration_in_progress} = AttemptLedger.configured_schema(@namespace, @identity, root: root)
 
@@ -138,6 +155,38 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
     assert {:ok, ^reference} = AttemptLedger.gate2_fence_reference(ledger, "requested-item")
   end
 
+  @r04_states [:missing_fence, :armed, :bound_without_reference, :released, :closed_missing, :closed_released]
+  for state <- @r04_states,
+      read_path <- [:current, :open_lineages, :reference, :configured_schema, :reopen] do
+    @tag :r04_admission
+    test "impossible Gate2 #{state} fails closed through #{read_path}", %{root: root} do
+      path = seed_committed_schema2(root)
+      {:ok, ledger} = AttemptLedger.open(@namespace, @identity, path: path)
+      ledger = install_coherent_gate2_record(ledger)
+      record = current!(ledger, "coherent") |> impossible_gate2_state(unquote(state))
+      assert :ok = :dets.insert(ledger.table, {{:current, "coherent"}, record})
+      assert :ok = :dets.sync(ledger.table)
+      assert_incoherent_read(unquote(read_path), ledger, path)
+    end
+  end
+
+  for state <- [:missing_fence, :armed, :released, :closed_released, :bound_requested] do
+    @tag :r04_admission
+    test "impossible Gate2 history #{state} blocks scans and admission", %{root: root} do
+      path = seed_committed_schema2(root)
+      {:ok, ledger} = AttemptLedger.open(@namespace, @identity, path: path)
+      ledger = install_coherent_gate2_record(ledger)
+      record = current!(ledger, "coherent") |> impossible_gate2_state(unquote(state))
+      key = {:history, record.lineage_id}
+      assert :ok = :dets.insert(ledger.table, {key, record})
+      assert :ok = :dets.sync(ledger.table)
+      assert {:error, {:corrupt_attempt_record, ^key, :invalid_record}} = AttemptLedger.history(ledger)
+      assert {:error, _} = AttemptLedger.open_lineages(ledger)
+      assert {:error, :storage_corrupt} = AttemptLedger.configured_schema(@namespace, @identity, path: path)
+      assert_incoherent_read(:reopen, ledger, path)
+    end
+  end
+
   @r01_corruptions ~w(
     work_item lineage outer_identity reference_namespace binding_namespace binding_namespace_without_fence
     outer_work_item_without_fence outer_lineage_without_fence
@@ -168,7 +217,8 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
     path = seed_committed_schema2(root)
     {:ok, ledger} = AttemptLedger.open(@namespace, @identity, path: path)
     [{key, history}] = :dets.match_object(ledger.table, {{:history, :_}, :_})
-    inconsistent = put_in(history.boundary_binding.resource_ledger_namespace, "other-project")
+    inconsistent = Map.put(history, :boundary_binding, @gate2_binding)
+    inconsistent = put_in(inconsistent.boundary_binding.resource_ledger_namespace, "other-project")
     assert :ok = :dets.insert(ledger.table, {key, inconsistent})
     assert :ok = :dets.sync(ledger.table)
     assert {:error, {:corrupt_attempt_record, ^key, :invalid_record}} = AttemptLedger.history(ledger)
@@ -186,21 +236,15 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
              AttemptLedger.bind_gate2_fence_from_boundary(ledger, "issue", %{})
   end
 
-  test "legacy release rejects gate2 bound and already-released records", %{ledger: ledger} do
-    ledger = install_gate2_record(ledger, "gate2", %{in_flight: true, authority_fence: %{state: :armed}})
+  test "legacy release rejects a valid Gate2 bound record", %{ledger: ledger} do
+    ledger = install_gate2_record(ledger, "gate2", %{})
     before = current!(ledger, "gate2")
-
     assert {:error, :attempt_resource_verification_required} = AttemptLedger.release_armed_authority_fence(ledger, "gate2")
     assert current!(ledger, "gate2") == before
-
-    ledger = install_gate2_record(ledger, "released", %{in_flight: false, authority_fence: %{state: :released}})
-    before = current!(ledger, "released")
-    assert {:error, :attempt_resource_verification_required} = AttemptLedger.release_armed_authority_fence(ledger, "released")
-    assert current!(ledger, "released") == before
   end
 
   test "put cannot remove or replace gate2 binding", %{ledger: ledger} do
-    ledger = install_gate2_record(ledger, "gate2", %{in_flight: false, authority_fence: nil})
+    ledger = install_gate2_record(ledger, "gate2", %{})
     record = current!(ledger, "gate2")
 
     for rewritten <- [Map.delete(record, :boundary_binding), Map.put(record, :boundary_binding, %{kind: :legacy})] do
@@ -214,7 +258,7 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
   end
 
   test "put rejects same-binding lineage replacement", %{ledger: ledger} do
-    ledger = install_gate2_record(ledger, "gate2", %{in_flight: false, authority_fence: nil})
+    ledger = install_gate2_record(ledger, "gate2", %{})
     record = current!(ledger, "gate2")
 
     assert {:error, :attempt_resource_verification_required} =
@@ -224,7 +268,7 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
   end
 
   test "put rejects same-binding released fence injection", %{ledger: ledger} do
-    ledger = install_gate2_record(ledger, "gate2", %{in_flight: false, authority_fence: nil})
+    ledger = install_gate2_record(ledger, "gate2", %{})
     record = current!(ledger, "gate2")
 
     assert {:error, :attempt_resource_verification_required} =
@@ -234,7 +278,7 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
   end
 
   test "put cannot overwrite a corrupt gate2 binding", %{ledger: ledger} do
-    ledger = install_gate2_record(ledger, "corrupt", %{in_flight: false, authority_fence: nil})
+    ledger = install_gate2_record(ledger, "corrupt", %{})
     record = current!(ledger, "corrupt")
     corrupt = %{record | boundary_binding: %{kind: :gate2, binding_version: 1}}
     :ok = :dets.insert(ledger.table, {{:current, "corrupt"}, corrupt})
@@ -245,7 +289,7 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
   end
 
   test "safety clear close fence and rearm cannot downgrade binding", %{ledger: ledger} do
-    ledger = install_gate2_record(ledger, "gate2", %{status: :open, in_flight: true, authority_fence: %{state: :armed}})
+    ledger = install_gate2_record(ledger, "gate2", %{})
     before = current!(ledger, "gate2")
 
     identity = %Identity{
@@ -275,22 +319,35 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
     assert {:error, :attempt_resource_verification_required} = AttemptLedger.fence_attempt(ledger, "gate2")
     assert {:error, :gate2_boundary_required} = AttemptLedger.rearm(ledger, "gate2", "reason", "operator", 1)
     assert current!(ledger, "gate2") == before
+  end
 
-    ledger = install_gate2_record(ledger, "idle", %{status: :open, in_flight: false, authority_fence: nil})
-    idle_before = current!(ledger, "idle")
-    assert {:error, :attempt_resource_verification_required} = AttemptLedger.begin_attempt(ledger, "idle")
-    assert {:error, :attempt_resource_verification_required} = AttemptLedger.fence_attempt(ledger, "idle")
-    assert current!(ledger, "idle") == idle_before
+  defp impossible_gate2_state(record, :bound_requested), do: record
 
-    ledger = install_gate2_record(ledger, "closed", %{status: :closed, in_flight: false, authority_fence: nil})
-    closed_before = current!(ledger, "closed")
-    assert {:error, :attempt_resource_verification_required} = AttemptLedger.begin_attempt(ledger, "closed")
-    assert {:error, :attempt_resource_verification_required} = AttemptLedger.fence_attempt(ledger, "closed")
-    assert current!(ledger, "closed") == closed_before
+  defp impossible_gate2_state(record, :missing_fence), do: %{record | in_flight: false, authority_fence: nil}
+  defp impossible_gate2_state(record, :armed), do: %{record | authority_fence: %{state: :armed}}
+
+  defp impossible_gate2_state(record, :bound_without_reference),
+    do: %{record | authority_fence: Map.delete(record.authority_fence, :gate2_fence)}
+
+  defp impossible_gate2_state(record, :released),
+    do: %{record | in_flight: false, authority_fence: %{state: :released}}
+
+  defp impossible_gate2_state(record, :closed_missing),
+    do: %{impossible_gate2_state(record, :missing_fence) | status: :closed}
+
+  defp impossible_gate2_state(record, :closed_released),
+    do: %{impossible_gate2_state(record, :released) | status: :closed}
+
+  defp assert_incoherent_read(:open_lineages, ledger, _path) do
+    assert {:error, {:corrupt_attempt_record, {:current, "coherent"}, :invalid_record}} =
+             AttemptLedger.open_lineages(ledger)
+
+    AttemptLedger.close(ledger)
   end
 
   defp assert_incoherent_read(:current, ledger, _path) do
     assert {:error, :invalid_record} = AttemptLedger.current(ledger, "coherent")
+    assert {:error, :invalid_record} = AttemptLedger.release_armed_authority_fence(ledger, "coherent")
     AttemptLedger.close(ledger)
   end
 
@@ -311,15 +368,7 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
     assert File.read!(path) == bytes
   end
 
-  defp install_coherent_gate2_record(ledger) do
-    identity = %Identity{runtime_attempt_id: "a", work_item_id: "coherent", lineage_generation: "lineage-coherent"}
-    identity = %{identity | responsibility: "implementation", runtime_profile: "implementation"}
-    reference = %{grant_id: "coherent-grant", project_namespace: @namespace, runtime_identity: identity}
-    reference = Map.merge(reference, %{fence_epoch: 1, grant_sha256: String.duplicate("a", 64)})
-    intent = %{reference: reference, status: :requested}
-    fence = %{state: :bound, runtime_attempt: identity, route_fingerprint: nil, gate2_fence: intent}
-    install_gate2_record(ledger, "coherent", %{in_flight: true, authority_fence: fence})
-  end
+  defp install_coherent_gate2_record(ledger), do: install_gate2_record(ledger, "coherent", %{})
 
   defp corrupt_gate2_identity(record, :work_item), do: put_in(record.authority_fence.gate2_fence.reference.runtime_identity.work_item_id, "other-item")
   defp corrupt_gate2_identity(record, :lineage), do: put_in(record.authority_fence.gate2_fence.reference.runtime_identity.lineage_generation, "other-lineage")
@@ -353,7 +402,27 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
   end
 
   defp install_gate2_record(ledger, issue_id, overrides) do
-    record = %{
+    record = gate2_record(issue_id)
+    record = Map.merge(record, overrides)
+    :ok = :dets.insert(ledger.table, {{:current, issue_id}, record})
+    :ok = :dets.insert(ledger.table, {{:meta, @namespace}, %{schema_version: 2, project_namespace: @namespace, tracker_identity: @identity}})
+    :ok = :dets.sync(ledger.table)
+    %{ledger | schema_version: 2}
+  end
+
+  defp gate2_record(issue_id) do
+    identity = %Identity{
+      runtime_attempt_id: "attempt-#{issue_id}",
+      work_item_id: issue_id,
+      lineage_generation: "lineage-#{issue_id}",
+      responsibility: "implementation",
+      runtime_profile: "implementation"
+    }
+
+    reference = %{grant_id: "grant-#{issue_id}", project_namespace: @namespace, runtime_identity: identity}
+    reference = Map.merge(reference, %{fence_epoch: 1, grant_sha256: String.duplicate("a", 64)})
+
+    %{
       schema_version: 2,
       project_namespace: @namespace,
       issue_id: issue_id,
@@ -362,17 +431,17 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
       status: :open,
       stop_reason: nil,
       route_fingerprint: nil,
-      in_flight: false,
-      authority_fence: nil,
+      in_flight: true,
+      authority_fence: %{
+        state: :bound,
+        runtime_attempt: identity,
+        route_fingerprint: nil,
+        gate2_fence: %{reference: reference, status: :requested}
+      },
       close_pending: false,
-      updated_at: 1
+      updated_at: 1,
+      boundary_binding: @gate2_binding
     }
-
-    record = Map.merge(record, overrides) |> Map.put_new(:boundary_binding, @gate2_binding)
-    :ok = :dets.insert(ledger.table, {{:current, issue_id}, record})
-    :ok = :dets.insert(ledger.table, {{:meta, @namespace}, %{schema_version: 2, project_namespace: @namespace, tracker_identity: @identity}})
-    :ok = :dets.sync(ledger.table)
-    %{ledger | schema_version: 2}
   end
 
   defp current!(ledger, issue_id) do
@@ -427,17 +496,12 @@ defmodule SymphonyElixir.Gate2AttemptCompatibilityTest do
       rearm_reason: nil,
       rearmed_by: nil,
       rearmed_at: nil,
-      boundary_binding: %{
-        kind: :gate2,
-        binding_version: 1,
-        lineage_binding_id: "compatibility-binding",
-        resource_ledger_namespace: @namespace
-      }
+      boundary_binding: %{kind: :legacy}
     }
 
     table = :gate2_attempt_compatibility_receipt
     {:ok, ^table} = :dets.open_file(table, file: String.to_charlist(path), type: :set)
-    :ok = :dets.insert(table, {{:history, "compatibility-lineage"}, record})
+    :ok = :dets.insert(table, [{{:history, "compatibility-lineage"}, record}, {{:current, "compatibility-current"}, gate2_record("compatibility-current")}])
 
     if malformed_history? do
       :ok = :dets.insert(table, {{:history, "broken-history"}, :corrupt})

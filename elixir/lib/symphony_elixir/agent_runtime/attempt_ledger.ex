@@ -371,7 +371,7 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
          true <- reference.runtime_identity.lineage_generation == record.lineage_id,
          %{state: :bound, runtime_attempt: identity} = fence <- current_fence(record),
          true <- identity == reference.runtime_identity do
-      bind_existing_gate2_fence(ledger, issue_id, record, fence, reference)
+      bind_existing_gate2_fence(fence, reference)
     else
       false -> {:error, :gate2_boundary_required}
       nil -> {:error, :grant_not_found}
@@ -379,13 +379,8 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
     end
   end
 
-  defp bind_existing_gate2_fence(ledger, issue_id, record, fence, reference) do
+  defp bind_existing_gate2_fence(fence, reference) do
     case Map.get(fence, :gate2_fence) do
-      nil ->
-        updated_fence = Map.put(fence, :gate2_fence, %{reference: reference, status: :requested})
-        updated = record |> Map.put(:authority_fence, updated_fence) |> Map.put(:updated_at, now_ms())
-        persist_gate2_update(ledger, issue_id, updated)
-
       %{reference: ^reference, status: :requested} ->
         :ok
 
@@ -1364,6 +1359,10 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
             {:halt, {:error, {:corrupt_attempt_record, {:current, issue_id}, reason}}}
         end
 
+      # P01 has no Gate 2 release/rearm transaction that can produce history.
+      {{:history, lineage_id}, %{boundary_binding: %{kind: :gate2}}}, :ok ->
+        {:halt, {:error, {:corrupt_attempt_record, {:history, lineage_id}, :invalid_record}}}
+
       {{:history, lineage_id}, record}, :ok ->
         case validate_record(record, ledger, record_issue_id(record), @history_record_keys) do
           :ok when record.lineage_id == lineage_id ->
@@ -1420,6 +1419,25 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
   end
 
   defp validate_record(_record, _ledger, _issue_id, _allowed_keys), do: {:error, :invalid_record}
+
+  # The only P01 producer creates unresolved, open bound/requested intent.
+  # Missing or terminal fence facts cannot stand in for a qualified release.
+  defp validate_gate2_fence_binding(
+         %{
+           boundary_binding: %{kind: :gate2},
+           status: :open,
+           in_flight: true,
+           close_pending: false,
+           authority_fence: %{state: :bound, gate2_fence: gate2}
+         } = record,
+         ledger
+       ) do
+    with :ok <- validate_gate2_outer_identity(record),
+         do: validate_gate2_binding_record(record, gate2, ledger)
+  end
+
+  defp validate_gate2_fence_binding(%{boundary_binding: %{kind: :gate2}}, _ledger),
+    do: {:error, :invalid_record}
 
   defp validate_gate2_fence_binding(record, ledger) do
     fence = Map.get(record, :authority_fence)

@@ -194,6 +194,10 @@ Notes:
   resources or launch Codex. `gate2_enforced` returns `gate2_profile_incomplete` until the
   qualified components exist. Unknown mode names and nested keys fail configuration parsing.
   A Gate 2 ledger binding cannot be changed back to `legacy` by a workflow edit.
+- P01 admits Gate 2 lineage records only as open, in-flight, bound/requested intent.
+  Missing, armed, released or closed Gate 2 fence states are corrupt persisted state,
+  not clean release. P01 has no Gate 2 history producer; history requires a future
+  qualified release/rearm transaction. Legacy schema-1 and schema-2 states remain supported.
 - P01 grant digests are unverified fence-intent metadata. The registered host owner
   can bind them after matching durable reserved-resource facts. Hashing and persistence
   do not establish grant issuance or activation. Later fence requests resolve the exact
