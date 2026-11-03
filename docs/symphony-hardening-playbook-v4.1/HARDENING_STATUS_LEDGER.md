@@ -208,3 +208,39 @@ DECISION_REFERENCE=MG-2026-10-18-H120A-ACCEPT-H100-AUTH-01
 DECISION_TIMESTAMP=2026-10-18T16:32:05+02:00
 KNOWN_UNRESOLVED_GOVERNANCE_CONDITIONS=H100_NOT_ACCEPTED
 <!-- END SYMPHONY_GOVERNANCE_STATUS_V1 -->
+
+## Scoped Gate 2 scanner governance and approved implementation plan, 2026-11-03
+
+The Master Gate approved the complete Gate 2 implementation plan at planning
+level and selected the previously unbound scanner policy. The canonical records
+are the [scanner addendum](GATE2_SCANNER_GOVERNANCE_ADDENDUM_2026-11-03.md),
+[policy 1.0.0](GATE2_V1_CANDIDATE_VALIDATION_1.0.0.json),
+[scoped projection](GATE2_SCANNER_GOVERNANCE_PROJECTION.json), and
+[complete implementation plan](../superpowers/plans/2026-11-03-gate2-v1-implementation-plan.md).
+The original freeze packet and its embedded historical assertions are unchanged.
+
+```ini
+IMPLEMENTATION_PLAN_APPROVED_BY_MASTER_GATE=YES
+SCANNER_GOVERNANCE_VERDICT=NEW_POLICY_SELECTED_BY_GOVERNANCE
+FREEZE_EFFECT=AFFECTED_SCOPE_AMENDMENT
+GATE_2_STATUS=INCOMPLETE
+IMPLEMENTATION_AUTHORIZED=NO
+P01_IMPLEMENTATION_AUTHORIZED=NO
+P06_IMPLEMENTATION_AUTHORIZED=NO
+LOCAL_IMPLEMENTATION_AUTHORIZED=NO
+LOCAL_FOCUSED_P01_TESTS_AUTHORIZED=NO
+PROVIDER_EXECUTION_AUTHORIZED=NO
+LOCAL_CODEX_EXECUTION_AUTHORIZED=NO
+H100_EXECUTION_AUTHORIZED=NO
+AUTH_07=SUSPENDED_UNCONSUMED
+AUTH_07_CONSUMED=NO
+```
+
+G00 documentation materialization, document/non-Codex governance validation,
+commit, push and this governance PR are authorized. Its existing required GitHub
+Actions alone may run pinned Codex under the exact G00 CI-only exception. No
+local Codex, provider, scanner, runtime, P01 or H-100 execution is authorized.
+Independent review, human merge, exact post-merge verification and explicit
+successor-baseline applicability rebinding must occur before considering
+implementation authorization. This candidate does not complete G00 by itself.
+The programme-level H-100 projection and its authority block remain unchanged.
