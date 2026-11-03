@@ -172,14 +172,14 @@ defmodule SymphonyElixir.Gate2AttemptMigrationTest do
       case opened do
         {:ok, ledger} ->
           assert :ok = AttemptLedger.close(ledger)
-          assert {:ok, %{committed: true}} = AttemptLedgerMigration.migrate_v1_to_v2(path, request)
+          assert {:ok, %{committed: true}} = migrate_isolated(path, request, root: configured_root)
           assert {:ok, upgraded} = AttemptLedger.open(namespace, @identity)
           assert AttemptLedger.schema_version(upgraded) == 2
           assert :ok = AttemptLedger.close(upgraded)
 
         {:error, _reason} ->
           before = Path.wildcard(Path.join(root, "**/*"), match_dot: true)
-          assert {:error, :migration_not_permitted} = AttemptLedgerMigration.migrate_v1_to_v2(path, request)
+          assert {:error, :migration_not_permitted} = migrate_isolated(path, request, root: configured_root)
           assert Path.wildcard(Path.join(root, "**/*"), match_dot: true) == before
           refute File.exists?(path <> ".migration-journal")
           refute File.exists?(path)
@@ -763,7 +763,7 @@ defmodule SymphonyElixir.Gate2AttemptMigrationTest do
       "-e",
       script,
       "--",
-      Path.dirname(path),
+      Keyword.get(opts, :root, Path.dirname(path)),
       path,
       encoded_request,
       encoded_opts,
