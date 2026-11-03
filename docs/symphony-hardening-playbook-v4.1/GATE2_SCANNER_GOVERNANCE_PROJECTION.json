@@ -1,0 +1,190 @@
+{
+  "addendum_identity": {
+    "git_blob": "1371606b208da8df4c8bcc69387bb86153fec7a2",
+    "path": "docs/symphony-hardening-playbook-v4.1/GATE2_SCANNER_GOVERNANCE_ADDENDUM_2026-11-03.md",
+    "raw_bytes": 5619,
+    "raw_sha256": "8b3aade539270bed6c7a4647ff00e5aaf3bcb79a08cc0e5cc3a45a9eb45be34b"
+  },
+  "affected_scope": {
+    "components": [
+      "Output safety validator/scanner",
+      "Ephemeral candidate staging and safety validation"
+    ],
+    "dependent_obligations_without_other_semantic_change": [
+      "OB-016",
+      "OB-017",
+      "OB-018"
+    ],
+    "lifecycles": [
+      "LC-09",
+      "LC-10"
+    ],
+    "obligations": [
+      "OB-015",
+      "OB-019"
+    ]
+  },
+  "authority_input": {
+    "class": "SUPPLIED_MASTER_GATE_GOVERNANCE_DECISION_AND_PLAN_APPROVAL",
+    "date": "2026-11-03",
+    "decision_reference": null,
+    "exact_decision_timestamp": null,
+    "governance_review_verdict": "APPROVED",
+    "implementation_plan_approved_by_master_gate": true,
+    "repository_persistence": "CANDIDATE_PENDING_INDEPENDENT_REVIEW_HUMAN_MERGE_AND_POST_MERGE_VERIFICATION"
+  },
+  "future_implementation_delivery_lock": {
+    "commit_authorized": false,
+    "local_focused_non_codex_tests_authorized": false,
+    "open_pr_authorized": false,
+    "push_authorized": false,
+    "push_for_pr_ci_authorized": false,
+    "scope": "Gate 2 implementation only; not the separately authorized G00 documents task."
+  },
+  "g00_documentation_authority": {
+    "commit_g00_docs_authorized": true,
+    "create_governance_branch_authorized": true,
+    "create_worktree_authorized": true,
+    "documentation_materialization_authorized": true,
+    "edit_governance_and_plan_docs_authorized": true,
+    "local_codex_execution_authorized": false,
+    "local_document_validation_authorized": true,
+    "local_non_codex_governance_tests_authorized": true,
+    "merge_authorized": false,
+    "open_g00_pr_authorized": true,
+    "provider_execution_authorized": false,
+    "push_g00_docs_branch_authorized": true,
+    "required_ci_codex_execution_authorized": true,
+    "required_ci_codex_scope": "Required GitHub Actions for this exact G00 governance/docs PR only.",
+    "scanner_execution_authorized": false
+  },
+  "gate2_execution_lock": {
+    "auth_07": "SUSPENDED_UNCONSUMED",
+    "auth_07_consumed": false,
+    "authorized_run_count": 1,
+    "codex_execution_authorized": false,
+    "codex_recollection_allowed": false,
+    "gate_2_status": "INCOMPLETE",
+    "h100_execution_authorized": false,
+    "implementation_authorized": false,
+    "implementation_plan_approved_by_master_gate": true,
+    "inventory_verdict": "READY_FOR_GOVERNANCE_FREEZE",
+    "local_bearer_nondisclosure": "UNVERIFIED",
+    "local_codex_execution_authorized": false,
+    "local_focused_p01_tests_authorized": false,
+    "local_implementation_authorized": false,
+    "new_codex_execution": false,
+    "p01_implementation_authorized": false,
+    "p06_implementation_authorized": false,
+    "production_policy_changed": false,
+    "provider_execution_authorized": false,
+    "r4_package_accepted": false,
+    "raw_gate2_run_acceptance_authority": false,
+    "raw_gate2_run_lineage": "PARTIAL",
+    "retained_trace_role": "DIAGNOSTIC_ONLY"
+  },
+  "implementation_plan_identity": {
+    "git_blob": "bdb2840e5ea4ca8c8912d6cada3287078bbb3c72",
+    "path": "docs/superpowers/plans/2026-11-03-gate2-v1-implementation-plan.md",
+    "raw_bytes": 231932,
+    "raw_sha256": "a1d5cdba65c19a09e86ed814a595e8bbae0c9dcfc97afe021ab67826db09ff68"
+  },
+  "implementation_planning": {
+    "g00_complete": false,
+    "implementation_plan_verdict": "READY_FOR_GOVERNANCE_REVIEW",
+    "inventory_entries_accounted": 115,
+    "obligations_mapped": 26,
+    "obligations_total": 26,
+    "obligations_unmapped": 0,
+    "packages": [
+      "P01",
+      "P02",
+      "P03",
+      "P04",
+      "P05",
+      "P06",
+      "P07",
+      "P08",
+      "P09"
+    ],
+    "status": "COMPLETE_APPROVED_AT_PLANNING_LEVEL",
+    "successor_baseline_rebind_required": true,
+    "tls_fallback_regression_required": "gate2 transport never performs tls fallback after possible-send acknowledgement"
+  },
+  "original_freeze_identity": {
+    "combined_freeze_sha256": "1458bb041215c6268f2c69c01ed4198357e9561fbdc17a62e7288d0817b61911",
+    "inventory_entry_count": 115,
+    "inventory_sha256": "7341b7faae506db873f3aa9915f8c162f2a7ebe284e872e78189f66c6ead5c9c",
+    "obligation_count": 26,
+    "obligation_register_sha256": "c34f145948698ecd474c6ab8194537df4ad3ab8e8ad2c7070cc9ffde9142d686",
+    "packet_git_blob": "6cf92dbad8507d4e6c7553392b163fcac02b897d",
+    "packet_path": "docs/symphony-hardening-playbook-v4.1/GATE2_INVENTORY_FREEZE_PACKET_1458bb041215c626.json",
+    "packet_raw_bytes": 683322,
+    "packet_raw_sha256": "a651b1574ec0a186f6b4cd9548787cf9b67009f6692268ce5a8d0669d9d0636a",
+    "provider_contract": "SIWC_CHATGPT_PLAN_OAUTH_RESPONSES",
+    "reference_topology_selected": true,
+    "topology_selection": "SELECT_REFERENCE_TOPOLOGY"
+  },
+  "planning_baseline": {
+    "main_protected": true,
+    "main_sha": "c5b29a8417ae1d82db6e438716c1425ad6889761",
+    "main_tree": "792c0413b69a5ed4b2f40052c127bfc04f09a5af",
+    "required_checks": [
+      {
+        "app_id": 15368,
+        "context": "make-all"
+      },
+      {
+        "app_id": 15368,
+        "context": "validate-pr-description"
+      }
+    ]
+  },
+  "post_merge_requirements": [
+    "Independent review",
+    "Human merge",
+    "Verify successor protected-main SHA/tree",
+    "Verify policy/addendum/plan/projection exact blob/hash identities",
+    "Verify original packet byte-identical",
+    "Master Gate explicitly rebinds plan applicability",
+    "Separate decision before implementation"
+  ],
+  "projection_role": "SCOPED_DERIVATIVE_OF_SUPPLIED_MASTER_GATE_DECISION",
+  "scanner_governance": {
+    "credential_authority": "NONE",
+    "forward_scanner_policy_changed_no_meaning": "No semantic change from the exact accepted GATE2_V1_CANDIDATE_VALIDATION 1.0.0 digest, after merge and acceptance.",
+    "freeze_effect": "AFFECTED_SCOPE_AMENDMENT",
+    "generic_artifact_promotion": "DENIED",
+    "mutation_authority": "NONE",
+    "network_authority": "NONE",
+    "original_scanner_policy_changed_assertion": "NOT_USABLE_AS_IMPLEMENTATION_AUTHORITY",
+    "original_scanner_policy_reference_status": "UNBOUND",
+    "policy_id": "GATE2_V1_CANDIDATE_VALIDATION",
+    "policy_identity": {
+      "git_blob": "72632e9f2d92d176668286016f2ed3dfda500d85",
+      "path": "docs/symphony-hardening-playbook-v4.1/GATE2_V1_CANDIDATE_VALIDATION_1.0.0.json",
+      "raw_bytes": 6237,
+      "raw_sha256": "0d67fe1c0c532294dd3e946618d5bfd40c3d5ce6f50804e4bd20823ae5f756b7"
+    },
+    "policy_owner": "TRUSTED_HOST_VALIDATOR",
+    "policy_version": "1.0.0",
+    "provider_private_state_exemption": "DENIED",
+    "provider_private_state_promotion": "DENIED",
+    "scanner_authority_status": "NO_PREEXISTING_ACCEPTED_AUTHORITY",
+    "scanner_evidence_schema": "G2-SCAN-EVIDENCE-1.0.0",
+    "scanner_governance_verdict": "NEW_POLICY_SELECTED_BY_GOVERNANCE",
+    "scanner_implementation_authorized": false,
+    "scanner_implementation_id": "UNSELECTED",
+    "scanner_policy_baseline_established": true,
+    "scanner_selection_required": true
+  },
+  "schema_version": "G2-SCANNER-GOVERNANCE-PROJECTION-1.0.0",
+  "v4_1_programme_provenance": {
+    "h100_decision_reference": "MG-2026-10-18-H120A-ACCEPT-H100-AUTH-01",
+    "h100_status": "AUTHORIZED_ACTIVE_NOT_ACCEPTED",
+    "relation_to_gate2_lock": "SEPARATE_AUTHORITY_SCOPES; NEITHER OVERRIDES THE OTHER",
+    "source_baseline_sha": "62ba70e6fb97373c4a1cb680846aea985fc80d98",
+    "source_baseline_tree": "1eb430d3788d6cff666207e2fdeb8540ae906611",
+    "source_projection": "docs/symphony-hardening-playbook-v4.1/V4_1_GOVERNANCE_PROJECTION.json"
+  }
+}
