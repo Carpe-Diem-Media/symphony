@@ -163,24 +163,23 @@ defmodule SymphonyElixir.Gate2AttemptMigrationTest do
       valid? = unquote(valid?)
       configured_root = Path.join(root, "ledgers")
       File.mkdir_p!(configured_root)
-      Application.put_env(:symphony_elixir, :attempt_ledger_root, configured_root)
-      path = AttemptLedger.path_for(namespace)
+      path = AttemptLedger.path_for(namespace, root: configured_root)
       request = %{@request | project_namespace: namespace}
-      opened = AttemptLedger.open(namespace, @identity)
+      opened = AttemptLedger.open(namespace, @identity, root: configured_root)
       assert match?({:ok, _}, opened) == valid?
 
       case opened do
         {:ok, ledger} ->
           assert :ok = AttemptLedger.close(ledger)
           assert {:ok, %{committed: true}} = migrate_isolated(path, request, root: configured_root)
-          assert {:ok, upgraded} = AttemptLedger.open(namespace, @identity)
+          assert {:ok, upgraded} = AttemptLedger.open(namespace, @identity, root: configured_root)
           assert AttemptLedger.schema_version(upgraded) == 2
           assert :ok = AttemptLedger.close(upgraded)
 
         {:error, _reason} ->
-          before = Path.wildcard(Path.join(root, "**/*"), match_dot: true)
+          before = Path.wildcard(Path.join(configured_root, "**/*"), match_dot: true)
           assert {:error, :migration_not_permitted} = migrate_isolated(path, request, root: configured_root)
-          assert Path.wildcard(Path.join(root, "**/*"), match_dot: true) == before
+          assert Path.wildcard(Path.join(configured_root, "**/*"), match_dot: true) == before
           refute File.exists?(path <> ".migration-journal")
           refute File.exists?(path)
       end
