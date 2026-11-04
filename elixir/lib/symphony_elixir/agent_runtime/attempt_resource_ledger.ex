@@ -132,7 +132,7 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
   defp prepare_table(table, path_lock_id, namespace, host_id, current_generation, opts) do
     with :ok <- ensure_metadata(table, namespace, host_id, current_generation, opts),
          :ok <- validate_rows(table, namespace, host_id, current_generation),
-         :ok <- validate_unique_rows(table) do
+         :ok <- validate_unique_rows(table, namespace, host_id, current_generation) do
       :ok
     else
       {:error, reason} ->
@@ -216,7 +216,7 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
 
   defp handle_authorized_call({:reserve, resource}, state) do
     with {:ok, resource} <- validate_resource(resource, state),
-         {:ok, existing} <- lookup_resource(state.table, resource.resource_id) do
+         {:ok, existing} <- lookup_resource(state, resource.resource_id) do
       case existing do
         nil ->
           reserve_if_unclaimed(state, resource)
@@ -236,7 +236,7 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
     with true <- id?(resource_id),
          true <- is_integer(revision) and revision >= 0,
          {:ok, transition} <- validate_transition(transition),
-         {:ok, resource} <- lookup_resource(state.table, resource_id),
+         {:ok, resource} <- lookup_resource(state, resource_id),
          false <- is_nil(resource),
          :ok <- transition_guards(resource, revision, transition, state) do
       updated = apply_transition(resource, transition)
@@ -250,7 +250,7 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
 
   defp handle_authorized_call({:fetch, resource_id}, state) do
     if id?(resource_id) do
-      case lookup_resource(state.table, resource_id) do
+      case lookup_resource(state, resource_id) do
         {:ok, nil} -> {:reply, :not_found, state}
         {:ok, resource} -> {:reply, {:ok, resource}, state}
         {:error, reason} -> {:reply, {:error, reason}, state}
@@ -262,7 +262,7 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
 
   defp handle_authorized_call({:list_for_grant, grant_id}, state) do
     if id?(grant_id) do
-      case read_all(state.table) do
+      case read_all(state) do
         {:ok, resources} ->
           selected = resources |> Enum.filter(&(&1.grant_id == grant_id)) |> Enum.sort_by(& &1.resource_id)
           {:reply, {:ok, selected}, state}
@@ -280,7 +280,7 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
   defp handle_authorized_call(_request, state), do: {:reply, {:error, :invalid_request}, state}
 
   defp reserve_if_unclaimed(state, resource) do
-    case conflicting_identity(state.table, resource) do
+    case conflicting_identity(state, resource) do
       {:ok, nil} -> insert_reservation(state, resource)
       {:ok, conflict} -> quarantine_conflict(state, conflict)
       {:error, reason} -> {:reply, {:error, reason}, state}
@@ -288,7 +288,7 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
   end
 
   defp insert_reservation(state, resource) do
-    with :ok <- unique_identity(state.table, resource),
+    with :ok <- unique_identity(state, resource),
          {:reply, {:ok, ^resource}, next_state} <- persist(state, {:resource, resource.resource_id}, resource) do
       {:reply, {:ok, resource}, next_state}
     else
@@ -338,8 +338,8 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
     end
   end
 
-  defp conflicting_identity(table, resource) do
-    case read_all(table) do
+  defp conflicting_identity(state, resource) do
+    case read_all(state) do
       {:ok, rows} ->
         match =
           Enum.find(rows, fn row ->
@@ -522,13 +522,13 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
 
   defp validate_resource(_, _state), do: {:error, :invalid_request}
 
-  defp lookup_resource(table, resource_id) do
-    case safe_storage_call(&:dets.lookup/2, [table, {:resource, resource_id}]) do
+  defp lookup_resource(state, resource_id) do
+    case safe_storage_call(&:dets.lookup/2, [state.table, {:resource, resource_id}]) do
       {:ok, []} ->
         {:ok, nil}
 
       {:ok, [{{:resource, ^resource_id}, %AttemptResource{resource_id: ^resource_id} = resource}]} ->
-        normalize_stored_resource(resource)
+        normalize_stored_resource(resource, state.namespace, state.host_id, state.current_generation)
 
       {:ok, _} ->
         {:error, :storage_corrupt}
@@ -538,10 +538,11 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
     end
   end
 
-  defp normalize_stored_resource(resource) do
+  defp normalize_stored_resource(resource, namespace, host_id, current_generation) do
     with true <- is_struct(resource, AttemptResource) and exact_struct?(resource, AttemptResource),
          {:ok, ^resource} <- AttemptResource.new(Map.from_struct(resource)),
-         true <- p01_persisted_resource?(resource) do
+         true <- p01_persisted_resource?(resource),
+         true <- resource_matches_ledger?(resource, namespace, host_id, current_generation) do
       {:ok, resource}
     else
       _ -> {:error, :storage_corrupt}
@@ -589,35 +590,46 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
       (older == newer or older.sequence < newer.sequence)
   end
 
-  defp read_all(table) do
+  defp read_all(state) do
+    read_all(state.table, state.namespace, state.host_id, state.current_generation)
+  end
+
+  defp read_all(table, namespace, host_id, current_generation) do
     case safe_storage_call(&:dets.foldl/3, [fn row, acc -> [row | acc] end, [], table]) do
       {:ok, rows} ->
-        reduce_resource_rows(rows)
+        reduce_resource_rows(rows, namespace, host_id, current_generation)
 
       _ ->
         {:error, :storage_unavailable}
     end
   end
 
-  defp reduce_resource_rows(rows) do
-    Enum.reduce_while(rows, {:ok, []}, &read_resource_row/2)
+  defp reduce_resource_rows(rows, namespace, host_id, current_generation) do
+    Enum.reduce_while(rows, {:ok, []}, fn row, acc ->
+      read_resource_row(row, acc, namespace, host_id, current_generation)
+    end)
   end
 
   defp read_resource_row(
          {{:resource, id}, %AttemptResource{resource_id: id} = resource},
-         {:ok, acc}
+         {:ok, acc},
+         namespace,
+         host_id,
+         current_generation
        ) do
-    case normalize_stored_resource(resource) do
+    case normalize_stored_resource(resource, namespace, host_id, current_generation) do
       {:ok, normalized} -> {:cont, {:ok, [normalized | acc]}}
       {:error, reason} -> {:halt, {:error, reason}}
     end
   end
 
-  defp read_resource_row({{:meta, :ledger}, _metadata}, {:ok, acc}), do: {:cont, {:ok, acc}}
-  defp read_resource_row(_row, _acc), do: {:halt, {:error, :storage_corrupt}}
+  defp read_resource_row({{:meta, :ledger}, _metadata}, {:ok, acc}, _namespace, _host_id, _generation),
+    do: {:cont, {:ok, acc}}
 
-  defp unique_identity(table, resource) do
-    case read_all(table) do
+  defp read_resource_row(_row, _acc, _namespace, _host_id, _generation), do: {:halt, {:error, :storage_corrupt}}
+
+  defp unique_identity(state, resource) do
+    case read_all(state) do
       {:ok, rows} ->
         if Enum.any?(rows, fn row ->
              row.project_namespace == resource.project_namespace and row.owner_host_id == resource.owner_host_id and
@@ -700,8 +712,8 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
     sync_fun = Keyword.get(opts, :sync_fun, &:dets.sync/1)
 
     with :ok <- validate_rows(table, old_metadata.project_namespace, old_metadata.host_id, old_generation),
-         :ok <- validate_unique_rows(table),
-         {:ok, rows} <- read_all(table),
+         :ok <- validate_unique_rows(table, old_metadata.project_namespace, old_metadata.host_id, old_generation),
+         {:ok, rows} <- read_all(table, old_metadata.project_namespace, old_metadata.host_id, old_generation),
          :ok <- recovery_write(table, {{:meta, :recovery_pending}, true}, write_fun),
          :ok <- recovery_sync(table, sync_fun),
          :ok <- write_reconciled_rows(table, rows, fresh_generation, write_fun),
@@ -815,11 +827,9 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
   end
 
   defp validate_resource_row(resource, namespace, host_id, current_generation) do
-    case normalize_stored_resource(resource) do
-      {:ok, normalized} ->
-        if resource_matches_ledger?(normalized, namespace, host_id, current_generation),
-          do: {:cont, :ok},
-          else: {:halt, {:error, :storage_corrupt}}
+    case normalize_stored_resource(resource, namespace, host_id, current_generation) do
+      {:ok, _normalized} ->
+        {:cont, :ok}
 
       _ ->
         {:halt, {:error, :storage_corrupt}}
@@ -835,8 +845,8 @@ defmodule SymphonyElixir.AgentRuntime.AttemptResourceLedger do
       resource.reconciliation_generation == current_generation
   end
 
-  defp validate_unique_rows(table) do
-    case read_all(table) do
+  defp validate_unique_rows(table, namespace, host_id, current_generation) do
+    case read_all(table, namespace, host_id, current_generation) do
       {:ok, rows} ->
         ambiguous? =
           Enum.with_index(rows)

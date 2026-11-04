@@ -24,6 +24,58 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
     {:ok, root: root, path: path, owner_name: name}
   end
 
+  for mismatch <- [
+        :foreign_namespace,
+        :foreign_host,
+        :stale_generation,
+        :future_generation,
+        :outer_namespace,
+        :outer_host
+      ],
+      operation <- [:fetch, :list, :list_other_grant, :reserve_same_id, :reserve_identity_scan, :transition] do
+    @tag :r07_identity
+    test "R07 #{mismatch} rejects #{operation} before admission or rewrite", context do
+      original = resource(creation_generation: generation(2), reconciliation_generation: generation(2))
+      {:ok, ledger} = start_ledger(context, current_generation: original.reconciliation_generation)
+      assert {:ok, ^original} = AttemptResourceLedger.reserve_sync(ledger, original)
+      foreign = r07_misplaced_resource(original, unquote(mismatch))
+      assert {:ok, ^foreign} = AttemptResource.new(Map.from_struct(foreign))
+      table = :sys.get_state(ledger).table
+      assert :ok = :dets.insert(table, {{:resource, original.resource_id}, foreign})
+      assert :ok = :dets.sync(table)
+      before = :dets.foldl(fn row, rows -> [row | rows] end, [], table) |> Enum.sort()
+
+      result =
+        case unquote(operation) do
+          :fetch ->
+            AttemptResourceLedger.fetch(ledger, original.resource_id)
+
+          :list ->
+            AttemptResourceLedger.list_for_grant(ledger, original.grant_id)
+
+          :list_other_grant ->
+            AttemptResourceLedger.list_for_grant(ledger, "unrelated-grant")
+
+          :reserve_same_id ->
+            AttemptResourceLedger.reserve_sync(ledger, original)
+
+          :reserve_identity_scan ->
+            AttemptResourceLedger.reserve_sync(ledger, %{original | resource_id: "resource-2"})
+
+          :transition ->
+            request = transition(:fencing, original.reconciliation_generation)
+            AttemptResourceLedger.transition_sync(ledger, original.resource_id, 0, request)
+        end
+
+      assert :dets.foldl(fn row, rows -> [row | rows] end, [], table) |> Enum.sort() == before
+      assert result == {:error, :storage_corrupt}
+      assert {:error, :storage_unavailable} = AttemptResourceLedger.fetch(ledger, original.resource_id)
+      assert {:error, :storage_unavailable} = AttemptResourceLedger.list_for_grant(ledger, original.grant_id)
+      assert {:error, :storage_unavailable} = AttemptResourceLedger.reserve_sync(ledger, original)
+      assert :ok = AttemptResourceLedger.close(ledger)
+    end
+  end
+
   for invalid <- [
         :allocating,
         :allocated,
@@ -1360,6 +1412,31 @@ defmodule SymphonyElixir.Gate2AttemptResourceLedgerTest do
     send(owner, {:fetch, ledger, resource_id, self(), reference})
     assert_receive {^reference, result}
     result
+  end
+
+  defp r07_misplaced_resource(_original, mismatch) when mismatch in [:stale_generation, :future_generation] do
+    sequence = if mismatch == :stale_generation, do: 1, else: 3
+    resource(creation_generation: generation(sequence), reconciliation_generation: generation(sequence))
+  end
+
+  defp r07_misplaced_resource(original, :outer_namespace), do: %{original | project_namespace: "foreign-project"}
+  defp r07_misplaced_resource(original, :outer_host), do: %{original | owner_host_id: "foreign-host"}
+
+  defp r07_misplaced_resource(original, mismatch) do
+    generation =
+      case mismatch do
+        :foreign_namespace -> %{original.reconciliation_generation | project_namespace: "foreign-project"}
+        :foreign_host -> %{original.reconciliation_generation | host_id: "foreign-host"}
+      end
+
+    %{
+      original
+      | project_namespace: generation.project_namespace,
+        owner_host_id: generation.host_id,
+        creation_generation: generation,
+        reconciliation_generation: generation,
+        quarantine: %{original.quarantine | generation: generation}
+    }
   end
 
   defp resource(overrides \\ []) do

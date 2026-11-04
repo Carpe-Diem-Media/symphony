@@ -208,6 +208,10 @@ Notes:
   `released_for_new_authorization` is inadmissible even with supplied evidence or resolution
   references. Validation precedes recovery writes, so rejected records are preserved and
   recovery does not advance. Other restrictive dispositions retain their exact semantics.
+  Live reads and conflict scans enforce the opened ledger's namespace, host and current
+  reconciliation generation before returning or rewriting a row. A mismatch blocks the open
+  ledger without rewriting the invalid fact. Older creation and quarantine generations remain
+  valid after completed recovery; recovery preflight checks against the stored prior generation.
 - P01 grant digests are unverified fence-intent metadata. The registered host owner
   can bind them after matching durable reserved-resource facts. Hashing and persistence
   do not establish grant issuance or activation. Later fence requests resolve the exact
