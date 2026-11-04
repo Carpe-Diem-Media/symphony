@@ -7,12 +7,15 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
   autonomous safety decisions across a process restart.
   """
 
+  alias SymphonyElixir.AgentRuntime.AttemptBoundary
+  alias SymphonyElixir.AgentRuntime.AttemptLedgerMigration
   alias SymphonyElixir.AgentRuntime.AttemptPolicy
+  alias SymphonyElixir.AgentRuntime.CleanupEvidenceRef
   alias SymphonyElixir.AgentRuntime.RuntimeAttempt.Identity
   alias SymphonyElixir.Config.Schema
   alias SymphonyElixir.WorkControl.{ProviderObservation, SuspensionContext}
 
-  @schema_version 1
+  @schema_version 2
   @durable_counter_keys [:ordinary_failures, :ordinary_retries, :review_cycles]
   @base_record_keys [
     :schema_version,
@@ -32,7 +35,7 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
   @allowed_identity_keys [:tracker_kind, :provider_scope]
   @allowed_scope_keys [:project_slug, :repo, :project_key, :project_gid, :workspace_slug, :workspace_id, :project_id]
 
-  defstruct [:table, :path, :project_id, :tracker_identity, :write_fun, :sync_fun]
+  defstruct [:table, :path, :project_id, :tracker_identity, :write_fun, :sync_fun, schema_version: 1]
 
   @type t :: %__MODULE__{
           table: term(),
@@ -40,13 +43,170 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
           project_id: String.t(),
           tracker_identity: map(),
           write_fun: (atom(), term() -> term()),
-          sync_fun: (atom() -> term())
+          sync_fun: (atom() -> term()),
+          schema_version: 1 | 2
         }
 
   @type record :: %{atom() => term()}
 
-  @spec schema_version() :: pos_integer()
+  @spec schema_version() :: 2
   def schema_version, do: @schema_version
+
+  @spec schema_version(t()) :: 1 | 2
+  def schema_version(%__MODULE__{schema_version: version}), do: version
+
+  @doc false
+  def configured_schema(project_id, tracker_identity, opts \\ [])
+
+  @spec configured_schema(String.t(), map(), keyword()) ::
+          {:ok, 1 | 2, boolean()} | {:error, SymphonyElixir.AgentRuntime.AttemptBoundary.error()}
+
+  def configured_schema(project_id, tracker_identity, opts)
+      when is_binary(project_id) and is_map(tracker_identity) and is_list(opts) do
+    path = path_for(project_id, opts)
+
+    if File.regular?(path),
+      do: configured_schema_for_existing_file(path, project_id, tracker_identity),
+      else: {:error, :migration_required}
+  rescue
+    _ -> {:error, :storage_corrupt}
+  end
+
+  def configured_schema(_project_id, _tracker_identity, _opts), do: {:error, :invalid_request}
+
+  defp configured_schema_for_existing_file(path, project_id, tracker_identity) do
+    case AttemptLedgerMigration.with_open_lock(path, fn ->
+           read_configured_schema(path, project_id, tracker_identity)
+         end) do
+      {:ok, result} -> result
+      {:error, _reason} -> {:error, :migration_in_progress}
+    end
+  end
+
+  @doc false
+  def configured_mode(mode, project_id, tracker_identity, opts \\ [])
+
+  @spec configured_mode(String.t(), String.t(), map(), keyword()) ::
+          :ok | {:error, SymphonyElixir.AgentRuntime.AttemptBoundary.error()}
+
+  def configured_mode("legacy", project_id, tracker_identity, opts) do
+    case configured_schema(project_id, tracker_identity, opts) do
+      {:error, :identity_mismatch} ->
+        # Existing identity-drift reconciliation must see legacy config changes.
+        # The stored identity resolves the binding; caller identity cannot hide it.
+        path = path_for(project_id, opts)
+        path |> configured_schema_for_existing_file(project_id, :stored_identity) |> legacy_mode_decision()
+
+      result ->
+        legacy_mode_decision(result)
+    end
+  end
+
+  def configured_mode("gate2_foundation", project_id, tracker_identity, opts) do
+    case configured_schema(project_id, tracker_identity, opts) do
+      {:ok, 2, _has_gate2_binding} -> :ok
+      {:ok, _version, _has_gate2_binding} -> {:error, :migration_required}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def configured_mode("gate2_enforced", _project_id, _tracker_identity, _opts),
+    do: {:error, :gate2_profile_incomplete}
+
+  def configured_mode(_mode, _project_id, _tracker_identity, _opts),
+    do: {:error, :invalid_request}
+
+  defp legacy_mode_decision({:ok, 2, true}), do: {:error, :binding_downgrade_denied}
+  defp legacy_mode_decision({:ok, _version, _has_gate2_binding}), do: :ok
+  defp legacy_mode_decision({:error, :migration_required}), do: :ok
+  defp legacy_mode_decision({:error, reason}), do: {:error, reason}
+
+  defp read_configured_schema(path, project_id, tracker_identity) do
+    # Validate the locked snapshot before checking its receipt. Reopening an
+    # already-owned read-write table as read-only would reject a healthy ledger.
+    with {:ok, rows} <- read_configured_rows(path),
+         {:ok, tracker_identity} <- configured_snapshot_identity(rows, project_id, tracker_identity),
+         {:ok, version} <- configured_rows_schema(rows),
+         :ok <- validate_snapshot(project_id, tracker_identity, rows, version),
+         :ok <- AttemptLedgerMigration.admission_check(path, project_id, tracker_identity, version) do
+      gate2_binding? =
+        Enum.any?(rows, fn
+          {{kind, _key}, %{boundary_binding: %{kind: :gate2}}} when kind in [:current, :history] -> true
+          _ -> false
+        end)
+
+      {:ok, version, gate2_binding?}
+    else
+      {:error, reason} -> {:error, normalize_configured_schema_error(reason)}
+    end
+  end
+
+  defp configured_snapshot_identity(rows, project_id, :stored_identity) do
+    case Enum.find(rows, &match?({{:meta, ^project_id}, _metadata}, &1)) do
+      {{:meta, ^project_id}, %{tracker_identity: identity}} when is_map(identity) -> {:ok, identity}
+      _ -> {:error, :storage_corrupt}
+    end
+  end
+
+  defp configured_snapshot_identity(_rows, _project_id, identity) when is_map(identity), do: {:ok, identity}
+
+  defp read_configured_rows(path) do
+    if :dets.info(path) == :undefined,
+      do: open_configured_rows(path),
+      else: read_open_configured_rows(path)
+  rescue
+    _ -> {:error, :storage_corrupt}
+  end
+
+  defp open_configured_rows(path) do
+    case :dets.open_file(path, file: String.to_charlist(path), type: :set, access: :read, repair: false) do
+      {:ok, ^path} ->
+        result = {:ok, :dets.foldl(fn row, acc -> [row | acc] end, [], path)}
+        if :dets.close(path) == :ok, do: result, else: {:error, :storage_unavailable}
+
+      {:error, {:already_started, _pid}} ->
+        read_open_configured_rows(path)
+
+      {:error, _reason} ->
+        {:error, :storage_corrupt}
+    end
+  end
+
+  defp read_open_configured_rows(path) do
+    case :dets.info(path, :access) do
+      access when access in [:read, :read_write] ->
+        {:ok, :dets.foldl(fn row, acc -> [row | acc] end, [], path)}
+
+      _ ->
+        {:error, :storage_unavailable}
+    end
+  end
+
+  defp configured_rows_schema(rows) do
+    case Enum.find(rows, &match?({{:meta, _}, _}, &1)) do
+      {{:meta, _}, %{schema_version: version}} when version in [1, 2] -> {:ok, version}
+      {{:meta, _}, %{schema_version: _version}} -> {:error, :unsupported_schema}
+      _ -> {:error, :storage_corrupt}
+    end
+  end
+
+  @spec normalize_configured_schema_error(term()) ::
+          :migration_in_progress
+          | :unsupported_schema
+          | :storage_unavailable
+          | :namespace_mismatch
+          | :identity_mismatch
+          | :schema_mismatch
+          | :storage_corrupt
+  defp normalize_configured_schema_error(:migration_in_progress), do: :migration_in_progress
+  defp normalize_configured_schema_error(:unsupported_schema), do: :unsupported_schema
+  defp normalize_configured_schema_error(:storage_unavailable), do: :storage_unavailable
+
+  defp normalize_configured_schema_error(reason)
+       when reason in [:namespace_mismatch, :identity_mismatch, :schema_mismatch],
+       do: reason
+
+  defp normalize_configured_schema_error(_reason), do: :storage_corrupt
 
   @spec path_for(String.t(), keyword()) :: Path.t()
   def path_for(project_id, opts \\ []) when is_binary(project_id) do
@@ -71,27 +231,288 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
          :ok <- validate_tracker_identity(tracker_identity),
          path <- path_for(project_id, opts),
          :ok <- ensure_parent_directory(path),
-         {:ok, table} <- open_table(path) do
-      result =
-        with {:ok, ledger} <- build_ledger(table, path, project_id, tracker_identity, opts),
-             :ok <- initialize_or_validate(ledger) do
-          {:ok, ledger}
-        end
-
-      case result do
-        {:ok, _ledger} ->
-          result
-
-        {:error, _reason} = error ->
-          _ = close_table(table)
-          error
-      end
+         {:ok, result} <-
+           AttemptLedgerMigration.with_open_lock(path, fn ->
+             open_locked(path, project_id, tracker_identity, opts)
+           end) do
+      result
     end
   end
+
+  defp open_locked(path, project_id, tracker_identity, opts) do
+    with :ok <- migration_journal_clear(path),
+         {:ok, table} <- open_table(path) do
+      open_table_ledger(table, path, project_id, tracker_identity, opts)
+    end
+  end
+
+  defp open_table_ledger(table, path, project_id, tracker_identity, opts) do
+    result =
+      with {:ok, ledger} <- build_ledger(table, path, project_id, tracker_identity, opts),
+           :ok <- AttemptLedgerMigration.admission_check(path, project_id, tracker_identity, ledger.schema_version),
+           :ok <- initialize_or_validate(ledger) do
+        {:ok, ledger}
+      end
+
+    case result do
+      {:ok, _ledger} ->
+        result
+
+      {:error, _reason} = error ->
+        _ = close_table(table)
+        error
+    end
+  end
+
+  defp migration_journal_clear(path) do
+    AttemptLedgerMigration.admission_check(path)
+  end
+
+  @doc false
+  @spec validate_snapshot(String.t(), map(), [term()], 1 | 2) ::
+          :ok | {:error, SymphonyElixir.AgentRuntime.AttemptBoundary.error()}
+  def validate_snapshot(project_id, tracker_identity, rows, expected_schema)
+      when is_binary(project_id) and is_map(tracker_identity) and is_list(rows) and expected_schema in [1, 2] do
+    ledger = %__MODULE__{
+      project_id: project_id,
+      tracker_identity: tracker_identity,
+      schema_version: expected_schema
+    }
+
+    with {:ok, metadata} <- metadata_record(rows),
+         :ok <- validate_metadata(metadata, ledger),
+         true <- Map.fetch!(elem(metadata, 1), :schema_version) == expected_schema,
+         :ok <- validate_stored_records(rows, ledger) do
+      :ok
+    else
+      false -> {:error, :storage_corrupt}
+      {:error, reason} -> {:error, normalize_snapshot_error(reason)}
+    end
+  rescue
+    _ -> {:error, :storage_corrupt}
+  end
+
+  defp normalize_snapshot_error({:ledger_project_namespace_mismatch, _, _}), do: :namespace_mismatch
+  defp normalize_snapshot_error({:ledger_tracker_identity_mismatch, _, _}), do: :identity_mismatch
+  defp normalize_snapshot_error({:ledger_schema_version_unsupported, _}), do: :unsupported_schema
+  defp normalize_snapshot_error(_), do: :storage_corrupt
 
   @spec close(t()) :: :ok | {:error, term()}
   def close(%__MODULE__{table: table}) do
     close_table(table)
+  end
+
+  @spec bind_gate2_fence_sync(t(), String.t(), SymphonyElixir.AgentRuntime.AttemptGrant.ref()) ::
+          :ok | {:error, SymphonyElixir.AgentRuntime.AttemptBoundary.error()}
+  def bind_gate2_fence_sync(%__MODULE__{} = ledger, issue_id, reference)
+      when is_binary(issue_id) and is_map(reference),
+      do: AttemptBoundary.bind_gate2_fence_sync(ledger, issue_id, reference)
+
+  def bind_gate2_fence_sync(_ledger, _issue_id, _reference), do: {:error, :invalid_request}
+
+  @spec release_gate2_authority_fence(
+          t(),
+          String.t(),
+          Identity.t(),
+          SymphonyElixir.AgentRuntime.CleanupEvidenceRef.t()
+        ) :: :ok | {:error, SymphonyElixir.AgentRuntime.AttemptBoundary.error()}
+  def release_gate2_authority_fence(
+        %__MODULE__{} = ledger,
+        issue_id,
+        %Identity{} = identity,
+        %CleanupEvidenceRef{} = evidence
+      )
+      when is_binary(issue_id),
+      do: AttemptBoundary.release_gate2_authority_fence(ledger, issue_id, identity, evidence)
+
+  def release_gate2_authority_fence(_ledger, _issue_id, _identity, _evidence), do: {:error, :invalid_request}
+
+  @doc false
+  @spec bind_gate2_fence_from_boundary(t(), String.t(), SymphonyElixir.AgentRuntime.AttemptGrant.ref()) ::
+          :ok | {:error, SymphonyElixir.AgentRuntime.AttemptBoundary.error()}
+  def bind_gate2_fence_from_boundary(%__MODULE__{} = ledger, issue_id, reference) do
+    case validate_gate2_binding_request(ledger, issue_id, reference) do
+      :ok ->
+        case current(ledger, issue_id) do
+          :not_found ->
+            persist_new_gate2_lineage(ledger, issue_id, reference)
+
+          {:ok, record} ->
+            bind_existing_gate2_lineage(ledger, issue_id, record, reference)
+
+          {:error, reason} ->
+            {:error, normalize_gate2_error(reason)}
+        end
+
+      {:error, reason} ->
+        {:error, normalize_gate2_error(reason)}
+    end
+  end
+
+  def bind_gate2_fence_from_boundary(_ledger, _issue_id, _reference), do: {:error, :invalid_request}
+
+  defp validate_gate2_binding_request(ledger, issue_id, reference) do
+    boundary = AttemptBoundary
+
+    cond do
+      Process.whereis(boundary) != self() -> {:error, :gate2_boundary_required}
+      ledger.schema_version != 2 -> {:error, :gate2_boundary_required}
+      not is_binary(issue_id) -> {:error, :gate2_boundary_required}
+      not valid_gate2_reference?(reference) -> {:error, :gate2_boundary_required}
+      reference.project_namespace != ledger.project_id -> {:error, :gate2_boundary_required}
+      true -> :ok
+    end
+  end
+
+  defp bind_existing_gate2_lineage(ledger, issue_id, record, reference) do
+    with %{kind: :gate2, resource_ledger_namespace: namespace} <- Map.get(record, :boundary_binding),
+         true <- namespace == ledger.project_id,
+         true <- reference.runtime_identity.work_item_id == issue_id,
+         true <- reference.runtime_identity.lineage_generation == record.lineage_id,
+         %{state: :bound, runtime_attempt: identity} = fence <- current_fence(record),
+         true <- identity == reference.runtime_identity do
+      bind_existing_gate2_fence(fence, reference)
+    else
+      false -> {:error, :gate2_boundary_required}
+      nil -> {:error, :grant_not_found}
+      _ -> {:error, :grant_not_found}
+    end
+  end
+
+  defp bind_existing_gate2_fence(fence, reference) do
+    case Map.get(fence, :gate2_fence) do
+      %{reference: ^reference, status: :requested} ->
+        :ok
+
+      _ ->
+        {:error, :binding_downgrade_denied}
+    end
+  end
+
+  defp persist_gate2_update(ledger, issue_id, updated) do
+    with :ok <- validate_record(updated, ledger, issue_id, allowed_record_keys(updated)),
+         :ok <- persist_records(ledger, [{{:current, issue_id}, updated}]) do
+      :ok
+    else
+      {:error, reason} -> {:error, normalize_gate2_error(reason)}
+    end
+  end
+
+  defp persist_new_gate2_lineage(ledger, issue_id, reference) do
+    identity = reference.runtime_identity
+
+    record = %{
+      schema_version: 2,
+      project_namespace: ledger.project_id,
+      issue_id: issue_id,
+      lineage_id: identity.lineage_generation,
+      safety_counters: durable_counter_defaults(),
+      status: :open,
+      stop_reason: nil,
+      route_fingerprint: nil,
+      in_flight: true,
+      authority_fence: %{
+        state: :bound,
+        runtime_attempt: identity,
+        route_fingerprint: nil,
+        gate2_fence: %{reference: reference, status: :requested}
+      },
+      close_pending: false,
+      updated_at: now_ms(),
+      boundary_binding: %{
+        kind: :gate2,
+        binding_version: 1,
+        lineage_binding_id: new_lineage_id(),
+        resource_ledger_namespace: ledger.project_id
+      }
+    }
+
+    with true <- reference.runtime_identity.work_item_id == issue_id,
+         :ok <- validate_record(record, ledger, issue_id, @base_record_keys),
+         :ok <- validate_record(record, ledger, issue_id, allowed_record_keys(record)),
+         :ok <- persist_records(ledger, [{{:current, issue_id}, record}]) do
+      :ok
+    else
+      false -> {:error, :identity_mismatch}
+      {:error, reason} -> {:error, normalize_gate2_error(reason)}
+    end
+  end
+
+  @doc false
+  @spec request_gate2_fence_from_boundary(t(), String.t(), SymphonyElixir.AgentRuntime.AttemptGrant.ref(), atom()) ::
+          :ok | {:error, SymphonyElixir.AgentRuntime.AttemptBoundary.error()}
+  def request_gate2_fence_from_boundary(%__MODULE__{} = ledger, issue_id, reference, reason) do
+    boundary = SymphonyElixir.AgentRuntime.AttemptBoundary
+
+    with true <- Process.whereis(boundary) == self(),
+         true <- ledger.schema_version == 2,
+         true <- valid_gate2_reference?(reference),
+         true <- reason in [:completion, :cancellation, :failure, :restart, :publication],
+         {:ok, record} <- current(ledger, issue_id),
+         %{
+           state: :bound,
+           gate2_fence: %{reference: ^reference, status: :requested} = gate2
+         } = fence <- current_fence(record) do
+      case Map.get(gate2, :requested_reason) do
+        nil ->
+          updated_gate2 = Map.put(gate2, :requested_reason, reason)
+          updated_fence = Map.put(fence, :gate2_fence, updated_gate2)
+          updated = record |> Map.put(:authority_fence, updated_fence) |> Map.put(:updated_at, now_ms())
+
+          persist_gate2_update(ledger, issue_id, updated)
+
+        ^reason ->
+          :ok
+
+        _other ->
+          {:error, :binding_downgrade_denied}
+      end
+    else
+      false -> {:error, :gate2_boundary_required}
+      nil -> {:error, :grant_not_found}
+      {:error, reason} -> {:error, normalize_gate2_error(reason)}
+      _ -> {:error, :grant_not_found}
+    end
+  end
+
+  def request_gate2_fence_from_boundary(_ledger, _issue_id, _reference, _reason), do: {:error, :invalid_request}
+
+  @doc false
+  @spec gate2_fence_reference(t(), String.t()) ::
+          {:ok, SymphonyElixir.AgentRuntime.AttemptGrant.ref()} | :not_found | {:error, SymphonyElixir.AgentRuntime.AttemptBoundary.error()}
+  def gate2_fence_reference(%__MODULE__{} = ledger, issue_id) when is_binary(issue_id) do
+    case current(ledger, issue_id) do
+      {:ok,
+       %{
+         authority_fence: %{state: :bound} = fence,
+         boundary_binding: %{kind: :gate2, resource_ledger_namespace: namespace}
+       }} ->
+        requested_gate2_reference(ledger, namespace, fence)
+
+      {:ok, _} ->
+        :not_found
+
+      :not_found ->
+        :not_found
+
+      {:error, reason} ->
+        {:error, normalize_gate2_error(reason)}
+    end
+  end
+
+  def gate2_fence_reference(_ledger, _issue_id), do: {:error, :invalid_request}
+
+  defp requested_gate2_reference(ledger, namespace, fence) do
+    case Map.get(fence, :gate2_fence) do
+      %{reference: reference, status: :requested} = gate2
+      when namespace == ledger.project_id and map_size(gate2) in [2, 3] ->
+        if valid_gate2_reference?(reference) and valid_requested_reason?(gate2),
+          do: {:ok, reference},
+          else: {:error, :storage_corrupt}
+
+      _ ->
+        :not_found
+    end
   end
 
   @spec current(t(), String.t()) :: {:ok, record()} | :not_found | {:error, term()}
@@ -139,7 +560,8 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
     issue_id = Map.get(record, :issue_id)
     current_record = if is_binary(issue_id), do: current(ledger, issue_id), else: :not_found
 
-    with :ok <- validate_put_fence(current_record, record),
+    with :ok <- preserve_boundary_binding(current_record, record),
+         :ok <- validate_put_fence(current_record, record),
          :ok <- validate_record(record, ledger, issue_id, @base_record_keys),
          issue_id when is_binary(issue_id) <- issue_id,
          :ok <- persist_status_allowed?(ledger, issue_id, Map.get(record, :status)) do
@@ -168,53 +590,77 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
   defp validate_put_fence(_current, %{in_flight: true}), do: {:error, :authority_fence_unresolved}
   defp validate_put_fence(_current, _record), do: :ok
 
+  defp preserve_boundary_binding({:ok, %{boundary_binding: %{kind: :gate2}}}, _record),
+    do: {:error, :attempt_resource_verification_required}
+
+  defp preserve_boundary_binding({:ok, %{boundary_binding: %{kind: :legacy}}}, %{boundary_binding: %{kind: :gate2}}),
+    do: {:error, :attempt_resource_verification_required}
+
+  defp preserve_boundary_binding(:not_found, %{boundary_binding: %{kind: :gate2}}),
+    do: {:error, :attempt_resource_verification_required}
+
+  defp preserve_boundary_binding({:error, reason}, _record), do: {:error, reason}
+
+  defp preserve_boundary_binding(_current, _record), do: :ok
+
+  defp legacy_write_allowed(ledger, issue_id) do
+    case current(ledger, issue_id) do
+      {:ok, %{boundary_binding: %{kind: :gate2}}} -> {:error, :attempt_resource_verification_required}
+      {:ok, _record} -> :ok
+      :not_found -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   @spec begin_attempt(t(), String.t()) :: {:ok, record()} | {:error, term()}
   def begin_attempt(ledger, issue_id), do: begin_attempt(ledger, issue_id, [])
 
   @spec begin_attempt(t(), String.t(), keyword()) :: {:ok, record()} | {:error, term()}
   def begin_attempt(%__MODULE__{} = ledger, issue_id, opts) when is_binary(issue_id) do
-    case current(ledger, issue_id) do
-      {:ok, %{status: :exhausted}} ->
-        {:error, :lineage_exhausted}
+    with :ok <- legacy_write_allowed(ledger, issue_id) do
+      case current(ledger, issue_id) do
+        {:ok, %{status: :exhausted}} ->
+          {:error, :lineage_exhausted}
 
-      {:ok, %{status: :open, in_flight: true}} ->
-        {:error, :attempt_in_flight}
+        {:ok, %{status: :open, in_flight: true}} ->
+          {:error, :attempt_in_flight}
 
-      {:ok, %{status: :closed, close_pending: true}} ->
-        {:error, :lineage_close_pending}
+        {:ok, %{status: :closed, close_pending: true}} ->
+          {:error, :lineage_close_pending}
 
-      {:ok, %{status: :open, safety_counters: counters}} ->
-        persist_safety(ledger, issue_id, counters,
-          status: :open,
-          stop_reason: nil,
-          route_fingerprint: Keyword.get(opts, :route_fingerprint),
-          in_flight: true,
-          authority_fence: %{state: :armed},
-          updated_at: Keyword.get(opts, :updated_at, now_ms())
-        )
+        {:ok, %{status: :open, safety_counters: counters}} ->
+          persist_safety(ledger, issue_id, counters,
+            status: :open,
+            stop_reason: nil,
+            route_fingerprint: Keyword.get(opts, :route_fingerprint),
+            in_flight: true,
+            authority_fence: %{state: :armed},
+            updated_at: Keyword.get(opts, :updated_at, now_ms())
+          )
 
-      {:ok, %{status: :closed}} ->
-        persist_safety(ledger, issue_id, durable_counter_defaults(),
-          status: :open,
-          stop_reason: nil,
-          route_fingerprint: Keyword.get(opts, :route_fingerprint),
-          in_flight: true,
-          authority_fence: %{state: :armed},
-          updated_at: Keyword.get(opts, :updated_at, now_ms())
-        )
+        {:ok, %{status: :closed}} ->
+          persist_safety(ledger, issue_id, durable_counter_defaults(),
+            status: :open,
+            stop_reason: nil,
+            route_fingerprint: Keyword.get(opts, :route_fingerprint),
+            in_flight: true,
+            authority_fence: %{state: :armed},
+            updated_at: Keyword.get(opts, :updated_at, now_ms())
+          )
 
-      :not_found ->
-        persist_safety(ledger, issue_id, durable_counter_defaults(),
-          status: :open,
-          stop_reason: nil,
-          route_fingerprint: Keyword.get(opts, :route_fingerprint),
-          in_flight: true,
-          authority_fence: %{state: :armed},
-          updated_at: Keyword.get(opts, :updated_at, now_ms())
-        )
+        :not_found ->
+          persist_safety(ledger, issue_id, durable_counter_defaults(),
+            status: :open,
+            stop_reason: nil,
+            route_fingerprint: Keyword.get(opts, :route_fingerprint),
+            in_flight: true,
+            authority_fence: %{state: :armed},
+            updated_at: Keyword.get(opts, :updated_at, now_ms())
+          )
 
-      {:error, reason} ->
-        {:error, reason}
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -225,47 +671,49 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
 
   @spec fence_attempt(t(), String.t(), keyword()) :: {:ok, record()} | {:error, term()}
   def fence_attempt(%__MODULE__{} = ledger, issue_id, opts) when is_binary(issue_id) do
-    case current(ledger, issue_id) do
-      {:ok, %{status: :exhausted}} ->
-        {:error, :lineage_exhausted}
+    with :ok <- legacy_write_allowed(ledger, issue_id) do
+      case current(ledger, issue_id) do
+        {:ok, %{status: :exhausted}} ->
+          {:error, :lineage_exhausted}
 
-      {:ok, %{status: :closed, close_pending: true}} ->
-        {:error, :lineage_close_pending}
+        {:ok, %{status: :closed, close_pending: true}} ->
+          {:error, :lineage_close_pending}
 
-      {:ok, %{status: :open, in_flight: true}} ->
-        {:error, :attempt_in_flight}
+        {:ok, %{status: :open, in_flight: true}} ->
+          {:error, :attempt_in_flight}
 
-      {:ok, %{status: :open, safety_counters: counters} = record} ->
-        persist_safety(ledger, issue_id, counters,
-          status: :open,
-          stop_reason: nil,
-          route_fingerprint: Keyword.get(opts, :route_fingerprint, Map.get(record, :route_fingerprint)),
-          in_flight: true,
-          authority_fence: %{state: :armed},
-          updated_at: Keyword.get(opts, :updated_at, now_ms())
-        )
+        {:ok, %{status: :open, safety_counters: counters} = record} ->
+          persist_safety(ledger, issue_id, counters,
+            status: :open,
+            stop_reason: nil,
+            route_fingerprint: Keyword.get(opts, :route_fingerprint, Map.get(record, :route_fingerprint)),
+            in_flight: true,
+            authority_fence: %{state: :armed},
+            updated_at: Keyword.get(opts, :updated_at, now_ms())
+          )
 
-      {:ok, %{status: :closed}} ->
-        persist_safety(ledger, issue_id, durable_counter_defaults(),
-          status: :open,
-          stop_reason: nil,
-          route_fingerprint: Keyword.get(opts, :route_fingerprint),
-          in_flight: true,
-          authority_fence: %{state: :armed},
-          updated_at: Keyword.get(opts, :updated_at, now_ms())
-        )
+        {:ok, %{status: :closed}} ->
+          persist_safety(ledger, issue_id, durable_counter_defaults(),
+            status: :open,
+            stop_reason: nil,
+            route_fingerprint: Keyword.get(opts, :route_fingerprint),
+            in_flight: true,
+            authority_fence: %{state: :armed},
+            updated_at: Keyword.get(opts, :updated_at, now_ms())
+          )
 
-      :not_found ->
-        persist_safety(ledger, issue_id, durable_counter_defaults(),
-          status: :open,
-          stop_reason: nil,
-          route_fingerprint: Keyword.get(opts, :route_fingerprint),
-          in_flight: true,
-          updated_at: Keyword.get(opts, :updated_at, now_ms())
-        )
+        :not_found ->
+          persist_safety(ledger, issue_id, durable_counter_defaults(),
+            status: :open,
+            stop_reason: nil,
+            route_fingerprint: Keyword.get(opts, :route_fingerprint),
+            in_flight: true,
+            updated_at: Keyword.get(opts, :updated_at, now_ms())
+          )
 
-      {:error, reason} ->
-        {:error, reason}
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -273,7 +721,8 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
 
   @spec bind_runtime_attempt(t(), String.t(), Identity.t()) :: {:ok, record()} | {:error, term()}
   def bind_runtime_attempt(%__MODULE__{} = ledger, issue_id, %Identity{} = identity) do
-    with true <- Identity.valid?(identity) || {:error, :invalid_runtime_attempt_identity},
+    with :ok <- legacy_write_allowed(ledger, issue_id),
+         true <- Identity.valid?(identity) || {:error, :invalid_runtime_attempt_identity},
          {:ok, record} <- current(ledger, issue_id),
          true <- identity.work_item_id == issue_id || {:error, :runtime_attempt_identity_mismatch},
          true <- identity.lineage_generation == record.lineage_id || {:error, :runtime_attempt_identity_mismatch},
@@ -305,6 +754,16 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
 
   @spec release_armed_authority_fence(t(), String.t()) :: :ok | {:error, term()}
   def release_armed_authority_fence(%__MODULE__{} = ledger, issue_id) when is_binary(issue_id) do
+    case legacy_write_allowed(ledger, issue_id) do
+      {:error, :attempt_resource_verification_required} = error -> error
+      {:error, reason} -> {:error, reason}
+      :ok -> release_legacy_armed_fence(ledger, issue_id)
+    end
+  end
+
+  def release_armed_authority_fence(_ledger, _issue_id), do: {:error, :invalid_attempt_arguments}
+
+  defp release_legacy_armed_fence(ledger, issue_id) do
     case current(ledger, issue_id) do
       {:ok, %{in_flight: true, authority_fence: %{state: :armed}} = record} ->
         persist_released_fence(ledger, issue_id, record, record.authority_fence)
@@ -323,14 +782,13 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
     end
   end
 
-  def release_armed_authority_fence(_ledger, _issue_id), do: {:error, :invalid_attempt_arguments}
-
   @spec mark_suspension_pending(t(), String.t(), Identity.t(), map()) :: {:ok, record()} | {:error, term()}
   def mark_suspension_pending(%__MODULE__{} = ledger, issue_id, %Identity{} = identity, intent)
       when is_map(intent) do
     intent = Map.put_new(intent, :suspension_id, suspension_id_for(identity))
 
-    with {:ok, record} <- current(ledger, issue_id),
+    with :ok <- legacy_write_allowed(ledger, issue_id),
+         {:ok, record} <- current(ledger, issue_id),
          fence <- current_fence(record),
          :ok <- validate_fence_identity(fence, identity, issue_id, record.lineage_id),
          :ok <- validate_suspension_intent_for_identity(intent, identity) do
@@ -365,7 +823,8 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
 
   @spec release_authority_fence(t(), String.t(), Identity.t()) :: :ok | {:error, term()}
   def release_authority_fence(%__MODULE__{} = ledger, issue_id, %Identity{} = identity) do
-    with {:ok, record} <- current(ledger, issue_id),
+    with :ok <- legacy_write_allowed(ledger, issue_id),
+         {:ok, record} <- current(ledger, issue_id),
          fence <- current_fence(record),
          :ok <- validate_fence_identity(fence, identity, issue_id, record.lineage_id),
          %{state: :bound} <- fence do
@@ -387,7 +846,8 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
         %Identity{} = identity,
         %SuspensionContext{} = context
       ) do
-    with {:ok, record} <- current(ledger, issue_id),
+    with :ok <- legacy_write_allowed(ledger, issue_id),
+         {:ok, record} <- current(ledger, issue_id),
          fence <- current_fence(record),
          :ok <- validate_fence_identity(fence, identity, issue_id, record.lineage_id),
          :ok <- validate_terminal_suspension_context(context, issue_id, record.lineage_id) do
@@ -537,6 +997,16 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
 
   @spec clear_in_flight(t(), String.t(), keyword()) :: :ok | {:error, term()}
   def clear_in_flight(%__MODULE__{} = ledger, issue_id, opts) when is_binary(issue_id) do
+    case legacy_write_allowed(ledger, issue_id) do
+      {:error, :attempt_resource_verification_required} = error -> error
+      {:error, reason} -> {:error, reason}
+      :ok -> clear_legacy_in_flight(ledger, issue_id, opts)
+    end
+  end
+
+  def clear_in_flight(_ledger, _issue_id, _opts), do: {:error, :invalid_attempt_arguments}
+
+  defp clear_legacy_in_flight(ledger, issue_id, opts) do
     case current(ledger, issue_id) do
       :not_found ->
         :ok
@@ -554,8 +1024,6 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
         {:error, reason}
     end
   end
-
-  def clear_in_flight(_ledger, _issue_id, _opts), do: {:error, :invalid_attempt_arguments}
 
   defp clear_in_flight_record(ledger, issue_id, record, opts) do
     cond do
@@ -597,12 +1065,14 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
     default_fence = if in_flight, do: existing_fence || %{state: :armed}, else: existing_fence
     authority_fence = Keyword.get(opts, :authority_fence, default_fence)
 
-    with :ok <- persist_status_allowed?(ledger, issue_id, status),
+    with :ok <- legacy_write_allowed(ledger, issue_id),
+         :ok <- persist_status_allowed?(ledger, issue_id, status),
          {:ok, lineage_id} <- lineage_id_for(ledger, issue_id),
+         {:ok, binding} <- boundary_binding_for(ledger, issue_id),
          {:ok, safety_counters} <- durable_counters(counters),
          stop_reason <- Keyword.get(opts, :stop_reason),
          record <- %{
-           schema_version: @schema_version,
+           schema_version: ledger.schema_version,
            project_namespace: ledger.project_id,
            issue_id: issue_id,
            lineage_id: lineage_id,
@@ -615,6 +1085,7 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
            close_pending: false,
            updated_at: Keyword.get(opts, :updated_at, now_ms())
          },
+         record <- maybe_put_boundary_binding(record, ledger, binding),
          :ok <- put(ledger, record) do
       {:ok, record}
     else
@@ -624,6 +1095,14 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
 
   @spec close_lineage(t(), String.t(), keyword()) :: :ok | {:error, term()}
   def close_lineage(%__MODULE__{} = ledger, issue_id, opts \\ []) when is_binary(issue_id) do
+    case legacy_write_allowed(ledger, issue_id) do
+      {:error, :attempt_resource_verification_required} = error -> error
+      {:error, reason} -> {:error, reason}
+      :ok -> close_legacy_lineage(ledger, issue_id, opts)
+    end
+  end
+
+  defp close_legacy_lineage(ledger, issue_id, opts) do
     case current(ledger, issue_id) do
       :not_found ->
         :ok
@@ -675,6 +1154,16 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
 
   @spec confirm_lineage_close(t(), String.t()) :: :ok | {:error, term()}
   def confirm_lineage_close(%__MODULE__{} = ledger, issue_id) when is_binary(issue_id) do
+    case legacy_write_allowed(ledger, issue_id) do
+      {:error, :attempt_resource_verification_required} = error -> error
+      {:error, reason} -> {:error, reason}
+      :ok -> confirm_legacy_lineage_close(ledger, issue_id)
+    end
+  end
+
+  def confirm_lineage_close(_ledger, _issue_id), do: {:error, :invalid_attempt_arguments}
+
+  defp confirm_legacy_lineage_close(ledger, issue_id) do
     case current(ledger, issue_id) do
       {:ok, %{status: :closed}} ->
         with :ok <- sync(ledger),
@@ -693,14 +1182,13 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
     end
   end
 
-  def confirm_lineage_close(_ledger, _issue_id), do: {:error, :invalid_attempt_arguments}
-
   @spec rearm(t(), String.t(), String.t(), String.t(), non_neg_integer()) ::
           {:ok, record()} | {:error, term()}
   def rearm(%__MODULE__{} = ledger, issue_id, reason, operator, timestamp)
       when is_binary(issue_id) and is_binary(reason) and is_binary(operator) and is_integer(timestamp) and
              timestamp >= 0 do
-    with :ok <- validate_rearm_value(reason, :reason),
+    with :ok <- rearm_binding_allowed(ledger, issue_id),
+         :ok <- validate_rearm_value(reason, :reason),
          :ok <- validate_rearm_value(operator, :operator),
          {:ok, exhausted} <- exhausted_current(ledger, issue_id) do
       old_lineage_id = exhausted.lineage_id
@@ -721,7 +1209,7 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
         exhausted
         |> Map.take(@base_record_keys)
         |> Map.merge(%{
-          schema_version: @schema_version,
+          schema_version: ledger.schema_version,
           project_namespace: ledger.project_id,
           issue_id: issue_id,
           lineage_id: new_lineage_id(),
@@ -733,6 +1221,7 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
           authority_fence: nil,
           updated_at: timestamp
         })
+        |> maybe_put_boundary_binding(ledger, Map.get(exhausted, :boundary_binding, %{kind: :legacy}))
 
       with :ok <- validate_record(history, ledger, issue_id, @history_record_keys),
            :ok <- validate_record(new_record, ledger, issue_id, @base_record_keys),
@@ -754,9 +1243,24 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
 
   def rearm(_ledger, _issue_id, _reason, _operator, _timestamp), do: {:error, :invalid_rearm_arguments}
 
+  defp rearm_binding_allowed(ledger, issue_id) do
+    case current(ledger, issue_id) do
+      {:ok, %{boundary_binding: %{kind: :gate2}}} -> {:error, :gate2_boundary_required}
+      {:ok, _record} -> :ok
+      :not_found -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   defp build_ledger(table, path, project_id, tracker_identity, opts) do
     write_fun = Keyword.get(opts, :write_fun, &:dets.insert/2)
     sync_fun = Keyword.get(opts, :sync_fun, &:dets.sync/1)
+
+    stored_schema =
+      case :dets.lookup(table, {:meta, project_id}) do
+        [{{:meta, ^project_id}, %{schema_version: version}}] when version in [1, 2] -> version
+        _ -> 1
+      end
 
     if is_function(write_fun, 2) and is_function(sync_fun, 1) do
       {:ok,
@@ -765,6 +1269,7 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
          path: path,
          project_id: project_id,
          tracker_identity: tracker_identity,
+         schema_version: stored_schema,
          write_fun: write_fun,
          sync_fun: sync_fun
        }}
@@ -854,6 +1359,10 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
             {:halt, {:error, {:corrupt_attempt_record, {:current, issue_id}, reason}}}
         end
 
+      # P01 has no Gate 2 release/rearm transaction that can produce history.
+      {{:history, lineage_id}, %{boundary_binding: %{kind: :gate2}}}, :ok ->
+        {:halt, {:error, {:corrupt_attempt_record, {:history, lineage_id}, :invalid_record}}}
+
       {{:history, lineage_id}, record}, :ok ->
         case validate_record(record, ledger, record_issue_id(record), @history_record_keys) do
           :ok when record.lineage_id == lineage_id ->
@@ -888,6 +1397,7 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
     with :ok <- validate_record_keys(record, allowed_keys),
          {:ok, in_flight, close_pending} <- fetch_safety_fields(record),
          :ok <- validate_schema_version(Map.get(record, :schema_version)),
+         :ok <- validate_record_schema_and_binding(record, ledger),
          :ok <- validate_project_namespace(Map.get(record, :project_namespace), ledger.project_id),
          :ok <- validate_non_empty_string(Map.get(record, :issue_id), :issue_id),
          :ok <- validate_non_empty_string(Map.get(record, :lineage_id), :lineage_id),
@@ -895,6 +1405,7 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
          :ok <- validate_status(Map.get(record, :status)),
          :ok <- validate_stop_reason(Map.get(record, :stop_reason)),
          :ok <- validate_route_fingerprint(Map.get(record, :route_fingerprint)),
+         :ok <- validate_gate2_fence_binding(record, ledger),
          :ok <- validate_in_flight(in_flight),
          :ok <- validate_close_pending(close_pending),
          :ok <- validate_authority_fence(Map.get(record, :authority_fence), in_flight),
@@ -909,8 +1420,82 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
 
   defp validate_record(_record, _ledger, _issue_id, _allowed_keys), do: {:error, :invalid_record}
 
+  # The only P01 producer creates unresolved, open bound/requested intent.
+  # Missing or terminal fence facts cannot stand in for a qualified release.
+  defp validate_gate2_fence_binding(
+         %{
+           boundary_binding: %{kind: :gate2},
+           status: :open,
+           in_flight: true,
+           close_pending: false,
+           safety_counters: %{ordinary_failures: 0, ordinary_retries: 0, review_cycles: 0},
+           route_fingerprint: nil,
+           authority_fence:
+             %{
+               state: :bound,
+               runtime_attempt: %Identity{},
+               route_fingerprint: nil,
+               gate2_fence: gate2
+             } = fence
+         } = record,
+         ledger
+       )
+       when map_size(fence) == 4 do
+    with :ok <- validate_gate2_outer_identity(record),
+         do: validate_gate2_binding_record(record, gate2, ledger)
+  end
+
+  defp validate_gate2_fence_binding(%{boundary_binding: %{kind: :gate2}}, _ledger),
+    do: {:error, :invalid_record}
+
+  defp validate_gate2_fence_binding(record, ledger) do
+    fence = Map.get(record, :authority_fence)
+
+    with :ok <- validate_gate2_outer_identity(record) do
+      if is_map(fence) and Map.has_key?(fence, :gate2_fence),
+        do: validate_gate2_binding_record(record, Map.get(fence, :gate2_fence), ledger),
+        else: :ok
+    end
+  end
+
+  defp validate_gate2_outer_identity(%{
+         boundary_binding: %{kind: :gate2},
+         authority_fence: %{runtime_attempt: identity},
+         issue_id: issue_id,
+         lineage_id: lineage_id
+       })
+       when not is_nil(identity) do
+    if strict_gate2_identity?(identity) and identity.work_item_id == issue_id and
+         identity.lineage_generation == lineage_id,
+       do: :ok,
+       else: {:error, :invalid_record}
+  end
+
+  defp validate_gate2_outer_identity(_record), do: :ok
+
+  defp validate_gate2_binding_record(
+         %{boundary_binding: %{kind: :gate2, resource_ledger_namespace: namespace}} = record,
+         gate2,
+         ledger
+       )
+       when namespace == ledger.project_id do
+    reference = if is_map(gate2), do: Map.get(gate2, :reference)
+
+    valid? =
+      is_map(gate2) and valid_requested_reason?(gate2) and valid_gate2_reference?(reference) and
+        reference.project_namespace == ledger.project_id and
+        reference.runtime_identity.work_item_id == record.issue_id and
+        reference.runtime_identity.lineage_generation == record.lineage_id and
+        reference.runtime_identity == get_in(record, [:authority_fence, :runtime_attempt])
+
+    if valid?, do: :ok, else: {:error, :invalid_record}
+  end
+
+  defp validate_gate2_binding_record(_binding, _gate2, _ledger), do: {:error, :invalid_record}
+
   defp validate_record_keys(record, allowed_keys) do
-    if Enum.all?(Map.keys(record), &(&1 in allowed_keys)), do: :ok, else: {:error, :invalid_record}
+    valid? = Enum.all?(Map.keys(record), fn key -> key in allowed_keys or (key == :boundary_binding and Map.get(record, :schema_version) == 2) end)
+    if valid?, do: :ok, else: {:error, :invalid_record}
   end
 
   defp fetch_safety_fields(record) do
@@ -922,8 +1507,42 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
     end
   end
 
-  defp validate_schema_version(@schema_version), do: :ok
+  defp validate_schema_version(version) when version in [1, 2], do: :ok
   defp validate_schema_version(version), do: {:error, {:ledger_schema_version_unsupported, version}}
+
+  defp validate_record_schema_and_binding(%{schema_version: 1}, %{schema_version: 1}), do: :ok
+  defp validate_record_schema_and_binding(%{schema_version: 2, boundary_binding: %{kind: :legacy} = binding}, %{schema_version: 2}) when map_size(binding) == 1, do: :ok
+
+  defp validate_record_schema_and_binding(
+         %{
+           schema_version: 2,
+           boundary_binding:
+             %{kind: :gate2, binding_version: 1, lineage_binding_id: id, resource_ledger_namespace: namespace} =
+               binding
+         },
+         %{schema_version: 2, project_id: namespace}
+       )
+       when map_size(binding) == 4 and is_binary(id) and byte_size(id) in 1..128 and
+              is_binary(namespace) and byte_size(namespace) in 1..128 do
+    if String.trim(id) == id and id != "" and String.trim(namespace) == namespace and namespace != "",
+      do: :ok,
+      else: {:error, :invalid_record}
+  end
+
+  defp validate_record_schema_and_binding(_, _), do: {:error, :invalid_record}
+
+  defp boundary_binding_for(%{schema_version: 1}, _issue_id), do: {:ok, nil}
+
+  defp boundary_binding_for(ledger, issue_id) do
+    case current(ledger, issue_id) do
+      {:ok, record} -> {:ok, Map.get(record, :boundary_binding, %{kind: :legacy})}
+      :not_found -> {:ok, %{kind: :legacy}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp maybe_put_boundary_binding(record, %{schema_version: 2}, binding), do: Map.put(record, :boundary_binding, binding)
+  defp maybe_put_boundary_binding(record, _ledger, _binding), do: record
 
   defp validate_project_namespace(project_id, project_id) when is_binary(project_id), do: :ok
   defp validate_project_namespace(_stored, _expected), do: {:error, :invalid_record}
@@ -993,8 +1612,21 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
   defp validate_authority_fence(nil, false), do: :ok
   defp validate_authority_fence(%{state: :armed}, true), do: :ok
 
-  defp validate_authority_fence(%{state: :bound, runtime_attempt: %Identity{}, route_fingerprint: route}, true)
-       when is_binary(route) or is_nil(route), do: :ok
+  defp validate_authority_fence(%{state: :bound, runtime_attempt: %Identity{}, route_fingerprint: route} = fence, true)
+       when is_binary(route) or is_nil(route) do
+    case Map.get(fence, :gate2_fence) do
+      nil ->
+        :ok
+
+      %{reference: reference, status: :requested} = gate2 when map_size(gate2) in [2, 3] ->
+        valid_reason = Map.get(gate2, :requested_reason) in [nil, :completion, :cancellation, :failure, :restart, :publication]
+
+        if valid_gate2_reference?(reference) and valid_reason, do: :ok, else: {:error, :invalid_record}
+
+      _ ->
+        {:error, :invalid_record}
+    end
+  end
 
   defp validate_authority_fence(
          %{
@@ -1015,6 +1647,59 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
 
   defp validate_authority_fence(%{state: :legacy_ambiguous}, true), do: :ok
   defp validate_authority_fence(_fence, _in_flight), do: {:error, :invalid_record}
+
+  defp valid_gate2_reference?(
+         %{
+           grant_id: grant_id,
+           project_namespace: namespace,
+           runtime_identity: identity,
+           fence_epoch: epoch,
+           grant_sha256: digest
+         } = reference
+       ) do
+    expected = [:grant_id, :project_namespace, :runtime_identity, :fence_epoch, :grant_sha256]
+
+    Enum.sort(Map.keys(reference)) == Enum.sort(expected) and id?(grant_id) and id?(namespace) and
+      strict_gate2_identity?(identity) and is_integer(epoch) and epoch > 0 and digest?(digest)
+  end
+
+  defp valid_gate2_reference?(_), do: false
+
+  defp valid_requested_reason?(%{status: :requested} = gate2) do
+    case Enum.sort(Map.keys(gate2)) do
+      [:reference, :status] ->
+        true
+
+      [:reference, :requested_reason, :status] ->
+        gate2.requested_reason in [:completion, :cancellation, :failure, :restart, :publication]
+
+      _ ->
+        false
+    end
+  end
+
+  defp valid_requested_reason?(_), do: false
+
+  @spec strict_gate2_identity?(term()) :: boolean()
+  defp strict_gate2_identity?(%Identity{} = identity) do
+    expected = [:runtime_attempt_id, :work_item_id, :lineage_generation, :responsibility, :runtime_profile]
+
+    Enum.sort(Map.keys(identity)) == Enum.sort([:__struct__ | expected]) and
+      Enum.all?(expected, fn field -> id?(Map.get(identity, field)) end)
+  end
+
+  defp strict_gate2_identity?(_), do: false
+
+  defp id?(value), do: is_binary(value) and byte_size(value) in 1..256 and String.trim(value) != ""
+  defp digest?(value), do: is_binary(value) and Regex.match?(~r/\A[a-f0-9]{64}\z/, value)
+
+  defp normalize_gate2_error(:gate2_boundary_required), do: :gate2_boundary_required
+  defp normalize_gate2_error(:ledger_project_namespace_mismatch), do: :namespace_mismatch
+  defp normalize_gate2_error(:corrupt_attempt_record), do: :storage_corrupt
+  defp normalize_gate2_error({:ledger_write_failed, _}), do: :write_failed
+  defp normalize_gate2_error({:ledger_sync_failed, _}), do: :sync_failed
+  defp normalize_gate2_error({:ledger_read_failed, _}), do: :storage_unavailable
+  defp normalize_gate2_error(_), do: :storage_corrupt
 
   defp validate_safety_state(%{status: status} = record) do
     if Map.get(record, :close_pending, false) and status != :closed do
@@ -1191,8 +1876,14 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
     kind, reason -> {:error, {:ledger_sync_failed, {kind, reason}}}
   end
 
-  defp all_records(%__MODULE__{table: table}) do
-    {:ok, :dets.foldl(fn record, records -> [record | records] end, [], table)}
+  defp all_records(%__MODULE__{table: table} = ledger) do
+    records = :dets.foldl(fn record, records -> [record | records] end, [], table)
+
+    if ledger.schema_version == 2 do
+      with :ok <- validate_stored_records(records, ledger), do: {:ok, records}
+    else
+      {:ok, records}
+    end
   catch
     kind, reason -> {:error, {:ledger_read_failed, {kind, reason}}}
   end
@@ -1238,7 +1929,7 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
 
   defp metadata(%__MODULE__{} = ledger) do
     %{
-      schema_version: @schema_version,
+      schema_version: ledger.schema_version,
       project_namespace: ledger.project_id,
       tracker_identity: ledger.tracker_identity
     }

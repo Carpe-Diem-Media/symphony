@@ -51,9 +51,27 @@ defmodule SymphonyElixir.AgentRunner do
   @spec run(map(), pid() | nil, keyword()) ::
           :ok | {:error, {:runtime_containment_unconfirmed, :termination_timeout}} | no_return()
   def run(issue, codex_update_recipient \\ nil, opts \\ []) do
+    settings = Config.settings!()
+
+    case {Config.validate_attempt_boundary(settings), SymphonyElixir.runtime_start_decision(settings)} do
+      {:ok, :legacy} ->
+        run_legacy_attempt(issue, codex_update_recipient, opts, settings)
+
+      {{:error, reason}, _decision} ->
+        raise RuntimeError, "Agent attempt boundary validation failed: #{inspect(reason)}"
+
+      {:ok, :gate2_dormant} ->
+        raise RuntimeError, "Agent runtime is dormant: gate2_dormant"
+
+      {:ok, {:error, reason}} ->
+        raise RuntimeError, "Agent runtime start is rejected: #{inspect(reason)}"
+    end
+  end
+
+  defp run_legacy_attempt(issue, codex_update_recipient, opts, settings) do
     # The orchestrator owns host retries so one worker lifetime never hops machines.
     worker_host =
-      selected_worker_host(Keyword.get(opts, :worker_host), Config.settings!().worker.ssh_hosts)
+      selected_worker_host(Keyword.get(opts, :worker_host), settings.worker.ssh_hosts)
 
     case route_from_options(issue, opts) do
       {:ok, route} ->

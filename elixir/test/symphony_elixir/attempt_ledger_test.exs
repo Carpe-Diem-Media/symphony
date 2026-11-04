@@ -2,6 +2,8 @@ defmodule SymphonyElixir.AttemptLedgerTest do
   use ExUnit.Case
 
   alias SymphonyElixir.AgentRuntime.AttemptLedger
+  alias SymphonyElixir.AgentRuntime.CleanupEvidenceRef
+  alias SymphonyElixir.AgentRuntime.RecoveryGeneration
   alias SymphonyElixir.AgentRuntime.RuntimeAttempt.Identity
   alias SymphonyElixir.WorkControl.{ProviderObservation, SuspensionContext}
 
@@ -14,6 +16,48 @@ defmodule SymphonyElixir.AttemptLedgerTest do
     on_exit(fn -> File.rm_rf(root) end)
 
     {:ok, root: root, path: Path.join(root, "attempts.dets")}
+  end
+
+  test "latest schema differs from the schema opened for a legacy ledger", %{path: path} do
+    assert AttemptLedger.schema_version() == 2
+    {:ok, ledger} = AttemptLedger.open("project-a", @identity, path: path)
+    assert AttemptLedger.schema_version(ledger) == 1
+    assert :ok = AttemptLedger.close(ledger)
+  end
+
+  test "Gate 2 fence binding and release remain closed without resource verification", %{path: path} do
+    {:ok, ledger} = AttemptLedger.open("project-a", @identity, path: path)
+
+    identity = %Identity{
+      runtime_attempt_id: "attempt-a",
+      work_item_id: "issue-a",
+      lineage_generation: "lineage-a",
+      responsibility: "builder",
+      runtime_profile: "profile-a"
+    }
+
+    assert {:error, :gate2_boundary_required} = AttemptLedger.bind_gate2_fence_sync(ledger, "issue-a", %{})
+
+    {:ok, generation} = RecoveryGeneration.new(%{schema_version: 1, project_namespace: "project-a", host_id: "host-a", boot_id: "boot-a", sequence: 1, nonce: "nonce-a"})
+
+    {:ok, evidence} =
+      CleanupEvidenceRef.new(%{
+        schema_version: 1,
+        evidence_id: "evidence-a",
+        evidence_sha256: String.duplicate("a", 64),
+        project_namespace: "project-a",
+        grant_id: "grant-a",
+        runtime_identity: identity,
+        fence_epoch: 1,
+        resource_set_sha256: String.duplicate("b", 64),
+        verification_generation: generation,
+        verifier_implementation_sha256: String.duplicate("c", 64)
+      })
+
+    assert {:error, :gate2_boundary_required} =
+             AttemptLedger.release_gate2_authority_fence(ledger, "issue-a", identity, evidence)
+
+    assert :ok = AttemptLedger.close(ledger)
   end
 
   test "persists safety snapshots across a real DETS close and reopen", %{path: path} do
@@ -822,12 +866,13 @@ defmodule SymphonyElixir.AttemptLedgerTest do
   end
 
   test "exposes the schema version and fails closed for malformed public records", %{path: path} do
-    assert AttemptLedger.schema_version() == 1
+    assert AttemptLedger.schema_version() == 2
 
     assert AttemptLedger.path_for("project-a", path: "relative/ledger.dets") ==
              Path.expand("relative/ledger.dets")
 
     {:ok, ledger} = AttemptLedger.open("project-a", @identity, path: path)
+    assert AttemptLedger.schema_version(ledger) == 1
     valid = snapshot("project-a", "issue-a", "lineage-a", %{})
 
     invalid_records = [

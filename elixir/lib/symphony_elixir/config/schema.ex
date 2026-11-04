@@ -194,6 +194,36 @@ defmodule SymphonyElixir.Config.Schema do
 
     alias SymphonyElixir.Config.Schema
 
+    defmodule AttemptBoundary do
+      @moduledoc false
+      use Ecto.Schema
+      import Ecto.Changeset
+
+      @primary_key false
+      embedded_schema do
+        field(:mode, :string, default: "legacy")
+      end
+
+      @spec changeset(%__MODULE__{}, map()) :: Ecto.Changeset.t()
+      def changeset(schema, attrs) do
+        schema
+        |> strict_cast(attrs, [:mode])
+        |> update_change(:mode, &String.trim/1)
+        |> validate_inclusion(:mode, ["legacy", "gate2_foundation", "gate2_enforced"])
+      end
+
+      defp strict_cast(changeset, attrs, fields) when is_map(attrs) do
+        allowed = Enum.map(fields, &Atom.to_string/1)
+        unknown = Map.keys(attrs) -- allowed
+
+        changeset = cast(changeset, attrs, fields, empty_values: [])
+
+        if unknown == [], do: changeset, else: add_error(changeset, :mode, "contains unknown keys")
+      end
+
+      defp strict_cast(changeset, _attrs, _fields), do: add_error(changeset, :mode, "must be a map")
+    end
+
     @primary_key false
     embedded_schema do
       field(:max_concurrent_agents, :integer, default: 10)
@@ -203,6 +233,7 @@ defmodule SymphonyElixir.Config.Schema do
       # Legacy workflows remain outside the routed permission model unless the
       # operator opts in explicitly with `routing: routed`.
       field(:routing, :string, default: "legacy")
+      embeds_one(:attempt_boundary, AttemptBoundary, on_replace: :update, defaults_to_struct: true)
       field(:profiles, :map)
       field(:routes, :map, default: %{})
     end
@@ -228,6 +259,7 @@ defmodule SymphonyElixir.Config.Schema do
       |> validate_number(:max_retry_backoff_ms, greater_than: 0)
       |> update_change(:routing, &Schema.normalize_routing/1)
       |> validate_inclusion(:routing, ["legacy", "routed"])
+      |> cast_embed(:attempt_boundary, with: &AttemptBoundary.changeset/2)
       |> update_change(:max_concurrent_agents_by_state, &Schema.normalize_state_limits/1)
       |> Schema.validate_state_limits(:max_concurrent_agents_by_state)
     end
@@ -434,19 +466,61 @@ defmodule SymphonyElixir.Config.Schema do
 
   @spec parse(map()) :: {:ok, %__MODULE__{}} | {:error, {:invalid_workflow_config, String.t()}}
   def parse(config) when is_map(config) do
-    config
-    |> normalize_keys()
-    |> drop_nil_values()
-    |> changeset()
-    |> apply_action(:validate)
-    |> case do
-      {:ok, settings} ->
-        finalize_settings(settings)
+    case validate_attempt_boundary_input(config) do
+      :ok ->
+        config
+        |> normalize_keys()
+        |> drop_nil_values()
+        |> changeset()
+        |> apply_action(:validate)
+        |> case do
+          {:ok, settings} ->
+            finalize_settings(settings)
 
-      {:error, changeset} ->
-        {:error, {:invalid_workflow_config, format_errors(changeset)}}
+          {:error, changeset} ->
+            {:error, {:invalid_workflow_config, format_errors(changeset)}}
+        end
+
+      {:error, message} ->
+        {:error, {:invalid_workflow_config, message}}
     end
   end
+
+  defp validate_attempt_boundary_input(config) do
+    with {:ok, agent} <- fetch_config_key(config, :agent),
+         true <- is_map(agent) || :ok,
+         {:ok, attempt_boundary} <- fetch_config_key(agent, :attempt_boundary) do
+      cond do
+        is_nil(attempt_boundary) ->
+          {:error, "agent.attempt_boundary must be a map"}
+
+        not is_map(attempt_boundary) ->
+          {:error, "agent.attempt_boundary must be a map"}
+
+        config_key_present?(attempt_boundary, :mode) and is_nil(config_value(attempt_boundary, :mode)) ->
+          {:error, "agent.attempt_boundary.mode must be a string"}
+
+        true ->
+          :ok
+      end
+    else
+      :error -> :ok
+      false -> :ok
+      _ -> :ok
+    end
+  end
+
+  defp fetch_config_key(map, key) when is_map(map) do
+    case Map.fetch(map, key) do
+      :error -> Map.fetch(map, Atom.to_string(key))
+      result -> result
+    end
+  end
+
+  defp fetch_config_key(_map, _key), do: :error
+
+  defp config_key_present?(map, key), do: Map.has_key?(map, key) or Map.has_key?(map, Atom.to_string(key))
+  defp config_value(map, key), do: Map.get(map, key, Map.get(map, Atom.to_string(key)))
 
   @spec resolve_turn_sandbox_policy(%__MODULE__{}, Path.t() | nil) :: map()
   def resolve_turn_sandbox_policy(settings, workspace \\ nil) do

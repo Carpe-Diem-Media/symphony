@@ -8,8 +8,23 @@ defmodule SymphonyElixir do
   """
   @spec start_link() :: Supervisor.on_start()
   def start_link do
-    SymphonyElixir.AgentRuntimeSupervisor.start_link([])
+    with {:ok, settings} <- SymphonyElixir.Config.settings(),
+         :ok <- SymphonyElixir.Config.validate_attempt_boundary(settings) do
+      case runtime_start_decision(settings) do
+        :legacy -> SymphonyElixir.AgentRuntimeSupervisor.start_link([])
+        :gate2_dormant -> {:error, :gate2_dormant}
+        {:error, reason} -> {:error, reason}
+      end
+    end
   end
+
+  @doc false
+  @spec runtime_start_decision(SymphonyElixir.Config.Schema.t()) ::
+          :legacy | :gate2_dormant | {:error, :gate2_profile_incomplete | :invalid_request}
+  def runtime_start_decision(%{agent: %{attempt_boundary: %{mode: "legacy"}}}), do: :legacy
+  def runtime_start_decision(%{agent: %{attempt_boundary: %{mode: "gate2_foundation"}}}), do: :gate2_dormant
+  def runtime_start_decision(%{agent: %{attempt_boundary: %{mode: "gate2_enforced"}}}), do: {:error, :gate2_profile_incomplete}
+  def runtime_start_decision(_settings), do: {:error, :invalid_request}
 end
 
 defmodule SymphonyElixir.Application do
@@ -35,6 +50,17 @@ defmodule SymphonyElixir.Application do
   @doc false
   @spec start_runtime() :: Supervisor.on_start()
   def start_runtime do
+    with {:ok, settings} <- SymphonyElixir.Config.settings(),
+         :ok <- SymphonyElixir.Config.validate_attempt_boundary(settings),
+         :legacy <- SymphonyElixir.runtime_start_decision(settings) do
+      do_start_runtime()
+    else
+      :gate2_dormant -> {:error, :gate2_dormant}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp do_start_runtime do
     :ok = SymphonyElixir.LogFile.configure()
     :ok = WebhookIngressMetrics.initialize()
 

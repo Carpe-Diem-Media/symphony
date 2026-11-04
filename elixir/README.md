@@ -189,6 +189,52 @@ Notes:
   state routes and requires `symphony.project_id`. The shipped `WORKFLOW.md` is a
   legacy Linear compatibility sample. Plane is the hardened V1 primary routed provider. Workflows
   without `agent.profiles` retain the legacy compatibility path.
+- `agent.attempt_boundary.mode` defaults to `legacy`. `gate2_foundation` requires an
+  existing schema-2 attempt ledger and keeps runtime admission dormant. It cannot allocate
+  resources or launch Codex. `gate2_enforced` returns `gate2_profile_incomplete` until the
+  qualified components exist. Unknown mode names and nested keys fail configuration parsing.
+  A Gate 2 ledger binding cannot be changed back to `legacy` by a workflow edit.
+- P01 admits Gate 2 lineage records only as open, in-flight, bound/requested intent.
+  Missing, armed, released or closed Gate 2 fence states are corrupt persisted state,
+  not clean release. P01 has no Gate 2 history producer; history requires a future
+  qualified release/rearm transaction. Legacy schema-1 and schema-2 states remain supported.
+  The Gate 2 outer fence has exactly `state`, `runtime_attempt`, `route_fingerprint`
+  and `gate2_fence` keys. Both record and fence route fingerprints are explicitly `nil`
+  in P01. Extra fields, missing routes and non-nil routes fail validation without repair.
+  Gate 2 counters remain zero. The optional requested reason is absent or a permitted
+  nonnil atom; an explicit nil reason is invalid.
+- Resource storage admits only coherent `reserved`, `fencing` and `quarantined` facts.
+  Generic value types still model future states, but P01 rejects their persisted use.
+  `released_for_new_authorization` is inadmissible even with supplied evidence or resolution
+  references. Validation precedes recovery writes, so rejected records are preserved and
+  recovery does not advance. Other restrictive dispositions retain their exact semantics.
+  Live reads and conflict scans enforce the opened ledger's namespace, host and current
+  reconciliation generation before returning or rewriting a row. A mismatch blocks the open
+  ledger without rewriting the invalid fact. Older creation and quarantine generations remain
+  valid after completed recovery; recovery preflight checks against the stored prior generation.
+- P01 grant digests are unverified fence-intent metadata. The registered host owner
+  can bind them after matching durable reserved-resource facts. Hashing and persistence
+  do not establish grant issuance or activation. Later fence requests resolve the exact
+  durable reference and can report only `requested`; runtime use and clean release remain denied.
+- Recovery reads the Linux host boot UUID from `/proc/sys/kernel/random/boot_id`.
+  A process restart retains that boot identity while advancing the recovery sequence and nonce.
+  A reboot changes boot identity; both cases reconcile resource facts without restoring live
+  authority. Unavailable boot identity or partial recovery blocks admission.
+- Attempt ledgers do not migrate during startup or workflow reload. A schema-1 project stays
+  schema 1 until an operator runs the offline maintenance task while Symphony and its ledger
+  handles are stopped. For authorized maintenance, the command forms are:
+
+  ```bash
+  mix symphony.attempt_migrate PROJECT_NAMESPACE TRACKER_IDENTITY_SHA256 AUTHORITY_REF
+  mix symphony.attempt_migrate --resume PROJECT_NAMESPACE TRACKER_IDENTITY_SHA256 AUTHORITY_REF
+  mix symphony.attempt_migrate --abort PROJECT_NAMESPACE TRACKER_IDENTITY_SHA256 AUTHORITY_REF
+  ```
+
+  Resume completes a migration after the canonical ledger was replaced. Abort is valid only
+  before replacement, while the original schema-1 file remains unchanged. A pending journal or
+  missing completion receipt blocks startup. These command examples document maintenance
+  syntax; they do not authorize a deployment migration. P01 does not qualify runtime, cleanup,
+  or Gate 2 activation.
 - Routed safety lineage is stored in a deterministic DETS file outside the
   repository, workspace, and default `/tmp` directory. The namespace is keyed by
   `symphony.project_id`, while tracker/repository identity is checked on open.
