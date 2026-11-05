@@ -9,14 +9,41 @@ defmodule SymphonyElixir.HostEvidence.P01ProjectionAuthorityTest do
     root = Path.join(System.tmp_dir!(), "p08-t02-boundary-#{System.unique_integer([:positive])}")
     path = Path.join(root, "resources.dets")
     Process.register(self(), :p08_t02_projection_test_owner)
-    {:ok, boundary} = AttemptBoundary.start_link(owner_name: :p08_t02_projection_test_owner, resource_ledger_opts: [path: path, project_namespace: "project-1", host_id: "host-1"])
+
+    {:ok, boundary} =
+      AttemptBoundary.start_link(
+        owner_name: :p08_t02_projection_test_owner,
+        resource_ledger_opts: [path: path, project_namespace: "project-1", host_id: "host-1"]
+      )
 
     try do
       {:ok, generation} = AttemptBoundary.reconcile_startup(boundary)
-      identity = %Identity{runtime_attempt_id: "attempt-1", work_item_id: "item-1", lineage_generation: "lineage-1", responsibility: "builder", runtime_profile: "profile-1"}
+
+      identity = %Identity{
+        runtime_attempt_id: "attempt-1",
+        work_item_id: "item-1",
+        lineage_generation: "lineage-1",
+        responsibility: "builder",
+        runtime_profile: "profile-1"
+      }
+
       digest = String.duplicate("a", 64)
-      ref = %{grant_id: "grant-1", project_namespace: "project-1", runtime_identity: identity, fence_epoch: 1, grant_sha256: digest}
-      q = %QuarantineDisposition{state: :clear, reason: nil, evidence_ref: nil, generation: generation, resolution_ref: nil}
+
+      ref = %{
+        grant_id: "grant-1",
+        project_namespace: "project-1",
+        runtime_identity: identity,
+        fence_epoch: 1,
+        grant_sha256: digest
+      }
+
+      q = %QuarantineDisposition{
+        state: :clear,
+        reason: nil,
+        evidence_ref: nil,
+        generation: generation,
+        resolution_ref: nil
+      }
 
       row = %AttemptResource{
         schema_version: 1,
@@ -57,7 +84,12 @@ defmodule SymphonyElixir.HostEvidence.P01ProjectionAuthorityTest do
         verifier_implementation_sha256: digest
       }
 
-      context = %{phase: :predicted_post_snapshot, object_id: "fabricated-object", resource_id: "resource-1", self_bindings: [%{"resource_id" => "resource-1", "slot" => "last_evidence_ref"}]}
+      context = %{
+        phase: :predicted_post_snapshot,
+        object_id: "fabricated-object",
+        resource_id: "resource-1",
+        self_bindings: [%{"resource_id" => "resource-1", "slot" => "last_evidence_ref"}]
+      }
 
       assert {:ok, resource_wire} = P.resource(row, ref, generation)
       assert {:ok, evidence_wire} = P.cleanup_ref(evidence, ref, generation)
@@ -77,7 +109,10 @@ defmodule SymphonyElixir.HostEvidence.P01ProjectionAuthorityTest do
       assert {:error, :invalid_request} = P.resource(%{row | last_evidence_ref: "fabricated-object"}, ref, generation)
       invalid_context = %{context | object_id: "é"}
       assert {:error, :unencodable_p01_value} = P.current_link("é", "resource-1", "last_evidence_ref", invalid_context)
-      assert {:error, :unencodable_p01_value} = P.restore_current_link(current_wire, "é", "resource-1", "last_evidence_ref", invalid_context)
+
+      assert {:error, :unencodable_p01_value} =
+               P.restore_current_link(current_wire, "é", "resource-1", "last_evidence_ref", invalid_context)
+
       assert :sys.get_state(boundary) == state_before
       assert :dets.foldl(fn item, acc -> [item | acc] end, [], table) |> Enum.sort() == rows_before
       assert File.read!(path) == bytes_before

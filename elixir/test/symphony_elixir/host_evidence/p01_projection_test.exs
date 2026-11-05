@@ -1,7 +1,16 @@
 defmodule SymphonyElixir.HostEvidence.P01ProjectionTest do
   use ExUnit.Case, async: true
 
-  alias SymphonyElixir.AgentRuntime.{AttemptGrant, AttemptLedger, AttemptResource, CleanupEvidenceRef, QuarantineDisposition, RecoveryGeneration, RuntimeAttempt}
+  alias SymphonyElixir.AgentRuntime.{
+    AttemptGrant,
+    AttemptLedger,
+    AttemptResource,
+    CleanupEvidenceRef,
+    QuarantineDisposition,
+    RecoveryGeneration,
+    RuntimeAttempt
+  }
+
   alias SymphonyElixir.AgentRuntime.RuntimeAttempt.Identity
   alias SymphonyElixir.HostEvidence.P01Projection, as: P
 
@@ -12,24 +21,55 @@ defmodule SymphonyElixir.HostEvidence.P01ProjectionTest do
   test "grant_ref_exact_namespace" do
     grant = grant()
     reference = AttemptGrant.reference(grant)
-    assert Enum.sort(Map.keys(reference)) == Enum.sort(~w(grant_id project_namespace runtime_identity fence_epoch grant_sha256)a)
+
+    assert Enum.sort(Map.keys(reference)) ==
+             Enum.sort(~w(grant_id project_namespace runtime_identity fence_epoch grant_sha256)a)
 
     tuple =
-      {1, "grant-1", "project-1", @digest, {"attempt-1", "item-1", "lineage-1", "builder", "profile-1"}, {1, "project-1", "host-1", "BOOT-Unchanged", 1, "Nonce-Unchanged"}, @digest, "registration-1",
-       1, "resource-1", @digest, @digest, @digest, @digest, @digest, [:workspace_read], 1}
+      {
+        # Preserve the accepted fingerprint tuple order, including nested identities.
+        1,
+        "grant-1",
+        "project-1",
+        @digest,
+        {"attempt-1", "item-1", "lineage-1", "builder", "profile-1"},
+        {1, "project-1", "host-1", "BOOT-Unchanged", 1, "Nonce-Unchanged"},
+        @digest,
+        "registration-1",
+        1,
+        "resource-1",
+        @digest,
+        @digest,
+        @digest,
+        @digest,
+        @digest,
+        [:workspace_read],
+        1
+      }
 
-    expected_digest = :crypto.hash(:sha256, :erlang.term_to_binary(tuple, [:deterministic])) |> Base.encode16(case: :lower)
+    expected_digest =
+      :crypto.hash(:sha256, :erlang.term_to_binary(tuple, [:deterministic])) |> Base.encode16(case: :lower)
+
     assert reference.grant_sha256 == expected_digest
     assert {:ok, wire} = P.grant_ref(reference, reference)
     assert Map.keys(wire) |> Enum.sort() == ~w(fence_epoch grant_id grant_sha256 project_namespace runtime_identity)
     assert wire["grant_sha256"] == expected_digest
     assert wire["runtime_identity"]["responsibility"] == "builder"
 
-    assert_rejection(reference, fn -> P.grant_ref(%{reference | project_namespace: "project-2"}, reference) end, :namespace_mismatch)
+    assert_rejection(
+      reference,
+      fn -> P.grant_ref(%{reference | project_namespace: "project-2"}, reference) end,
+      :namespace_mismatch
+    )
 
     for field <- @identity_fields do
       changed = Map.update!(reference.runtime_identity, field, &(&1 <> " "))
-      assert_rejection(reference, fn -> P.grant_ref(%{reference | runtime_identity: changed}, reference) end, :identity_mismatch)
+
+      assert_rejection(
+        reference,
+        fn -> P.grant_ref(%{reference | runtime_identity: changed}, reference) end,
+        :identity_mismatch
+      )
     end
 
     assert Identity.same?(identity(), %{identity() | responsibility: " builder "})
@@ -40,7 +80,12 @@ defmodule SymphonyElixir.HostEvidence.P01ProjectionTest do
       assert_rejection(reference, fn -> P.grant_ref(Map.put(reference, field, value), reference) end, :stale_grant)
     end
 
-    assert_rejection(reference, fn -> P.grant_ref(Map.put(reference, :policy, "extra"), reference) end, :invalid_request)
+    assert_rejection(
+      reference,
+      fn -> P.grant_ref(Map.put(reference, :policy, "extra"), reference) end,
+      :invalid_request
+    )
+
     assert AttemptGrant.reference(grant) == reference
   end
 
@@ -90,7 +135,8 @@ defmodule SymphonyElixir.HostEvidence.P01ProjectionTest do
       end)
     end
 
-    for state <- ~w(clear quarantined block_reuse operator_resolution_pending released_for_new_authorization remains_quarantined)a do
+    for state <-
+          ~w(clear quarantined block_reuse operator_resolution_pending released_for_new_authorization remains_quarantined)a do
       q = %{quarantine() | state: state, evidence_ref: "unknown-old", resolution_ref: "Opaque Resolution"}
 
       preserve(q, fn ->
@@ -110,11 +156,37 @@ defmodule SymphonyElixir.HostEvidence.P01ProjectionTest do
       assert_rejection(record, fn -> P.resource(record, ref, generation()) end, :unencodable_p01_value)
     end
 
-    assert_rejection(cleanup(), fn -> P.cleanup_ref(%{cleanup() | project_namespace: "other"}, ref, generation()) end, :namespace_mismatch)
-    assert_rejection(cleanup(), fn -> P.cleanup_ref(%{cleanup() | runtime_identity: %{identity() | responsibility: " builder "}}, ref, generation()) end, :identity_mismatch)
-    assert_rejection(cleanup(), fn -> P.cleanup_ref(cleanup(), ref, %{generation() | sequence: 2}) end, :recovery_generation_mismatch)
-    assert_rejection(resource(), fn -> P.resource(%{resource() | owner_host_id: "other"}, ref, generation()) end, :recovery_generation_mismatch)
-    assert_rejection(resource(), fn -> P.resource(%{resource() | reconciliation_generation: %{generation() | sequence: 2}}, ref, generation()) end, :recovery_generation_mismatch)
+    assert_rejection(
+      cleanup(),
+      fn -> P.cleanup_ref(%{cleanup() | project_namespace: "other"}, ref, generation()) end,
+      :namespace_mismatch
+    )
+
+    assert_rejection(
+      cleanup(),
+      fn ->
+        P.cleanup_ref(%{cleanup() | runtime_identity: %{identity() | responsibility: " builder "}}, ref, generation())
+      end,
+      :identity_mismatch
+    )
+
+    assert_rejection(
+      cleanup(),
+      fn -> P.cleanup_ref(cleanup(), ref, %{generation() | sequence: 2}) end,
+      :recovery_generation_mismatch
+    )
+
+    assert_rejection(
+      resource(),
+      fn -> P.resource(%{resource() | owner_host_id: "other"}, ref, generation()) end,
+      :recovery_generation_mismatch
+    )
+
+    assert_rejection(
+      resource(),
+      fn -> P.resource(%{resource() | reconciliation_generation: %{generation() | sequence: 2}}, ref, generation()) end,
+      :recovery_generation_mismatch
+    )
   end
 
   test "historical_and_current_links" do
@@ -150,7 +222,11 @@ defmodule SymphonyElixir.HostEvidence.P01ProjectionTest do
           Map.put(context, :verified, true),
           Map.put(context, :release_authorized, true)
         ] do
-      assert_rejection({resource(), invalid}, fn -> P.current_link("object-1", "resource-1", "last_evidence_ref", invalid) end, :invalid_request)
+      assert_rejection(
+        {resource(), invalid},
+        fn -> P.current_link("object-1", "resource-1", "last_evidence_ref", invalid) end,
+        :invalid_request
+      )
     end
 
     for {stored, id, slot} <- [
@@ -175,8 +251,16 @@ defmodule SymphonyElixir.HostEvidence.P01ProjectionTest do
       assert_rejection(malformed, fn -> P.restore_evidence_link(malformed) end, :invalid_request)
     end
 
-    for malformed <- [%{"kind" => "current", "id" => "object-1"}, Map.put(current, "verified", true), %{"kind" => "prior", "id" => "object-1"}] do
-      assert_rejection(malformed, fn -> P.restore_current_link(malformed, "object-1", "resource-1", "last_evidence_ref", context) end, :invalid_request)
+    for malformed <- [
+          %{"kind" => "current", "id" => "object-1"},
+          Map.put(current, "verified", true),
+          %{"kind" => "prior", "id" => "object-1"}
+        ] do
+      assert_rejection(
+        malformed,
+        fn -> P.restore_current_link(malformed, "object-1", "resource-1", "last_evidence_ref", context) end,
+        :invalid_request
+      )
     end
 
     for field <- [:evidence_ref, :resolution_ref] do
@@ -215,14 +299,39 @@ defmodule SymphonyElixir.HostEvidence.P01ProjectionTest do
 
     assert {:ok, " X "} = P.identifier(" X ")
 
-    for bad <- ["", " ", "   ", "\n", "x\t", "x\r", <<0>>, <<31>>, <<127>>, "é", <<255>>, String.duplicate("x", 257), 1, 1.0, @u64 + 1, nil, :id, %{}] do
+    for bad <- [
+          "",
+          " ",
+          "   ",
+          "\n",
+          "x\t",
+          "x\r",
+          <<0>>,
+          <<31>>,
+          <<127>>,
+          "é",
+          <<255>>,
+          String.duplicate("x", 257),
+          1,
+          1.0,
+          @u64 + 1,
+          nil,
+          :id,
+          %{}
+        ] do
       assert_rejection(bad, fn -> P.identifier(bad) end, :unencodable_p01_value)
       assert_rejection(bad, fn -> P.evidence_link(bad) end, :unencodable_p01_value, bad == nil)
     end
 
     for value <- ["é", "x\n", String.duplicate("x", 257), 42] do
       row = %{resource() | resource_id: value}
-      assert_rejection(row, fn -> P.resource(row, AttemptGrant.reference(grant()), generation()) end, :unencodable_p01_value)
+
+      assert_rejection(
+        row,
+        fn -> P.resource(row, AttemptGrant.reference(grant()), generation()) end,
+        :unencodable_p01_value
+      )
+
       id = %{identity() | work_item_id: value}
       assert_rejection(id, fn -> P.identity(id) end, :unencodable_p01_value)
     end
@@ -235,14 +344,21 @@ defmodule SymphonyElixir.HostEvidence.P01ProjectionTest do
       assert_rejection(ref, fn -> P.grant_ref(%{ref | fence_epoch: bad}, ref) end, :unencodable_p01_value)
     end
 
-    assert_rejection(resource(), fn -> P.resource(%{resource() | revision: @u64 + 1}, ref, generation()) end, :unencodable_p01_value)
+    assert_rejection(
+      resource(),
+      fn -> P.resource(%{resource() | revision: @u64 + 1}, ref, generation()) end,
+      :unencodable_p01_value
+    )
+
     assert_rejection(identity(), fn -> P.identity(%{identity() | responsibility: :builder}) end, :unencodable_p01_value)
   end
 
   test "T02-F01 accepts only the historical persisted P01 resource progression" do
     reference = AttemptGrant.reference(grant())
 
-    for {state, minimum} <- [quarantined: 1, block_reuse: 2, operator_resolution_pending: 3, remains_quarantined: 4], evidence <- [nil, "Opaque old Evidence"], revision <- [minimum, minimum + 5] do
+    for {state, minimum} <- [quarantined: 1, block_reuse: 2, operator_resolution_pending: 3, remains_quarantined: 4],
+        evidence <- [nil, "Opaque old Evidence"],
+        revision <- [minimum, minimum + 5] do
       row = quarantined_resource(state, revision, evidence)
 
       preserve(row, fn ->
@@ -258,7 +374,14 @@ defmodule SymphonyElixir.HostEvidence.P01ProjectionTest do
     # Equal generations are allowed only with exactly equal bytes. Older
     # generations may retain different boot/nonce bytes at a lower sequence.
     row = quarantined_resource(:quarantined, 1, nil)
-    same = %{row | creation_generation: generation(), reconciliation_generation: generation(), quarantine: %{row.quarantine | generation: generation()}}
+
+    same = %{
+      row
+      | creation_generation: generation(),
+        reconciliation_generation: generation(),
+        quarantine: %{row.quarantine | generation: generation()}
+    }
+
     preserve(same, fn -> assert {:ok, _} = P.resource(same, reference, generation()) end)
   end
 
@@ -268,7 +391,10 @@ defmodule SymphonyElixir.HostEvidence.P01ProjectionTest do
     qrow = quarantined_resource(:quarantined, 1, "old")
 
     invalid =
-      Enum.map(~w(allocating allocated active fenced destroying absent_verified cleanup_unverified)a, &%{base | state: &1}) ++
+      Enum.map(
+        ~w(allocating allocated active fenced destroying absent_verified cleanup_unverified)a,
+        &%{base | state: &1}
+      ) ++
         [
           %{base | revision: 7},
           %{base | state: :fencing, revision: 0},
@@ -286,16 +412,44 @@ defmodule SymphonyElixir.HostEvidence.P01ProjectionTest do
           %{qrow | quarantine: %{qrow.quarantine | reason: nil}},
           %{qrow | last_evidence_ref: "different"},
           %{qrow | allocation_identity_sha256: @digest},
-          %{qrow | quarantine: %{qrow.quarantine | generation: %{qrow.quarantine.generation | project_namespace: "other"}}},
+          %{
+            qrow
+            | quarantine: %{qrow.quarantine | generation: %{qrow.quarantine.generation | project_namespace: "other"}}
+          },
           %{qrow | quarantine: %{qrow.quarantine | generation: %{qrow.quarantine.generation | host_id: "other"}}},
-          %{qrow | quarantine: %{qrow.quarantine | generation: %{qrow.creation_generation | nonce: "same-sequence-different"}}},
-          %{qrow | quarantine: %{qrow.quarantine | generation: %{qrow.reconciliation_generation | nonce: "same-sequence-different"}}},
+          %{
+            qrow
+            | quarantine: %{
+                qrow.quarantine
+                | generation: %{qrow.creation_generation | nonce: "same-sequence-different"}
+              }
+          },
+          %{
+            qrow
+            | quarantine: %{
+                qrow.quarantine
+                | generation: %{qrow.reconciliation_generation | nonce: "same-sequence-different"}
+              }
+          },
           %{qrow | quarantine: %{qrow.quarantine | generation: %{qrow.quarantine.generation | sequence: 4}}},
-          %{qrow | creation_generation: %{qrow.creation_generation | sequence: 3}, reconciliation_generation: %{qrow.reconciliation_generation | sequence: 4}}
+          %{
+            qrow
+            | creation_generation: %{qrow.creation_generation | sequence: 3},
+              reconciliation_generation: %{qrow.reconciliation_generation | sequence: 4}
+          }
         ] ++
-        Enum.map([quarantined: 1, block_reuse: 2, operator_resolution_pending: 3, remains_quarantined: 4], fn {state, minimum} ->
-          quarantined_resource(state, minimum - 1, nil)
-        end)
+        Enum.map(
+          [
+            # Each progression requires its own minimum persisted revision.
+            quarantined: 1,
+            block_reuse: 2,
+            operator_resolution_pending: 3,
+            remains_quarantined: 4
+          ],
+          fn {state, minimum} ->
+            quarantined_resource(state, minimum - 1, nil)
+          end
+        )
 
     for row <- invalid do
       assert {:ok, ^row} = AttemptResource.new(Map.from_struct(row))
@@ -312,20 +466,46 @@ defmodule SymphonyElixir.HostEvidence.P01ProjectionTest do
         {id, "resource-1", %{context() | object_id: id}},
         {"object-1", "resource-1", %{context() | object_id: id}},
         {id, "resource-1", context()},
-        {"object-1", id, %{context() | resource_id: id, self_bindings: [%{"resource_id" => id, "slot" => "last_evidence_ref"}]}},
-        {"object-1", "resource-1", %{context() | self_bindings: [%{"resource_id" => id, "slot" => "last_evidence_ref"}]}}
+        {
+          "object-1",
+          id,
+          # Match the declaration so the invalid resource bytes reach encoding validation.
+          %{context() | resource_id: id, self_bindings: [%{"resource_id" => id, "slot" => "last_evidence_ref"}]}
+        },
+        {
+          "object-1",
+          "resource-1",
+          # Isolate invalid bytes in the declared self-binding.
+          %{context() | self_bindings: [%{"resource_id" => id, "slot" => "last_evidence_ref"}]}
+        }
       ]
 
       for {stored, resource_id, input} <- cases do
         original = {stored, resource_id, input}
-        assert_rejection(original, fn -> P.current_link(stored, resource_id, "last_evidence_ref", input) end, :unencodable_p01_value)
-        assert_rejection(original, fn -> P.restore_current_link(current, stored, resource_id, "last_evidence_ref", input) end, :unencodable_p01_value)
+
+        assert_rejection(
+          original,
+          fn -> P.current_link(stored, resource_id, "last_evidence_ref", input) end,
+          :unencodable_p01_value
+        )
+
+        assert_rejection(
+          original,
+          fn -> P.restore_current_link(current, stored, resource_id, "last_evidence_ref", input) end,
+          :unencodable_p01_value
+        )
       end
     end
 
     for size <- [128, 129, 256] do
       id = String.duplicate("X", size)
-      input = %{context() | object_id: id, resource_id: id, self_bindings: [%{"resource_id" => id, "slot" => "last_evidence_ref"}]}
+
+      input = %{
+        context()
+        | object_id: id,
+          resource_id: id,
+          self_bindings: [%{"resource_id" => id, "slot" => "last_evidence_ref"}]
+      }
 
       preserve({id, input}, fn ->
         assert {:ok, ^current} = P.current_link(id, id, "last_evidence_ref", input)
@@ -348,11 +528,23 @@ defmodule SymphonyElixir.HostEvidence.P01ProjectionTest do
           %{context() | self_bindings: false},
           %{context() | self_bindings: [%{"resource_id" => "different", "slot" => "last_evidence_ref"}]},
           %{context() | self_bindings: [%{"resource_id" => "resource-1", "slot" => "wrong"}]},
-          %{context() | self_bindings: [%{"resource_id" => "resource-1", "slot" => "last_evidence_ref", "verified" => true}]},
+          %{
+            context()
+            | self_bindings: [%{"resource_id" => "resource-1", "slot" => "last_evidence_ref", "verified" => true}]
+          },
           Map.put(context(), :verified, true)
         ] do
-      assert_rejection(input, fn -> P.current_link("object-1", "resource-1", "last_evidence_ref", input) end, :invalid_request)
-      assert_rejection(input, fn -> P.restore_current_link(current, "object-1", "resource-1", "last_evidence_ref", input) end, :invalid_request)
+      assert_rejection(
+        input,
+        fn -> P.current_link("object-1", "resource-1", "last_evidence_ref", input) end,
+        :invalid_request
+      )
+
+      assert_rejection(
+        input,
+        fn -> P.restore_current_link(current, "object-1", "resource-1", "last_evidence_ref", input) end,
+        :invalid_request
+      )
     end
   end
 
@@ -363,13 +555,23 @@ defmodule SymphonyElixir.HostEvidence.P01ProjectionTest do
           [%{"resource_id" => "resource-1", "slot" => "last_evidence_ref", "verified" => true}]
         ] do
       input = %{context() | self_bindings: bindings}
-      assert_rejection(input, fn -> P.current_link("object-1", "resource-1", "last_evidence_ref", input) end, :invalid_request)
+
+      assert_rejection(
+        input,
+        fn -> P.current_link("object-1", "resource-1", "last_evidence_ref", input) end,
+        :invalid_request
+      )
     end
   end
 
   test "creation generation requires exact bytes at equal sequence" do
     row = %{resource() | creation_generation: %{generation() | nonce: "different"}}
-    assert_rejection(row, fn -> P.resource(row, AttemptGrant.reference(grant()), generation()) end, :recovery_generation_mismatch)
+
+    assert_rejection(
+      row,
+      fn -> P.resource(row, AttemptGrant.reference(grant()), generation()) end,
+      :recovery_generation_mismatch
+    )
   end
 
   defp preserve(original, fun) do
@@ -397,13 +599,53 @@ defmodule SymphonyElixir.HostEvidence.P01ProjectionTest do
   defp quarantined_resource(state, revision, evidence) do
     current = %{generation() | sequence: 3, nonce: "reconciled", boot_id: "new-boot"}
     quarantined = %{generation() | sequence: 2, nonce: "quarantine-generation"}
-    q = %{quarantine() | state: state, reason: :cleanup_unverified, evidence_ref: evidence, generation: quarantined, resolution_ref: "opaque-resolution"}
-    %{resource() | state: :quarantined, revision: revision, last_evidence_ref: evidence, quarantine: q, reconciliation_generation: current}
+
+    q = %{
+      quarantine()
+      | state: state,
+        reason: :cleanup_unverified,
+        evidence_ref: evidence,
+        generation: quarantined,
+        resolution_ref: "opaque-resolution"
+    }
+
+    %{
+      resource()
+      | state: :quarantined,
+        revision: revision,
+        last_evidence_ref: evidence,
+        quarantine: q,
+        reconciliation_generation: current
+    }
   end
 
-  defp identity, do: %Identity{runtime_attempt_id: "attempt-1", work_item_id: "item-1", lineage_generation: "lineage-1", responsibility: "builder", runtime_profile: "profile-1"}
-  defp generation, do: %RecoveryGeneration{schema_version: 1, project_namespace: "project-1", host_id: "host-1", boot_id: "BOOT-Unchanged", sequence: 1, nonce: "Nonce-Unchanged"}
-  defp quarantine, do: %QuarantineDisposition{state: :clear, reason: nil, evidence_ref: nil, generation: generation(), resolution_ref: nil}
+  defp identity,
+    do: %Identity{
+      runtime_attempt_id: "attempt-1",
+      work_item_id: "item-1",
+      lineage_generation: "lineage-1",
+      responsibility: "builder",
+      runtime_profile: "profile-1"
+    }
+
+  defp generation,
+    do: %RecoveryGeneration{
+      schema_version: 1,
+      project_namespace: "project-1",
+      host_id: "host-1",
+      boot_id: "BOOT-Unchanged",
+      sequence: 1,
+      nonce: "Nonce-Unchanged"
+    }
+
+  defp quarantine,
+    do: %QuarantineDisposition{
+      state: :clear,
+      reason: nil,
+      evidence_ref: nil,
+      generation: generation(),
+      resolution_ref: nil
+    }
 
   defp resource,
     do: %AttemptResource{
@@ -465,6 +707,9 @@ defmodule SymphonyElixir.HostEvidence.P01ProjectionTest do
       phase: :predicted_post_snapshot,
       object_id: "object-1",
       resource_id: "resource-1",
-      self_bindings: [%{"resource_id" => "resource-1", "slot" => "last_evidence_ref"}, %{"resource_id" => "resource-1", "slot" => "quarantine_evidence_ref"}]
+      self_bindings: [
+        %{"resource_id" => "resource-1", "slot" => "last_evidence_ref"},
+        %{"resource_id" => "resource-1", "slot" => "quarantine_evidence_ref"}
+      ]
     }
 end

@@ -16,7 +16,13 @@ defmodule SymphonyElixir.HostEvidence.P01Projection do
   alias SymphonyElixir.AgentRuntime.{AttemptResource, CleanupEvidenceRef, QuarantineDisposition, RecoveryGeneration}
   alias SymphonyElixir.AgentRuntime.RuntimeAttempt.Identity
 
-  @type error :: :unencodable_p01_value | :invalid_request | :namespace_mismatch | :identity_mismatch | :stale_grant | :recovery_generation_mismatch
+  @type error ::
+          :unencodable_p01_value
+          | :invalid_request
+          | :namespace_mismatch
+          | :identity_mismatch
+          | :stale_grant
+          | :recovery_generation_mismatch
   @type result(value) :: {:ok, value} | {:error, error()}
   @type evidence_link :: nil | %{required(String.t()) => String.t() | nil}
   @type current_context :: %{
@@ -96,7 +102,12 @@ defmodule SymphonyElixir.HostEvidence.P01Projection do
          :ok <- equal(value.fence_epoch, expected_ref.fence_epoch, :stale_grant),
          :ok <- generation_scope(current_generation, expected_ref.project_namespace),
          :ok <- equal(value.verification_generation, current_generation, :recovery_generation_mismatch) do
-      {:ok, value |> Map.from_struct() |> stringify() |> Map.put("runtime_identity", identity_wire) |> Map.put("verification_generation", generation_wire)}
+      {:ok,
+       value
+       |> Map.from_struct()
+       |> stringify()
+       |> Map.put("runtime_identity", identity_wire)
+       |> Map.put("verification_generation", generation_wire)}
     end
   end
 
@@ -189,7 +200,8 @@ defmodule SymphonyElixir.HostEvidence.P01Projection do
   """
   @spec current_link(term(), term(), term(), term()) :: result(evidence_link())
   def current_link(stored, resource_id, slot, context) do
-    with %{phase: :predicted_post_snapshot, object_id: object_id, resource_id: ^resource_id, self_bindings: bindings} <- context,
+    with %{phase: :predicted_post_snapshot, object_id: object_id, resource_id: ^resource_id, self_bindings: bindings} <-
+           context,
          true <- map_size(context) == 4,
          true <- slot in @slots,
          {:ok, ^stored} <- identifier(stored),
@@ -207,7 +219,8 @@ defmodule SymphonyElixir.HostEvidence.P01Projection do
 
   @doc "Restores a closed current placeholder only against the same explicit structural context and exact stored bytes."
   @spec restore_current_link(term(), term(), term(), term(), term()) :: result(String.t())
-  def restore_current_link(%{"kind" => "current", "id" => nil} = link, stored, resource_id, slot, context) when map_size(link) == 2 do
+  def restore_current_link(%{"kind" => "current", "id" => nil} = link, stored, resource_id, slot, context)
+      when map_size(link) == 2 do
     with {:ok, ^link} <- current_link(stored, resource_id, slot, context), do: {:ok, stored}
   end
 
@@ -329,7 +342,8 @@ defmodule SymphonyElixir.HostEvidence.P01Projection do
   defp validate_self_bindings(bindings), do: validate_self_bindings(bindings, [])
   defp validate_self_bindings([], _seen), do: :ok
 
-  defp validate_self_bindings([%{"resource_id" => id, "slot" => slot} = binding | rest], seen) when map_size(binding) == 2 do
+  defp validate_self_bindings([%{"resource_id" => id, "slot" => slot} = binding | rest], seen)
+       when map_size(binding) == 2 do
     with true <- slot in @slots and binding not in seen,
          {:ok, _} <- identifier(id) do
       validate_self_bindings(rest, [binding | seen])
