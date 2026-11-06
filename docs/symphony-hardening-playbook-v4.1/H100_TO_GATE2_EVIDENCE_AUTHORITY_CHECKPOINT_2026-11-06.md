@@ -10,7 +10,7 @@
 
 This checkpoint incorporates the **complete supplied text export** `Gate 2 Evidence.txt` as a reformatted investigator report in section 5, plus the scope interpretation and navigation here. The export was independently measured in the reviewer container at **41,309 UTF-8 bytes**, SHA-256 `581808ed5b9bd0048d76cf13b6007b8a9fb22058bcc6cb0a896921dc6e8bf40d`. The investigator named an original workstation Markdown at `/tmp/symphony-h100-gate2-reconciliation-2026-11-06.md`; **the exact original Markdown bytes were not supplied or independently compared with this export**. Do not assert byte identity between them.
 
-The agent investigated the host read-only and reported `RECONCILIATION=INCOMPLETE_WITH_EXPLICIT_GAPS`. Repository facts and scoped governance decisions are corroborated by the current protected GitHub history and the linked accepted records. Local workstation archives, root-protected directories, and claimed independent local reproductions **have not been re-executed or directly inspected by the author of this checkpoint**; their results are attributed to the supplied investigator's report, with exact hashes and paths retained for later inspection.
+The agent investigated the host read-only and reported `RECONCILIATION=INCOMPLETE_WITH_EXPLICIT_GAPS`. **Editorial correction to the reproduced export:** in the frozen R3 file inventory, `tests/init.py` was corrected to the authority-attested `tests/__init__.py` without changing its 75-byte size or SHA-256; the inventory line identifies Plane decision `3d925f87-6095-46a3-94f8-b1f3e33995d2`. This is an explicitly documented transcription correction, not a claim that the supplied export already contained the accurate path. Repository facts and scoped governance decisions are corroborated by the current protected GitHub history and the linked accepted records. Local workstation archives, root-protected directories, and claimed independent local reproductions **have not been re-executed or directly inspected by the author of this checkpoint**; their results are attributed to the supplied investigator's report, with exact hashes and paths retained for later inspection.
 
 These evidence classes must not be conflated: `MERGED_AND_ACCEPTED` (exact scoped source changes), `INDEPENDENTLY_QUALIFIED_FOR_EXACT_PROFILE` (bounded historical fixture), `DESIGN_OR_CONTRACT_ACCEPTED_ONLY`, `DIAGNOSTIC_EVIDENCE_ONLY`, `HISTORICAL_FAILED_OR_STOPPED`, and `UNVERIFIED_OR_MISSING`. A checked PR, local fixture pass, or narrative does not imply successful H-100 or Gate 2 qualification.
 
@@ -294,7 +294,7 @@ Frozen R3 root is /home/jcschoeman96/symphony-acq-exec-02/. All five current fil
 
 - synthetic_config.json: 452 bytes; SHA256 49c29a3c213b96a8b1bc117e23bfbfd0c41134d7436f2f038429a83b719d74a4.
 
-- tests/init.py: 75 bytes; SHA256 cfa461f28b2af5b8c930ebe42f938d5d335800b53356031e4889ec1d290c066d.
+- tests/__init__.py: 75 bytes; SHA256 cfa461f28b2af5b8c930ebe42f938d5d335800b53356031e4889ec1d290c066d. **Editorial correction:** the supplied investigator text export wrote `tests/init.py`; the accepted R3 source identity is `tests/__init__.py`, as attested in Plane SGOV-2 decision `3d925f87-6095-46a3-94f8-b1f3e33995d2` and the committed ACQ-EXEC-05 R2 acceptance record. The file size and digest are unchanged.
 
 - tests/test_executor.py: 31,350 bytes; SHA256 6bd2d674a7af4acf1276540c5582e3da003d3fd47f68c567ea64646c745f6b8c.
 
