@@ -1,7 +1,7 @@
 # H-100 → Gate 2 — Evidence and Authority Checkpoint (2026-11-06)
 
-**Document status:** DRAFT checkpoint candidate for independent review; not an accepted programme decision.
-**Publication status:** Not accepted on protected `main` until a human-controlled merge and exact post-merge verification.
+**Checkpoint status:** Historical evidence reconciliation with explicit gaps; not a programme acceptance, execution grant, or proof qualification.
+**Publication condition:** A branch or PR is not an accepted protected-main publication; a separately authorized human merge and exact post-merge verification are required.
 **Scope:** Historical reconstruction and evidence index only. **No tests, implementation, resource operations, provider use, P08 qualification, H-100 execution, Gate 2 activation, or new authority**.
 **Repository:** `JCSchoeman96/symphony`.
 **Pinned review baseline:** `ced5239092ac368c5498644b2710ce0b19a294c5` / tree `126aa309502087acb6a5084a197159c142de63e5`.
