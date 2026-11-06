@@ -244,3 +244,8 @@ Independent review, human merge, exact post-merge verification and explicit
 successor-baseline applicability rebinding must occur before considering
 implementation authorization. This candidate does not complete G00 by itself.
 The programme-level H-100 projection and its authority block remain unchanged.
+## ACQ-EXEC-05 R2 — Synthetic qualification-plan acceptance, 2026-11-06
+
+The independent Master Gate accepted **the ACQ-EXEC-05 R2 qualification PLAN only** (Plane decision `80924582-aa29-4da5-96af-7acbd63a8319`). The canonical historical [plan snapshot](ACQ_EXEC_05_R2_SYNTHETIC_QUALIFICATION_PLAN_2026-11-06.md) is exactly 40,903 bytes (SHA-256 `ae823f8f23f476fed092c0b120b8cea2e68bd8ef14053ac66eca89670cfcab4a`); the [scoped acceptance materialization](ACQ_EXEC_05_R2_MASTER_GATE_PLAN_ACCEPTANCE_2026-11-06.md) binds its review history and current authority limits. Source-only R3 review is separately recorded as Plane comment `3d925f87-6095-46a3-94f8-b1f3e33995d2`.
+
+The accepted plan defines Gate A T01–T11 source-contract qualification and blocks Gate B T12–T20 on unqualified successor implementation and independent evidence. **Neither Gate A preparation nor execution is authorized.** No collector, fixtures, test results, Rust acquisition, Git implementation PR or Gate 2 activation is granted. `AUTH_07` remains `SUSPENDED_UNCONSUMED`; P08 full acceptance remains open. A separate human grant is mandatory for every later effect.
