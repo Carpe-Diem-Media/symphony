@@ -1,8 +1,9 @@
 # B1 control implementation R0
 
-Status: B1-F01 correction candidate. Exact-commit review and CI evidence must be
-read from the draft PR. Production admission remains closed under the bounded
-implementation grant.
+Status: Master Gate B1-F01/B1-F02/B1-F03 correction candidate, not accepted.
+Exact-commit review and CI evidence must be read from draft PR #71. Stop at
+independent Master Gate re-review. Production admission remains closed under
+the bounded implementation grant.
 
 ## Scope and design
 
@@ -156,6 +157,94 @@ process. The tests demonstrate result/content/lifecycle binding, not production
 principal separation, independent key custody or a qualified receipt transport.
 Production admission and acceptance remain unconditional denials.
 
+### B1-F02 correction
+
+The direct `review_candidate` interface now requires a complete retained candidate
+binding and matches its device/inode before inspecting payloads. Every accepted
+input observation must match all retained fields: device, inode, size, SHA-256,
+UID, GID, mode, link count, mtime and ctime. Omitting a retained field cannot weaken
+the check. `review_result` passes the candidate identity from the authenticated
+producer evidence to this same interface. Identical bytes in another inode do not
+establish custody of an accepted input or the reviewed candidate.
+
+A determinate identity/custody mismatch raises `CustodyMismatch` and returns no
+completed report. Unavailable I/O, unstable metadata or incomplete byte observation
+raises `ObservationUncertain`. Accepted inputs and candidate metadata/entries are
+checked again before returning, including changes after the initial identity check.
+Known defects on the established candidate still return a complete negative
+artifact report. No custody exception automatically selects T12, F or U. The
+controller denies the proposed decision and leaves C to establish the applicable
+adverse condition and precedence through the existing authenticated relation.
+
+### B1-F03 correction
+
+One nonblocking operation lock covers `register`, `apply`, `copy` and `close` from
+entry through all durable commitments and in-memory updates. It applies across
+cases because they share one journal head. A second nonblocking lock covers
+`_commit` from before the pending append through received acknowledgment and
+confirmation. Reentrant callbacks and concurrent callers cannot append another
+proposal, close retained descriptors or observe stale state as a new admission.
+Rejected calls are not queued or automatically replayed.
+
+If a callback catches the rejection and supplies the valid outer acknowledgment,
+only the outer operation may confirm. If the rejection propagates and no valid
+acknowledgment arrives, the original proposal remains pending, the controller
+denies further effects, and reopening requires external reconciliation. No slot
+or entitlement is restored. The tests inspect the authenticated journal as well
+as the returned state, so duplicate or overlapping pending records cannot pass
+as a valid completed history.
+
+These locks serialize supported synthetic mutation interfaces. They do not create
+independent principals, protect against arbitrary same-process memory mutation,
+supervise controller death or establish an operational revocation transport.
+Production admission remains denied. The existing external directory lock still
+excludes another controller process from the same retained journal.
+
+### Master Gate regression evidence
+
+The B1-F01 correction was already present at `8a38cfb6`; it is preserved and
+reverified with actual independent positive and negative reports. The additional
+`test_actual_report_from_a_different_candidate_cannot_accept_this_case` uses an
+actual second synthetic candidate's report, authenticated with the receiving
+verifier key, and confirms refusal. Existing invented, stale, altered and foreign
+binding regressions remain required.
+
+B1-F02 first failed five direct-interface regressions on the preceding candidate.
+The corrected suite passes these tests and additional custody-stability cases:
+
+- `test_review_candidate_rejects_identical_bytes_in_another_inode`
+- `test_review_candidate_rejects_original_permission_mismatch`
+- `test_review_candidate_rejects_original_owner_binding_mismatch`
+- `test_review_candidate_rejects_a_different_reviewed_directory_identity`
+- `test_review_candidate_requires_complete_custody_bindings`
+- `test_review_candidate_enforces_every_retained_input_metadata_field`
+- `test_review_candidate_rejects_an_actual_different_candidate_directory`
+- `test_review_candidate_requires_an_exact_candidate_binding`
+- `test_review_candidate_unavailable_observation_has_no_completed_verdict`
+- `test_review_candidate_unstable_custody_has_no_completed_verdict`
+- `test_review_candidate_detects_custody_change_after_initial_identity_check`
+- `test_custody_refusal_cannot_be_submitted_as_completed_t12`
+
+The owner-binding test changes the synthetic accepted UID instead of performing
+privileged chown. It observes real file metadata and requires refusal of that
+inconsistent binding. No account, credential or host configuration changes occur.
+
+B1-F03 first failed nested initialization, nested transition and concurrent
+consumption regressions on the preceding candidate. The corrected suite passes:
+
+- `test_reentrant_transition_is_denied_before_another_pending_record`
+- `test_reentrant_initialization_cannot_register_twice`
+- `test_concurrent_consumption_cannot_overlap_a_pending_commit`
+- `test_reentrant_private_commit_cannot_append_a_second_proposal`
+- `test_unhandled_reentrant_consumption_denial_never_restores_entitlement`
+- `test_reentrant_close_cannot_invalidate_pending_record_descriptors`
+
+The concurrency test uses one additional thread in the synthetic test process
+with Events and three-second wait/join bounds. The held acknowledgment lets a
+second request target the pending head deliberately. Exactly one consumption
+proposal and one confirmed consumption remain. No copy child runs during this
+threaded simulation.
+
 ## Synthetic effects and dependencies
 
 Local test effects are confined to
@@ -168,6 +257,8 @@ for negative tests and cleanup, descriptor locks, anonymous diagnostic pipes,
 fork/exec/wait, process limits and bounded stop simulations. There are no sockets,
 external requests, database services, operational inputs or production records.
 Synthetic role keys stay in memory and are not committed or logged.
+Reentrancy tests use nested calls. The concurrent-admission test adds a bounded
+in-process thread and Events; it creates no service or additional storage root.
 
 One journal admits at most 2,048 files of at most 65,536 bytes each, including
 framing and MAC, for a maximum 128 MiB of record bytes. Each input is at most
@@ -213,7 +304,7 @@ B1_COPY_EXECUTABLE=/usr/bin/busybox \
 /usr/bin/python3.14 -I -B -m unittest discover -s tools/tests -p 'test_b1_*.py' -v
 ```
 
-All 53 tests passed locally. Subtests execute all 54 adverse rows from their
+All 72 tests passed locally. Subtests execute all 54 adverse rows from their
 actual source states; normal paths exercise all twelve normal/review rows and
 all ten terminal outcomes. Tests include lost/replayed ACKs, duplicate approval,
 double consumption, Gate A substitution, wrong actor, altered request, expiry,
@@ -271,8 +362,8 @@ because they would create artifacts outside the owner's approved test root.
 
 `open_production` and `production_acceptance` always fail before storage effects.
 No flag enables them. Replacing these denials requires separately authorized,
-reviewed deployment integration and qualification. This candidate claims only
-implementation readiness for that independent qualification.
+reviewed deployment integration and qualification. This corrected candidate
+requires independent Master Gate re-review and is not an acceptance decision.
 
 ## Authority
 

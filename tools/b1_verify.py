@@ -19,6 +19,14 @@ class InvalidEvidence(ValueError):
     """Retained evidence is malformed, incomplete in framing, or unauthenticated."""
 
 
+class CustodyMismatch(InvalidEvidence):
+    """An observed identity or retained custody binding does not match."""
+
+
+class ObservationUncertain(InvalidEvidence):
+    """The observation is unstable or unavailable; no completed verdict exists."""
+
+
 def _encode(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
                       allow_nan=False).encode("ascii")
@@ -124,15 +132,29 @@ def read_history(records_fd, supervisor_key, custody_key):
 def review_candidate(directory_fd, inputs, expected):
     """Produce bounded independent artifact observations, never operational acceptance.
 
-    Known byte/metadata differences yield a complete negative artifact review.
-    An inability to observe the objects raises; it is not a completed rejection.
+    Accepted input custody and the exact reviewed directory are prerequisites.
+    Their mismatch or unavailable/unstable observation raises without a verdict.
+    Known candidate defects on that established object yield a complete negative.
     Supervisor/entitlement/synchronization and continuous-custody evidence must
     be independently assessed as well before any operational decision.
     """
+    try:
+        return _review_candidate(directory_fd, inputs, expected)
+    except OSError as error:
+        raise ObservationUncertain("artifact/custody observation is unavailable") from error
+
+
+def _review_candidate(directory_fd, inputs, expected):
     findings = []
     directory = os.fstat(directory_fd)
     if not stat.S_ISDIR(directory.st_mode):
-        raise ValueError("review target is not a directory")
+        raise CustodyMismatch("review target is not a directory")
+    candidate = expected.get("candidate")
+    if (not isinstance(candidate, dict) or set(candidate) != set(_metadata(directory))
+            or (directory.st_dev, directory.st_ino) != (candidate["device"], candidate["inode"])):
+        raise CustodyMismatch("exact reviewed candidate identity is absent or mismatching")
+    if _metadata(directory) != candidate:
+        findings.append("candidate metadata differs from accepted binding")
     if (stat.S_IMODE(directory.st_mode) != 0o500 or directory.st_uid != expected["uid"]
             or directory.st_gid != expected["gid"]):
         findings.append("candidate directory metadata mismatch")
@@ -146,8 +168,9 @@ def review_candidate(directory_fd, inputs, expected):
         identity = inspect_file(inputs[role])
         input_observations[role] = identity
         binding = expected["inputs"][role]
-        if identity["bytes"] != binding["bytes"] or identity["sha256"] != binding["sha256"]:
-            raise InvalidEvidence("accepted input identity mismatch")
+        retained = {k: v for k, v in binding.items() if k != "range"}
+        if {k: v for k, v in identity.items() if k != "final_lf"} != retained:
+            raise CustodyMismatch("accepted input identity/metadata/custody mismatch")
     for role, name in (("source", "qualification_authority.py"), ("companion", "source_review_packet.md")):
         if name not in entries:
             findings.append(role + " payload is absent")
@@ -171,6 +194,11 @@ def review_candidate(directory_fd, inputs, expected):
                 raise InvalidEvidence("entry changed during verification")
         finally:
             os.close(fd)
+    for role in ("source", "companion", "export"):
+        if inspect_file(inputs[role]) != input_observations[role]:
+            raise ObservationUncertain("accepted input custody changed during the review")
+    if _metadata(os.fstat(directory_fd)) != _metadata(directory) or set(os.listdir(directory_fd)) != entries:
+        raise ObservationUncertain("candidate identity/entries changed during the review")
     result = {"complete": True, "mechanism_failed": False, "positive": not findings,
               "findings": findings, "observations": observations, "inputs": input_observations,
               "directory": _metadata(directory)}
@@ -255,16 +283,10 @@ def review_result(parent_fd, inputs, context, records_fd, supervisor_key, custod
         actual = os.fstat(directory)
         if (actual.st_dev, actual.st_ino) != (context["candidate"]["device"], context["candidate"]["inode"]):
             raise InvalidEvidence("candidate identity differs from the confirmed producer checkpoint")
-        for role in ("source", "companion", "export"):
-            observed = inspect_file(inputs[role])
-            if {k: v for k, v in observed.items() if k != "final_lf"} != {
-                    k: v for k, v in grant["inputs"][role].items() if k != "range"}:
-                raise InvalidEvidence("accepted input custody differs from grant")
         result = review_candidate(directory, inputs, {"uid": context["candidate"]["uid"],
                                                       "gid": context["candidate"]["gid"],
+                                                      "candidate": context["candidate"],
                                                       "inputs": grant["inputs"]})
-        if result["directory"] != context["candidate"]:
-            result["findings"].append("candidate metadata differs from producer checkpoint")
         for role, observed in result["observations"].items():
             if {k: observed[k] for k in context["outputs"][role]} != context["outputs"][role]:
                 result["findings"].append(role + " metadata differs from producer checkpoint")
@@ -293,14 +315,14 @@ def inspect_file(fd, limit=131072):
     """Return independently calculated identity, preserving descriptor offset."""
     before = os.fstat(fd)
     if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or before.st_size > limit:
-        raise ValueError("object is not a bounded unique regular file")
+        raise CustodyMismatch("object is not a bounded unique regular file")
     hashed = hashlib.sha256()
     total = 0
     last = b""
     while part := os.pread(fd, 16384, total):
         total += len(part)
         if total > limit:
-            raise ValueError("object grew beyond verification bound")
+            raise ObservationUncertain("object grew beyond verification bound")
         hashed.update(part)
         last = part[-1:]
     after = os.fstat(fd)
@@ -308,7 +330,9 @@ def inspect_file(fd, limit=131072):
         before.st_mode, before.st_uid, before.st_gid, before.st_nlink) != (
         after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns,
         after.st_mode, after.st_uid, after.st_gid, after.st_nlink):
-        raise ValueError("object changed during independent observation")
+        raise ObservationUncertain("object changed during independent observation")
+    if total != before.st_size:
+        raise ObservationUncertain("complete object bytes could not be observed")
     return {"device": before.st_dev, "inode": before.st_ino, "bytes": total,
             "sha256": hashed.hexdigest(), "mode": stat.S_IMODE(before.st_mode),
             "uid": before.st_uid, "gid": before.st_gid, "links": before.st_nlink,

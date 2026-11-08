@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import threading
 from unittest import mock
 import unittest
 
@@ -167,6 +168,151 @@ class ControlTests(unittest.TestCase):
             self.request("B1-T01", {"revision": "synthetic-r0"})
         self.assertEqual(self.controller.cases["synthetic-case"]["state"], "P0")
         self.assertTrue(self.controller.blocked)
+
+    def test_reentrant_transition_is_denied_before_another_pending_record(self):
+        self.register()
+        outcomes = []
+        def nested_ack(record):
+            if not outcomes:
+                outcomes.append("attempting")
+                try:
+                    self.request("B1-T01", {"revision": "synthetic-r0"})
+                except control.Denied:
+                    outcomes.append("denied")
+                else:
+                    outcomes.append("admitted")
+            return self.ack(record)
+        self.controller.acknowledge = nested_ack
+        result = self.request("B1-T01", {"revision": "synthetic-r0"})
+        self.assertEqual(outcomes, ["attempting", "denied"])
+        self.assertEqual(result["state"], "P1")
+        history = verifier.read_history(self.controller.records_fd, self.keys["S"], self.keys["C"])
+        self.assertTrue(history["complete"])
+        self.assertEqual(sum(event["kind"] == "pending_transition" for event in history["events"]), 1)
+
+    def test_reentrant_initialization_cannot_register_twice(self):
+        outcomes = []
+        def nested_ack(record):
+            if not outcomes:
+                outcomes.append("attempting")
+                try:
+                    self.register()
+                except control.Denied:
+                    outcomes.append("denied")
+                else:
+                    outcomes.append("admitted")
+            return self.ack(record)
+        self.controller.acknowledge = nested_ack
+        self.register()
+        self.assertEqual(outcomes, ["attempting", "denied"])
+        history = verifier.read_history(self.controller.records_fd, self.keys["S"], self.keys["C"])
+        self.assertTrue(history["complete"])
+        self.assertEqual(sum(event["kind"] == "pending_initialize" for event in history["events"]), 1)
+
+    def test_concurrent_consumption_cannot_overlap_a_pending_commit(self):
+        self.to_writing(stop_at="O0")
+        entered, release = threading.Event(), threading.Event()
+        results, failures = [], []
+        def held_ack(record):
+            if not entered.is_set():
+                entered.set()
+                if not release.wait(3):
+                    raise TimeoutError("synthetic acknowledgment release deadline")
+            return self.ack(record)
+        self.controller.acknowledge = held_ack
+        def consume():
+            try:
+                results.append(self.request("B1-T07", {"entitlement": "synthetic-grant"}))
+            except BaseException as error:
+                failures.append(error)
+        worker = threading.Thread(target=consume)
+        worker.start()
+        try:
+            self.assertTrue(entered.wait(3), "first request did not reach the held acknowledgment")
+            with self.assertRaises(control.Denied):
+                self.request("B1-T07", {"entitlement": "synthetic-grant"})
+        finally:
+            release.set()
+            worker.join(3)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(failures, [])
+        self.assertEqual(len(results), 1)
+        self.assertTrue(results[0]["consumed"])
+        with self.assertRaises(control.Denied):
+            self.request("B1-T07", {"entitlement": "synthetic-grant"})
+        history = verifier.read_history(self.controller.records_fd, self.keys["S"], self.keys["C"])
+        self.assertTrue(history["complete"])
+        consumption = [event for event in history["events"] if event["kind"] == "pending_transition"
+                       and event["payload"]["request"]["body"]["transition"] == "B1-T07"]
+        self.assertEqual(len(consumption), 1)
+
+    def test_actual_report_from_a_different_candidate_cannot_accept_this_case(self):
+        self.to_writing(stop_at="O4")
+        other = ControlTests("test_registration_is_durable_and_unique")
+        other.setUp()
+        self.addCleanup(other.doCleanups)
+        other.to_writing(stop_at="O4")
+        foreign = other.independent_review(other.controller.review_context("synthetic-case"))
+        receipt = envelope(self.keys, "V", foreign["body"])
+        self.controller.reviewer = lambda context: receipt
+        decision = {"complete": True, "mechanism_failed": False, "positive": True,
+                    "evidence_sha256": control.digest(receipt["body"])}
+        with self.assertRaises(control.Denied):
+            self.request("B1-T11", {"review": decision})
+        self.assertEqual(self.controller.cases["synthetic-case"]["state"], "O4")
+
+    def test_reentrant_private_commit_cannot_append_a_second_proposal(self):
+        self.register()
+        def nested_commit(record):
+            with self.assertRaises(control.Denied):
+                self.controller._commit("transition", "synthetic-case", {"unexpected": True})
+            return self.ack(record)
+        self.controller.acknowledge = nested_commit
+        self.request("B1-T01", {"revision": "synthetic-r0"})
+        history = verifier.read_history(self.controller.records_fd, self.keys["S"], self.keys["C"])
+        self.assertTrue(history["complete"])
+        self.assertEqual(sum(event["kind"] == "pending_transition" for event in history["events"]), 1)
+
+    def test_unhandled_reentrant_consumption_denial_never_restores_entitlement(self):
+        self.to_writing(stop_at="O0")
+        def rejected_ack(record):
+            self.request("B1-T07", {"entitlement": "synthetic-grant"})
+            return self.ack(record)
+        self.controller.acknowledge = rejected_ack
+        with self.assertRaises(control.Denied):
+            self.request("B1-T07", {"entitlement": "synthetic-grant"})
+        self.assertTrue(self.controller.blocked)
+        self.controller.acknowledge = self.ack
+        with self.assertRaises(control.Denied):
+            self.request("B1-T07", {"entitlement": "synthetic-grant"})
+        history = verifier.read_history(self.controller.records_fd, self.keys["S"], self.keys["C"])
+        self.assertFalse(history["complete"])
+        self.assertEqual(history["events"][-1]["kind"], "pending_transition")
+        self.controller.close()
+        with self.assertRaises(control.RecoveryRequired):
+            control.Controller(self.root, self.keys, self.ack)
+
+    def test_reentrant_close_cannot_invalidate_pending_record_descriptors(self):
+        self.register()
+        def nested_close(record):
+            with self.assertRaises(control.Denied):
+                self.controller.close()
+            return self.ack(record)
+        self.controller.acknowledge = nested_close
+        result = self.request("B1-T01", {"revision": "synthetic-r0"})
+        self.assertEqual(result["state"], "P1")
+        self.assertTrue(verifier.read_history(self.controller.records_fd, self.keys["S"], self.keys["C"])["complete"])
+
+    def test_custody_refusal_cannot_be_submitted_as_completed_t12(self):
+        self.to_writing(stop_at="O4")
+        decision = self.review_decision()
+        decision["positive"] = False
+        (self.root / "source").chmod(0o600)
+        sequence = self.controller.sequence
+        with self.assertRaises(control.Denied):
+            self.request("B1-T12", {"review": decision})
+        self.assertEqual(self.controller.cases["synthetic-case"]["state"], "O4")
+        self.assertEqual(self.controller.sequence, sequence)
 
     def test_unclean_restart_never_restores_eligibility(self):
         self.register()

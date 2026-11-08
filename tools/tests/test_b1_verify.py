@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 import test_b1_control as control_tests
 from test_b1_control import test_root
@@ -98,6 +99,7 @@ class VerificationTests(unittest.TestCase):
         fd = os.open(rig.root / "candidate", os.O_RDONLY | os.O_DIRECTORY)
         self.addCleanup(os.close, fd)
         expected = {"uid": os.getuid(), "gid": os.getgid(),
+                    "candidate": rig.controller.cases["synthetic-case"]["candidate"],
                     "inputs": rig.controller.cases["synthetic-case"]["grant"]["inputs"]}
         report = verify.review_candidate(fd, inputs, expected)
         self.assertTrue(report["positive"])
@@ -127,6 +129,7 @@ class VerificationTests(unittest.TestCase):
         fd = os.open(candidate, os.O_RDONLY | os.O_DIRECTORY)
         self.addCleanup(os.close, fd)
         expected = {"uid": os.getuid(), "gid": os.getgid(),
+                    "candidate": rig.controller.cases["synthetic-case"]["candidate"],
                     "inputs": rig.controller.cases["synthetic-case"]["grant"]["inputs"]}
         report = verify.review_candidate(fd, inputs, expected)
         self.assertTrue(report["complete"])
@@ -143,6 +146,111 @@ class VerificationTests(unittest.TestCase):
         parent = os.open(rig.root, os.O_RDONLY | os.O_DIRECTORY)
         self.addCleanup(os.close, parent)
         return rig, inputs, parent, rig.controller.review_context("synthetic-case")
+
+    def direct_review_rig(self):
+        rig, inputs, parent, context = self.review_rig()
+        candidate = os.open("candidate", os.O_RDONLY | os.O_DIRECTORY, dir_fd=parent)
+        self.addCleanup(os.close, candidate)
+        expected = {"uid": os.getuid(), "gid": os.getgid(), "candidate": context["candidate"],
+                    "inputs": context["grant"]["inputs"]}
+        return rig, inputs, candidate, expected
+
+    def test_review_candidate_rejects_identical_bytes_in_another_inode(self):
+        rig, inputs, candidate, expected = self.direct_review_rig()
+        clone = self.root / "synthetic-source-clone"
+        clone.write_bytes((rig.root / "source").read_bytes())
+        clone.chmod(0o400)
+        copied = os.open(clone, os.O_RDONLY | os.O_NOATIME | os.O_CLOEXEC)
+        self.addCleanup(os.close, copied)
+        self.assertNotEqual(os.fstat(copied).st_ino, os.fstat(inputs["source"]).st_ino)
+        with self.assertRaises(verify.CustodyMismatch):
+            verify.review_candidate(candidate, {**inputs, "source": copied}, expected)
+
+    def test_review_candidate_rejects_original_permission_mismatch(self):
+        rig, inputs, candidate, expected = self.direct_review_rig()
+        (rig.root / "source").chmod(0o600)
+        with self.assertRaises(verify.CustodyMismatch):
+            verify.review_candidate(candidate, inputs, expected)
+
+    def test_review_candidate_rejects_original_owner_binding_mismatch(self):
+        _, inputs, candidate, expected = self.direct_review_rig()
+        # Change the synthetic accepted binding; no privileged chown is needed.
+        binding = {**expected["inputs"]["source"], "uid": os.getuid() + 1}
+        expected = {**expected, "inputs": {**expected["inputs"], "source": binding}}
+        with self.assertRaises(verify.CustodyMismatch):
+            verify.review_candidate(candidate, inputs, expected)
+
+    def test_review_candidate_rejects_a_different_reviewed_directory_identity(self):
+        _, inputs, candidate, expected = self.direct_review_rig()
+        expected = {**expected, "candidate": {**expected["candidate"], "inode": expected["candidate"]["inode"] + 1}}
+        with self.assertRaises(verify.CustodyMismatch):
+            verify.review_candidate(candidate, inputs, expected)
+
+    def test_review_candidate_requires_complete_custody_bindings(self):
+        _, inputs, candidate, expected = self.direct_review_rig()
+        binding = {k: v for k, v in expected["inputs"]["source"].items() if k != "ctime_ns"}
+        with self.assertRaises(verify.CustodyMismatch):
+            verify.review_candidate(candidate, inputs, {**expected, "inputs": {**expected["inputs"], "source": binding}})
+
+    def test_review_candidate_enforces_every_retained_input_metadata_field(self):
+        _, inputs, candidate, expected = self.direct_review_rig()
+        for field in ("device", "inode", "uid", "gid", "mode", "links", "mtime_ns", "ctime_ns"):
+            with self.subTest(field=field):
+                accepted = expected["inputs"]["source"]
+                binding = {**accepted, field: accepted[field] + 1}
+                with self.assertRaises(verify.CustodyMismatch):
+                    verify.review_candidate(candidate, inputs, {**expected,
+                        "inputs": {**expected["inputs"], "source": binding}})
+
+    def test_review_candidate_requires_an_exact_candidate_binding(self):
+        _, inputs, candidate, expected = self.direct_review_rig()
+        with self.assertRaises(verify.CustodyMismatch):
+            verify.review_candidate(candidate, inputs, {k: v for k, v in expected.items() if k != "candidate"})
+
+    def test_review_candidate_unavailable_observation_has_no_completed_verdict(self):
+        _, inputs, candidate, expected = self.direct_review_rig()
+        with mock.patch.object(verify.os, "pread", side_effect=PermissionError("synthetic unavailable observation")):
+            with self.assertRaises(verify.ObservationUncertain):
+                verify.review_candidate(candidate, inputs, expected)
+
+    def test_review_candidate_unstable_custody_has_no_completed_verdict(self):
+        rig, inputs, candidate, expected = self.direct_review_rig()
+        real_pread = os.pread
+        changed = []
+        def change_during_read(fd, length, offset):
+            value = real_pread(fd, length, offset)
+            if not changed:
+                changed.append(True)
+                (rig.root / "source").chmod(0o600)
+            return value
+        with mock.patch.object(verify.os, "pread", side_effect=change_during_read):
+            with self.assertRaises(verify.ObservationUncertain):
+                verify.review_candidate(candidate, inputs, expected)
+
+    def test_review_candidate_detects_custody_change_after_initial_identity_check(self):
+        rig, inputs, candidate, expected = self.direct_review_rig()
+        real_equal = verify.equal_files
+        changed = []
+        def change_after_comparison(left, right):
+            result = real_equal(left, right)
+            if not changed:
+                changed.append(True)
+                (rig.root / "source").chmod(0o600)
+            return result
+        with mock.patch.object(verify, "equal_files", side_effect=change_after_comparison):
+            with self.assertRaises(verify.ObservationUncertain):
+                verify.review_candidate(candidate, inputs, expected)
+
+    def test_review_candidate_rejects_an_actual_different_candidate_directory(self):
+        _, inputs, _, expected = self.direct_review_rig()
+        other = control_tests.ControlTests("test_registration_is_durable_and_unique")
+        other.setUp()
+        self.addCleanup(other.doCleanups)
+        other.to_writing(stop_at="O4")
+        foreign = os.open(other.root / "candidate", os.O_RDONLY | os.O_DIRECTORY)
+        self.addCleanup(os.close, foreign)
+        with self.assertRaises(verify.CustodyMismatch):
+            verify.review_candidate(foreign, inputs, expected)
 
     def test_result_observer_returns_actual_artifacts_bound_to_current_lifecycle(self):
         rig, inputs, parent, context = self.review_rig()

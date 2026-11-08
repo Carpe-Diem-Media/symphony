@@ -7,6 +7,7 @@ human identity or a production trust mechanism. No source payload is imported.
 """
 
 import fcntl
+from functools import wraps
 import hashlib
 import hmac
 import json
@@ -17,6 +18,7 @@ import resource
 import select
 import signal
 import stat
+import threading
 import time
 
 
@@ -143,6 +145,21 @@ def _check(condition, reason):
         raise Denied(reason)
 
 
+def _exclusive(lock_name):
+    """Reject overlap before entering a mutation; never queue or retry a request."""
+    def decorate(method):
+        @wraps(method)
+        def guarded(self, *args, **kwargs):
+            lock = getattr(self, lock_name)
+            _check(lock.acquire(blocking=False), "operation or commitment is already in flight")
+            try:
+                return method(self, *args, **kwargs)
+            finally:
+                lock.release()
+        return guarded
+    return decorate
+
+
 def _verify(envelope, actor, keys):
     _check(isinstance(envelope, dict) and set(envelope) == {"actor", "body", "mac"},
            "malformed authenticated envelope")
@@ -211,6 +228,8 @@ class Controller:
         self.acknowledge = acknowledge
         self.reviewer = reviewer
         self.clock = clock
+        self._operation_lock = threading.Lock()
+        self._commit_lock = threading.Lock()
         self.cases = {}
         self.authorizations = set()
         self.grants = set()
@@ -241,6 +260,7 @@ class Controller:
             self.close()
             raise
 
+    @_exclusive("_operation_lock")
     def close(self):
         """Close access without cleanup, replay, state repair or eligibility restoration."""
         for attr in ("records_fd", "root_fd"):
@@ -279,6 +299,7 @@ class Controller:
         self.head = hashlib.sha256(raw).hexdigest()
         return record
 
+    @_exclusive("_commit_lock")
     def _commit(self, kind, case, payload, *, valid_until=None):
         """Persist proposal, validate received C receipt, then persist confirmation."""
         proposal = self._append("pending_" + kind, case, payload)
@@ -303,6 +324,7 @@ class Controller:
             self.blocked = True
             raise Denied("unconfirmed commitment: forward effects denied") from error
 
+    @_exclusive("_operation_lock")
     def register(self, authorization):
         """Prospectively register one synthetic case under an unused owner approval."""
         body = _verify(authorization, "H", self.keys)
@@ -333,6 +355,7 @@ class Controller:
                             "complete": False}
         return json.loads(canonical(self.cases[case]))
 
+    @_exclusive("_operation_lock")
     def apply(self, request):
         """Admit only the registered relation against the exact acknowledged head."""
         _check(isinstance(request, dict) and isinstance(request.get("body"), dict), "malformed request")
@@ -557,6 +580,7 @@ class Controller:
                and time.monotonic() < deadline,
                "authority or materialization deadline ended")
 
+    @_exclusive("_operation_lock")
     def copy(self, case, inputs, executable, *, wall_seconds=30):
         """Consume two synthetic copy slots, preserving partial objects on any loss.
 
