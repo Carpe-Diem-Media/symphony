@@ -141,8 +141,10 @@ def review_candidate(directory_fd, inputs, expected):
     if entries != wanted:
         findings.append("candidate entry inventory mismatch")
     observations = {}
+    input_observations = {}
     for role in ("source", "companion", "export"):
         identity = inspect_file(inputs[role])
+        input_observations[role] = identity
         binding = expected["inputs"][role]
         if identity["bytes"] != binding["bytes"] or identity["sha256"] != binding["sha256"]:
             raise InvalidEvidence("accepted input identity mismatch")
@@ -170,8 +172,110 @@ def review_candidate(directory_fd, inputs, expected):
         finally:
             os.close(fd)
     result = {"complete": True, "mechanism_failed": False, "positive": not findings,
-              "findings": findings, "observations": observations}
+              "findings": findings, "observations": observations, "inputs": input_observations,
+              "directory": _metadata(directory)}
     return {**result, "evidence_sha256": hashlib.sha256(_encode(result)).hexdigest()}
+
+
+def _metadata(value):
+    return {"device": value.st_dev, "inode": value.st_ino, "bytes": value.st_size,
+            "uid": value.st_uid, "gid": value.st_gid, "mode": stat.S_IMODE(value.st_mode),
+            "links": value.st_nlink, "mtime_ns": value.st_mtime_ns, "ctime_ns": value.st_ctime_ns}
+
+
+def review_result(parent_fd, inputs, context, records_fd, supervisor_key, custody_key, verifier_key):
+    """Observe a synthetic result against authenticated, current O4 evidence.
+
+    The callback's custodian supplies descriptors and synthetic keys. This
+    performs actual independent artifact and journal reads; it is not production
+    principal separation. A result cannot be signed from a producer digest alone.
+    """
+    history = read_history(records_fd, supervisor_key, custody_key)
+    if (not history["complete"] or context["head"] != history["head"]
+            or context["scope"] != "synthetic"
+            or context["namespace"] != "JCSchoeman96/symphony/ACQ-EXEC-06/B1/synthetic"
+            or _metadata(os.fstat(parent_fd)) != context["parent"]):
+        raise InvalidEvidence("review context is not the current authenticated journal/parent")
+    proposals = {}
+    confirmed = []
+    for event in history["events"]:
+        if event["kind"].startswith("pending_"):
+            proposals[hashlib.sha256(_encode(event)).hexdigest()] = event
+        elif event["kind"].startswith("confirmed_") and event["case"] == context["case"]:
+            confirmed.append((proposals[event["payload"]["proposal"]], event))
+    initial = [proposal for proposal, _ in confirmed if proposal["kind"] == "pending_initialize"]
+    transitions = [proposal["payload"] for proposal, _ in confirmed
+                   if proposal["kind"] == "pending_transition"]
+    expected = [("B1-T01", "P0", "P1"), ("B1-T02", "P1", "P2"),
+                ("B1-T03", "P2", "P3"), ("B1-T06", "P3", "O0"),
+                ("B1-T07", "O0", "O1"), ("B1-T08", "O1", "O2"),
+                ("B1-T09", "O2", "O3"), ("B1-T10", "O3", "O4")]
+    if len(initial) != 1 or [(p["request"]["body"]["transition"], p["source"], p["destination"])
+                             for p in transitions] != expected:
+        raise InvalidEvidence("case has no complete confirmed path to review intake")
+    initialized = initial[0]["payload"]
+    authorization = initialized["authorization"]["body"]
+    if (initialized["state"] != "P0" or initialized["grant"] is not None
+            or initialized["consumed"] is not False
+            or hashlib.sha256(_encode(authorization)).hexdigest() != context["initialization"]
+            or authorization["case"] != context["case"]):
+        raise InvalidEvidence("review initialization binding mismatch")
+    evidence = {p["request"]["body"]["transition"]: p["request"]["body"]["evidence"] for p in transitions}
+    grant = evidence["B1-T06"]["grant"]
+    if (grant != context["grant"] or evidence["B1-T02"]["packet"] != context["packet"]
+            or grant["packet"] != context["packet"]
+            or evidence["B1-T07"]["entitlement"] != grant["id"]
+            or evidence["B1-T08"]["ready"] != grant["id"]
+            or evidence["B1-T09"]["producer_complete"] is not True
+            or evidence["B1-T10"]["review_authority"] != context["review_authority"]):
+        raise InvalidEvidence("review plan/grant/attempt/intake binding mismatch")
+    checkpoints = [(p, c) for p, c in confirmed if p["kind"] == "pending_checkpoint"]
+    effects = [p["payload"] for p, _ in confirmed if p["kind"] == "pending_effect"]
+    if ([value["name"] for value in effects]
+            != ["mkdir", "source_create", "source_launch", "companion_create", "companion_launch",
+                "finalize_directory"] or effects[2]["slot"] != 1 or effects[4]["slot"] != 2
+            or effects[0]["destination"] != grant["destination"]):
+        raise InvalidEvidence("ordered exclusive effect/launch evidence is incomplete")
+    if [p["payload"]["name"] for p, _ in checkpoints] != ["source", "companion", "producer"]:
+        raise InvalidEvidence("ordered acknowledged checkpoints are incomplete")
+    for proposal, _ in checkpoints[:2]:
+        value = proposal["payload"]
+        if (value["output"] != context["outputs"][value["name"]] or value["fsync"] is not True
+                or value["writer_closed"] is not True or value["child"]["exit"] != 0
+                or value["child"]["writer_terminated"] is not True):
+            raise InvalidEvidence("copy checkpoint binding mismatch")
+    producer, confirmation = checkpoints[-1]
+    if (hashlib.sha256(_encode(confirmation)).hexdigest() != context["producer_head"]
+            or producer["payload"]["directory"] != context["candidate"]
+            or producer["payload"]["active_writers"] is not False
+            or producer["payload"]["sync_order"] != ["source", "companion", "directory", "parent"]):
+        raise InvalidEvidence("producer completion evidence mismatch")
+    directory = open_readonly(parent_fd, grant["destination"])
+    try:
+        actual = os.fstat(directory)
+        if (actual.st_dev, actual.st_ino) != (context["candidate"]["device"], context["candidate"]["inode"]):
+            raise InvalidEvidence("candidate identity differs from the confirmed producer checkpoint")
+        for role in ("source", "companion", "export"):
+            observed = inspect_file(inputs[role])
+            if {k: v for k, v in observed.items() if k != "final_lf"} != {
+                    k: v for k, v in grant["inputs"][role].items() if k != "range"}:
+                raise InvalidEvidence("accepted input custody differs from grant")
+        result = review_candidate(directory, inputs, {"uid": context["candidate"]["uid"],
+                                                      "gid": context["candidate"]["gid"],
+                                                      "inputs": grant["inputs"]})
+        if result["directory"] != context["candidate"]:
+            result["findings"].append("candidate metadata differs from producer checkpoint")
+        for role, observed in result["observations"].items():
+            if {k: observed[k] for k in context["outputs"][role]} != context["outputs"][role]:
+                result["findings"].append(role + " metadata differs from producer checkpoint")
+        result["positive"] = not result["findings"]
+        result["evidence_sha256"] = hashlib.sha256(_encode({
+            k: v for k, v in result.items() if k != "evidence_sha256"})).hexdigest()
+    finally:
+        os.close(directory)
+    body = {"scope": "synthetic", "namespace": context["namespace"], "binding": context, "result": result}
+    signed = {"actor": "V", "body": body}
+    return {**signed, "mac": hmac.new(verifier_key, _encode(signed), "sha256").hexdigest()}
 
 
 def production_acceptance(*args, **kwargs):
@@ -181,7 +285,8 @@ def production_acceptance(*args, **kwargs):
 def open_readonly(parent_fd, name):
     if not isinstance(name, str) or not name or name in (".", "..") or "/" in name or "\x00" in name:
         raise ValueError("one literal directory entry is required")
-    return os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NOATIME | os.O_CLOEXEC, dir_fd=parent_fd)
+    return os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NOATIME | os.O_NONBLOCK
+                   | os.O_CLOEXEC, dir_fd=parent_fd)
 
 
 def inspect_file(fd, limit=131072):
@@ -207,6 +312,7 @@ def inspect_file(fd, limit=131072):
     return {"device": before.st_dev, "inode": before.st_ino, "bytes": total,
             "sha256": hashed.hexdigest(), "mode": stat.S_IMODE(before.st_mode),
             "uid": before.st_uid, "gid": before.st_gid, "links": before.st_nlink,
+            "mtime_ns": before.st_mtime_ns, "ctime_ns": before.st_ctime_ns,
             "final_lf": last == b"\n"}
 
 

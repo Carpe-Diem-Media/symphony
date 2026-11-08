@@ -1,7 +1,8 @@
 # B1 control implementation R0
 
-Status: implementation candidate for independent qualification under the
-project owner's bounded implementation grant. Production admission is closed.
+Status: B1-F01 correction candidate. Exact-commit review and CI evidence must be
+read from the draft PR. Production admission remains closed under the bounded
+implementation grant.
 
 ## Scope and design
 
@@ -119,6 +120,42 @@ independent reimplementation of all transition guards. The appointed verifier
 must assess grant, lifecycle, synchronization and custody evidence separately.
 `production_acceptance` refuses without effects.
 
+### B1-F01 correction
+
+The original 40-test candidate accepted a syntactically valid positive decision
+digest without obtaining its corresponding independent result. The owner found
+this in review. The prior completion claim and exact-HEAD certification do not
+apply to the corrected candidate.
+
+T11 and T12 now require a configured result observer. `review_context(case)`
+identifies the exact synthetic namespace, case, initialization, received packet,
+full grant and attempt, parent, candidate, both producer output identities,
+acknowledged producer checkpoint, review authority and current O4 journal head.
+The controller sends that context to the observer instead of accepting a supplied
+digest as verification. An absent observer denies the decision.
+
+`b1_verify.review_result` reads and authenticates the actual journal, requires the
+confirmed path through O4 and the two ordered launch/checkpoint records, checks
+the full grant and producer bindings, opens the named candidate relative to the
+observer's held parent, verifies all three accepted input identities and calls
+the independent candidate reviewer. It signs the full context and actual result
+with the synthetic V key. Candidate or payload metadata changes since the producer
+checkpoint enter the negative findings. This adds no lifecycle transition.
+
+The controller validates V authentication, exact context equality, the complete
+result hash and its agreement with the decision. It checks the lifecycle again
+and re-observes the live directory and complete payload identities before
+proposing the terminal transition. The full V receipt enters the pending T11/T12
+record and therefore C's acknowledgment and the durable confirmation. A bare
+digest, foreign attempt, stale head, altered result, missing observation or changed
+payload cannot satisfy the guard. Completed negative results remain T12; failed
+observation cannot become a completed artifact rejection.
+
+The observer is a synchronous synthetic callback and its keys remain in one test
+process. The tests demonstrate result/content/lifecycle binding, not production
+principal separation, independent key custody or a qualified receipt transport.
+Production admission and acceptance remain unconditional denials.
+
 ## Synthetic effects and dependencies
 
 Local test effects are confined to
@@ -137,6 +174,10 @@ framing and MAC, for a maximum 128 MiB of record bytes. Each input is at most
 131,072 bytes and each payload at most 65,536 bytes. The bound is per synthetic
 namespace; the fixed test suite creates and cleans its namespaces sequentially.
 Diagnostics stay in memory and enter authenticated checkpoints as bounded hex.
+Independent result observation adds read-only journal/input/candidate descriptor
+opens, full bounded reads and current metadata checks. The existing terminal
+transition record retains the bounded full V result; no separate store, socket,
+service, dependency or authoritative case is introduced.
 Tests remove only their own synthetic objects, including retained failure objects.
 Production failure handling would preserve those objects instead.
 
@@ -172,7 +213,7 @@ B1_COPY_EXECUTABLE=/usr/bin/busybox \
 /usr/bin/python3.14 -I -B -m unittest discover -s tools/tests -p 'test_b1_*.py' -v
 ```
 
-All 40 tests passed locally. Subtests execute all 54 adverse rows from their
+All 53 tests passed locally. Subtests execute all 54 adverse rows from their
 actual source states; normal paths exercise all twelve normal/review rows and
 all ten terminal outcomes. Tests include lost/replayed ACKs, duplicate approval,
 double consumption, Gate A substitution, wrong actor, altered request, expiry,
@@ -185,6 +226,13 @@ The uncertain-stop case simulates unavailable observation without abandoning a
 real child. It is not evidence of host-level death supervision.
 The installed actionlint 1.7.12 accepted the new workflow. Optional external
 shellcheck and pyflakes integrations were disabled; no tool was installed.
+B1-F01 first reproduced as a failing bare-digest regression. The corrected suite
+uses actual independent results for both positive and negative terminal decisions.
+It also rejects missing observers, modified results, foreign case/grant/attempt/
+candidate/parent/plan bindings, stale heads, input substitution, unconfirmed review
+intake and post-observation payload changes. It verifies full-result retention in
+the authenticated transition. Prior passing CI belongs only to the earlier commit;
+the correction needs its own CI run and independent review.
 
 An independent read-only implementation review identified a pathname execution
 race and incorrect missing-payload classification. The corrected launcher uses

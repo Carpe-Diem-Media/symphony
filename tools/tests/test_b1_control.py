@@ -27,6 +27,7 @@ def load(name):
 
 
 control = load("b1_control")
+verifier = load("b1_verify")
 
 
 def canonical(value):
@@ -61,7 +62,7 @@ class ControlTests(unittest.TestCase):
         self.root = Path(self.directory.name)
         self.keys = {actor: os.urandom(32) for actor in ("H", "P", "M", "S", "V", "C")}
         self.receipts = []
-        self.controller = control.Controller(self.root, self.keys, self.ack)
+        self.controller = control.Controller(self.root, self.keys, self.ack, reviewer=self.independent_review)
         self.addCleanup(self.controller.close)
         self.addCleanup(self.directory.cleanup)
 
@@ -90,6 +91,22 @@ class ControlTests(unittest.TestCase):
         body = {"scope": "synthetic", "case": case, "transition": transition,
                 "expected_head": self.controller.head, "evidence": evidence or {}}
         return self.controller.apply(envelope(self.keys, actor, body))
+
+    def independent_review(self, context):
+        parent = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        records = os.open("records", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC, dir_fd=parent)
+        try:
+            return verifier.review_result(parent, self.input_fds, context, records,
+                                           self.keys["S"], self.keys["C"], self.keys["V"])
+        finally:
+            os.close(records)
+            os.close(parent)
+
+    def review_decision(self):
+        receipt = self.independent_review(self.controller.review_context("synthetic-case"))
+        result = receipt["body"]["result"]
+        return {"complete": result["complete"], "mechanism_failed": result["mechanism_failed"],
+                "positive": result["positive"], "evidence_sha256": control.digest(receipt["body"])}
 
     def test_complete_contract_registry(self):
         self.assertEqual(len(control.NONTERMINAL), 9)
@@ -179,6 +196,7 @@ class ControlTests(unittest.TestCase):
         bindings["source"]["range"] = [7, 7 + len(source)]
         start = 7 + len(source) + 4
         bindings["companion"]["range"] = [start, start + len(companion)]
+        self.input_fds = fds
         executable = os.open(os.environ["B1_COPY_EXECUTABLE"], os.O_RDONLY | os.O_CLOEXEC)
         self.addCleanup(os.close, executable)
         return fds, bindings, executable
@@ -231,12 +249,125 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(candidate.stat().st_mode & 0o777, 0o500)
         self.request("B1-T09", {"producer_complete": True})
         self.request("B1-T10", {"review_authority": "8" * 64})
-        state = self.request("B1-T11", {"review": {"complete": True, "mechanism_failed": False,
-                            "positive": True, "evidence_sha256": "9" * 64}})
+        state = self.request("B1-T11", {"review": self.review_decision()})
         self.assertEqual(state["state"], "STAGING_VERIFIED")
         with self.assertRaises(control.Denied):
             self.controller.copy("synthetic-case", fds, executable)
         candidate.chmod(0o700)
+
+    def test_unbacked_positive_review_digest_is_rejected(self):
+        self.to_writing(stop_at="O4")
+        sequence = self.controller.sequence
+        with self.assertRaises(control.Denied):
+            self.request("B1-T11", {"review": {"complete": True, "mechanism_failed": False,
+                         "positive": True, "evidence_sha256": "9" * 64}})
+        self.assertEqual(self.controller.cases["synthetic-case"]["state"], "O4")
+        self.assertEqual(self.controller.sequence, sequence)
+
+    def test_positive_review_requires_the_independent_result_interface(self):
+        self.to_writing(stop_at="O4")
+        decision = self.review_decision()
+        self.controller.reviewer = None
+        with self.assertRaises(control.Denied):
+            self.request("B1-T11", {"review": decision})
+
+    def test_foreign_result_binding_is_rejected_even_with_a_valid_verifier_signature(self):
+        self.to_writing(stop_at="O4")
+        original = self.independent_review(self.controller.review_context("synthetic-case"))
+        changes = [("case", "synthetic-other"), ("initialization", "a" * 64),
+                   ("head", "b" * 64), ("producer_head", "c" * 64),
+                   ("review_authority", "d" * 64), ("grant.id", "synthetic-other-grant"),
+                   ("grant.attempt", "synthetic-other-attempt"),
+                   ("grant.destination", "other-candidate"), ("packet.sha256", "e" * 64),
+                   ("candidate.inode", 1), ("parent.inode", 1)]
+        sequence = self.controller.sequence
+        for path, value in changes:
+            with self.subTest(binding=path):
+                body = json.loads(canonical(original["body"]))
+                target = body["binding"]
+                keys = path.split(".")
+                for key in keys[:-1]:
+                    target = target[key]
+                target[keys[-1]] = value
+                receipt = envelope(self.keys, "V", body)
+                self.controller.reviewer = lambda context: receipt
+                decision = {"complete": True, "mechanism_failed": False, "positive": True,
+                            "evidence_sha256": control.digest(body)}
+                with self.assertRaises(control.Denied):
+                    self.request("B1-T11", {"review": decision})
+                self.assertEqual(self.controller.sequence, sequence)
+                self.assertEqual(self.controller.cases["synthetic-case"]["state"], "O4")
+
+    def test_altered_verifier_result_is_rejected(self):
+        self.to_writing(stop_at="O4")
+        decision = self.review_decision()
+        receipt = self.independent_review(self.controller.review_context("synthetic-case"))
+        receipt["body"]["result"]["observations"]["source"]["sha256"] = "f" * 64
+        self.controller.reviewer = lambda context: receipt
+        with self.assertRaises(control.Denied):
+            self.request("B1-T11", {"review": decision})
+
+    def test_real_negative_result_cannot_be_presented_as_positive(self):
+        self.to_writing(stop_at="O4")
+        path = self.root / "candidate" / "qualification_authority.py"
+        path.chmod(0o600)
+        path.write_bytes(b"synthetic negative result\n")
+        path.chmod(0o400)
+        decision = self.review_decision()
+        self.assertFalse(decision["positive"])
+        decision["positive"] = True
+        with self.assertRaises(control.Denied):
+            self.request("B1-T11", {"review": decision})
+
+    def test_payload_change_after_independent_observation_denies_acceptance(self):
+        self.to_writing(stop_at="O4")
+        decision = self.review_decision()
+        def replace_after_review(context):
+            receipt = self.independent_review(context)
+            path = self.root / "candidate" / "qualification_authority.py"
+            path.chmod(0o600)
+            path.write_bytes(b"synthetic changed after verification\n")
+            path.chmod(0o400)
+            return receipt
+        self.controller.reviewer = replace_after_review
+        with self.assertRaises(control.Denied):
+            self.request("B1-T11", {"review": decision})
+        self.assertEqual(self.controller.cases["synthetic-case"]["state"], "O4")
+
+    def test_replayed_result_after_journal_advancement_is_rejected(self):
+        self.to_writing(stop_at="O4")
+        decision = self.review_decision()
+        receipt = self.independent_review(self.controller.review_context("synthetic-case"))
+        self.register("synthetic-another-case", "synthetic-another-approval")
+        self.controller.reviewer = lambda context: receipt
+        with self.assertRaises(control.Denied):
+            self.request("B1-T11", {"review": decision})
+
+    def test_verifier_failure_remains_uncompleted_review(self):
+        self.to_writing(stop_at="O4")
+        decision = self.review_decision()
+        def unavailable(context):
+            raise OSError("synthetic independent observation failure")
+        self.controller.reviewer = unavailable
+        with self.assertRaises(control.Denied):
+            self.request("B1-T11", {"review": decision})
+        self.assertEqual(self.controller.cases["synthetic-case"]["state"], "O4")
+        result = self.request("B1-F-O4", {"causes": ["procedure_failed"],
+                              "review_mechanism_failed": True, "review_completed": False})
+        self.assertEqual(result["state"], "FAILED")
+
+    def test_accepted_result_is_retained_in_the_authenticated_transition(self):
+        self.to_writing(stop_at="O4")
+        decision = self.review_decision()
+        self.request("B1-T11", {"review": decision})
+        history = verifier.read_history(self.controller.records_fd, self.keys["S"], self.keys["C"])
+        transition = next(event for event in reversed(history["events"])
+                          if event["kind"] == "pending_transition")
+        receipt = transition["payload"]["verification"]
+        self.assertEqual(control.digest(receipt["body"]), decision["evidence_sha256"])
+        self.assertTrue(receipt["body"]["result"]["positive"])
+        self.assertEqual(receipt["body"]["binding"]["head"], transition["previous"])
+        self.assertTrue(history["complete"])
 
     def test_missing_source_checkpoint_prevents_companion_creation(self):
         fds, executable = self.to_writing()
@@ -363,8 +494,13 @@ class ControlTests(unittest.TestCase):
         with self.assertRaises(control.Denied):
             self.request("B1-F-O4", {"causes": ["procedure_failed"],
                                       "review_mechanism_failed": False, "review_completed": True})
-        result = self.request("B1-T12", {"review": {"complete": True, "mechanism_failed": False,
-                              "positive": False, "evidence_sha256": "9" * 64}})
+        path = self.root / "candidate" / "qualification_authority.py"
+        path.chmod(0o600)
+        path.write_bytes(b"synthetic known artifact defect\n")
+        path.chmod(0o400)
+        decision = self.review_decision()
+        self.assertFalse(decision["positive"])
+        result = self.request("B1-T12", {"review": decision})
         self.assertEqual(result["state"], "B1_REVIEW_REJECTED")
 
     def test_storage_sync_failure_leaves_unusable_pending_state(self):

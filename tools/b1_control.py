@@ -191,7 +191,7 @@ class Controller:
     effects; an independent verifier may still read it. No auto-recovery exists.
     """
 
-    def __init__(self, root, keys, acknowledge, clock=time.time):
+    def __init__(self, root, keys, acknowledge, clock=time.time, *, reviewer=None):
         root = Path(root)
         allowed = os.environ.get("B1_TEST_ROOT")
         local = Path("/home/jcschoeman96/projects/symphony-b1-control-r0/.b1-control-test")
@@ -209,6 +209,7 @@ class Controller:
         self.root = root
         self.keys = dict(keys)
         self.acknowledge = acknowledge
+        self.reviewer = reviewer
         self.clock = clock
         self.cases = {}
         self.authorizations = set()
@@ -350,15 +351,17 @@ class Controller:
         evidence = body["evidence"]
         _check(isinstance(evidence, dict) and all(name in evidence for name in required),
                "missing transition evidence")
-        self._guards(transition, current, evidence)
+        verification = self._guards(transition, case, current, evidence)
         valid_until = None
         if transition.startswith("B1-T"):
             valid_until = min(current["expires"], current["grant"]["expires"]
                               if current["grant"] else current["expires"])
             if transition == "B1-T06":
                 valid_until = min(valid_until, evidence["grant"]["expires"])
-        self._commit("transition", case, {"request": request, "source": source,
-                                           "destination": destination}, valid_until=valid_until)
+        payload = {"request": request, "source": source, "destination": destination}
+        if verification is not None:
+            payload["verification"] = verification
+        self._commit("transition", case, payload, valid_until=valid_until)
         current["state"] = destination
         if transition == "B1-T02":
             current["packet"] = json.loads(canonical(evidence["packet"]))
@@ -368,9 +371,11 @@ class Controller:
             self.attempts.add(current["grant"]["attempt"])
         if transition == "B1-T07":
             current["consumed"] = True
+        if transition == "B1-T10":
+            current["review_authority"] = evidence["review_authority"]
         return json.loads(canonical(current))
 
-    def _guards(self, transition, current, evidence):
+    def _guards(self, transition, case, current, evidence):
         family = transition.split("-")[1]
         expired = self.clock() >= min(current["expires"],
                                       current["grant"]["expires"] if current["grant"] else current["expires"])
@@ -420,6 +425,86 @@ class Controller:
                    and type(review["positive"]) is bool and _hex(review["evidence_sha256"])
                    and review["positive"] == (transition == "B1-T11"),
                    "review decision is incomplete or belongs to another disposition")
+            return self._verified_review(case, current, review)
+
+    def review_context(self, case):
+        """Snapshot the exact O4 binding for a separately supplied synthetic observer."""
+        _check(case in self.cases and not self.blocked, "unregistered or denied review case")
+        current = self.cases[case]
+        _check(current["state"] == "O4" and current["complete"], "independent review is not eligible")
+        return json.loads(canonical({"scope": "synthetic", "namespace": NAMESPACE, "case": case,
+                    "initialization": current["initialization"], "packet": current["packet"],
+                    "grant": current["grant"], "parent": _metadata(os.fstat(self.root_fd)),
+                    "candidate": current["candidate"], "outputs": current["outputs"],
+                    "producer_head": current["producer_head"],
+                    "review_authority": current["review_authority"], "head": self.head}))
+
+    def _verified_review(self, case, current, decision):
+        _check(callable(self.reviewer), "no independent result interface is configured")
+        context = self.review_context(case)
+        try:
+            receipt = self.reviewer(json.loads(canonical(context)))
+            body = _verify(receipt, "V", self.keys)
+            _check(set(body) == {"scope", "namespace", "binding", "result"}
+                   and body["scope"] == "synthetic" and body["namespace"] == NAMESPACE
+                   and body["binding"] == context and digest(body) == decision["evidence_sha256"],
+                   "independent result does not bind this candidate/lifecycle/decision")
+            _check(self.review_context(case) == context, "lifecycle changed during independent observation")
+            result = body["result"]
+            _check(set(result) == {"complete", "mechanism_failed", "positive", "findings",
+                                   "observations", "inputs", "directory", "evidence_sha256"}
+                   and result["complete"] is True and result["mechanism_failed"] is False
+                   and type(result["positive"]) is bool and result["positive"] == decision["positive"]
+                   and isinstance(result["findings"], list) and result["positive"] == (not result["findings"])
+                   and result["evidence_sha256"] == digest({k: v for k, v in result.items()
+                                                            if k != "evidence_sha256"}),
+                   "independent result is incomplete, inconsistent or altered")
+            _check(set(result["inputs"]) == {"source", "companion", "export"},
+                   "independent original-input observations are incomplete")
+            for role, observed in result["inputs"].items():
+                _check({k: v for k, v in observed.items() if k != "final_lf"}
+                       == {k: v for k, v in current["grant"]["inputs"][role].items() if k != "range"},
+                       "independent original-input observations do not match the grant")
+            if result["positive"]:
+                _check(set(result["observations"]) == {"source", "companion"},
+                       "positive independent result omits a payload")
+                _check(result["directory"] == context["candidate"],
+                       "positive independent result does not identify the produced directory")
+                for role, observed in result["observations"].items():
+                    binding = current["grant"]["inputs"][role]
+                    _check(observed["sha256"] == binding["sha256"] and observed["bytes"] == binding["bytes"]
+                           and observed["mode"] == 0o400 and observed["links"] == 1
+                           and observed["uid"] == current["candidate"]["uid"]
+                           and observed["gid"] == current["candidate"]["gid"] and observed["final_lf"] is True,
+                           "positive independent observations fail payload requirements")
+                    _check({k: observed[k] for k in context["outputs"][role]} == context["outputs"][role],
+                           "positive independent result does not identify the produced payload")
+            _check(_metadata(os.fstat(self.root_fd)) == context["parent"], "review parent changed")
+            directory = os.open(current["grant"]["destination"], os.O_RDONLY | os.O_DIRECTORY
+                                | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=self.root_fd)
+            try:
+                _check(_metadata(os.fstat(directory)) == result["directory"], "reviewed directory changed")
+                for role, name in (("source", "qualification_authority.py"),
+                                   ("companion", "source_review_packet.md")):
+                    observed = result["observations"].get(role)
+                    if observed is None:
+                        _check(not result["positive"] and name not in os.listdir(directory),
+                               "missing observation is not a current negative result")
+                        continue
+                    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NOATIME
+                                 | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=directory)
+                    try:
+                        _check(identify(fd) == {k: v for k, v in observed.items() if k != "final_lf"},
+                               "reviewed payload changed or observations do not identify it")
+                    finally:
+                        os.close(fd)
+                entry = os.stat(current["grant"]["destination"], dir_fd=self.root_fd, follow_symlinks=False)
+                _check(_metadata(entry) == result["directory"], "reviewed entry was substituted")
+            finally:
+                os.close(directory)
+            return json.loads(canonical(receipt))
+        except Exception as error:
+            raise Denied("independent result is unavailable, stale or mismatching; decision denied") from error
 
     def _grant(self, grant, current):
         _check(isinstance(grant, dict) and set(grant) == {"scope", "kind", "id", "attempt",
@@ -501,6 +586,7 @@ class Controller:
             candidate_fd = os.open(grant["destination"], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
                                    | os.O_CLOEXEC, dir_fd=self.root_fd)
             directory = os.fstat(candidate_fd)
+            outputs = {}
             _check(directory.st_uid == os.getuid() and directory.st_gid == os.getgid()
                    and stat.S_IMODE(directory.st_mode) == 0o700, "candidate ownership/mode mismatch")
             for name, filename in (("source", "qualification_authority.py"),
@@ -525,6 +611,7 @@ class Controller:
                     os.fsync(output)
                     self._output(output, grant["inputs"][name])
                     output_identity = _metadata(os.fstat(output))
+                    outputs[name] = output_identity
                 finally:
                     os.close(output)
                 # Required acknowledgment occurs after synchronization and writer closure.
@@ -546,6 +633,9 @@ class Controller:
             self._commit("checkpoint", case, {"name": "producer", "directory": _metadata(result),
                                                 "sync_order": ["source", "companion", "directory", "parent"],
                                                 "active_writers": False})
+            current["candidate"] = _metadata(result)
+            current["outputs"] = outputs
+            current["producer_head"] = self.head
             current["complete"] = True
             return json.loads(canonical(current))
         except BaseException as error:
