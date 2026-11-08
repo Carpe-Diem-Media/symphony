@@ -1,0 +1,93 @@
+name: b1-control
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-control:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      B1_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      B1_COPY_EXECUTABLE: /usr/bin/dd
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Require CPython 3.14.4
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        with:
+          python-version: '3.14.4'
+          architecture: x64
+          check-latest: false
+      - name: Bind synthetic artifact root and candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$B1_CANDIDATE_SHA"
+          git show -s --format='candidate=%H tree=%T parents=%P' HEAD
+          test -x "$B1_COPY_EXECUTABLE"
+          test "$(readlink -f "$B1_COPY_EXECUTABLE")" = "$B1_COPY_EXECUTABLE"
+          "$B1_COPY_EXECUTABLE" --version
+          b1_test_root="$RUNNER_TEMP/b1-control-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -m 0700 "$b1_test_root"
+          echo "B1_TEST_ROOT=$b1_test_root" >> "$GITHUB_ENV"
+          echo "TMPDIR=$b1_test_root" >> "$GITHUB_ENV"
+          echo "B1 synthetic test root: $b1_test_root"
+          sha256sum "$(command -v python)" "$B1_COPY_EXECUTABLE"
+      - name: Run synthetic tests and report dependency observations
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -I -B - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import platform
+          import sys
+          import unittest
+
+          if sys.version_info[:3] != (3, 14, 4) or platform.python_implementation() != "CPython":
+              raise RuntimeError("required interpreter is unavailable; no fallback")
+          root = Path(os.environ["B1_TEST_ROOT"])
+          print("interpreter", sys.version, sys.executable, flush=True)
+          suite = unittest.defaultTestLoader.discover("tools/tests", pattern="test_b1_*.py")
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          files = {str(Path(sys.executable).resolve()), os.environ["B1_COPY_EXECUTABLE"],
+                   str(Path("tools/b1_control.py").resolve()),
+                   str(Path("tools/b1_verify.py").resolve())}
+          for module in tuple(sys.modules.values()):
+              path = getattr(module, "__file__", None)
+              if path and Path(path).is_file():
+                  files.add(str(Path(path).resolve()))
+          for line in Path("/proc/self/maps").read_text().splitlines():
+              parts = line.split(maxsplit=5)
+              if len(parts) == 6 and parts[5].startswith("/"):
+                  files.add(parts[5])
+          dependencies = []
+          for name in sorted(files):
+              data = Path(name).read_bytes()
+              dependencies.append({"path": name, "bytes": len(data),
+                                   "sha256": hashlib.sha256(data).hexdigest()})
+          report = {"scope": "synthetic", "candidate": os.environ["B1_CANDIDATE_SHA"],
+                    "test_root": str(root), "interpreter": sys.version,
+                    "executable": sys.executable, "dependencies": dependencies,
+                    "tests": result.testsRun, "failures": len(result.failures),
+                    "errors": len(result.errors), "skipped": len(result.skipped)}
+          encoded = json.dumps(report, sort_keys=True)
+          (root / "test-report.json").write_text(encoded + "\n")
+          print(encoded, flush=True)
+          if list(Path("tools").rglob("__pycache__")):
+              raise RuntimeError("bytecode cache escaped the synthetic artifact root")
+          if not result.wasSuccessful() or result.skipped:
+              raise SystemExit(1)
+          PY
