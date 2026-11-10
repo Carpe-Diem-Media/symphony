@@ -1,0 +1,622 @@
+{
+  "common": {
+    "array_rule": "Identity-keyed collections sorted ascending by their identity, with no duplicates. argv and ordered procedures use contiguous explicit indexes, in exact semantic order. symlink_chain is an ordered resolution proof in encounter order, never sorted by digest.",
+    "canonical": "Recursive JSON with ascending ASCII object keys, no whitespace or escapes, minimal u64 integers and ASCII strings. Only named closed object fields and defined arrays are allowed. No floats, null or booleans. Exact raw SHA-256 identifies each sidecar.",
+    "entry_types": {
+      "argument": {
+        "required": [
+          "index",
+          "value"
+        ],
+        "types": {
+          "index": "u64 contiguous starting at 0",
+          "value": "exact ASCII argument <=4096 bytes"
+        }
+      },
+      "artifact": {
+        "required": [
+          "id",
+          "bytes",
+          "sha256",
+          "provenance_sha256"
+        ],
+        "types": {
+          "bytes": "u64",
+          "id": "ASCII role ID <=128 bytes",
+          "provenance_sha256": "hex64",
+          "sha256": "hex64"
+        }
+      },
+      "authority_key": {
+        "required": [
+          "principal",
+          "role",
+          "public_key",
+          "fingerprint",
+          "namespaces",
+          "custody_record_sha256",
+          "not_before",
+          "expires_at"
+        ],
+        "types": {
+          "custody_record_sha256": "hex64",
+          "expires_at": "u64",
+          "fingerprint": "SHA-256 of exact decoded key wire bytes, hex64",
+          "namespaces": "array of exact permitted purpose strings sorted unique",
+          "not_before": "u64",
+          "principal": "principal <=128 bytes",
+          "public_key": "exact ssh-ed25519 public key line, no certificate",
+          "role": "project-owner-issuer or independent-reviewer"
+        }
+      },
+      "closure_regular_file": {
+        "required": [
+          "kind",
+          "path",
+          "mode",
+          "bytes",
+          "sha256"
+        ],
+        "types": {
+          "bytes": "u64",
+          "kind": "regular",
+          "mode": "four octal digits",
+          "path": "normalized absolute ASCII path <=512 bytes",
+          "sha256": "hex64"
+        }
+      },
+      "closure_symlink": {
+        "required": [
+          "kind",
+          "path",
+          "target",
+          "resolved_path",
+          "resolved_sha256"
+        ],
+        "types": {
+          "kind": "symlink",
+          "path": "absolute approved ASCII path",
+          "resolved_path": "absolute approved ASCII path",
+          "resolved_sha256": "hex64",
+          "target": "exact ASCII readlink text <=512 bytes; relative or absolute, resolved by installed_artifact_rules for executable/entry-point aliases"
+        }
+      },
+      "environment": {
+        "required": [
+          "name",
+          "value"
+        ],
+        "types": {
+          "name": "ASCII variable name; unique sorted",
+          "value": "exact approved ASCII value <=4096 bytes, never secrets"
+        }
+      },
+      "installed_artifact": {
+        "required": [
+          "id",
+          "path",
+          "resolved_path",
+          "bytes",
+          "sha256",
+          "provenance_sha256",
+          "inventory_sha256",
+          "path_entry_sha256",
+          "resolved_entry_sha256",
+          "symlink_chain"
+        ],
+        "types": {
+          "bytes": "u64 endpoint file length",
+          "id": "ASCII role ID <=128 bytes",
+          "inventory_sha256": "hex64 of one complete approved p08-input-inventory-1 sidecar",
+          "path": "exact approved invocation or installed entry-point path; normalized absolute ASCII <=512 bytes",
+          "path_entry_sha256": "hex64 over canonical bytes of the unique inventory entry whose path equals path",
+          "provenance_sha256": "hex64 independent approved distribution/provenance evidence",
+          "resolved_entry_sha256": "hex64 over canonical bytes of the unique regular-file inventory entry whose path equals resolved_path",
+          "resolved_path": "exact normalized absolute regular-file endpoint in the same approved execution namespace, <=512 bytes",
+          "sha256": "hex64 endpoint file SHA-256",
+          "symlink_chain": "array of hex64 inventory-entry hashes in exact leaf-resolution encounter order, at most 32, no duplicates; empty for a direct regular file"
+        }
+      },
+      "source_file": {
+        "required": [
+          "path",
+          "mode",
+          "bytes",
+          "git_blob",
+          "sha256"
+        ],
+        "types": {
+          "bytes": "u64",
+          "git_blob": "hex40",
+          "mode": "100644 or 100755 only",
+          "path": "relative ASCII path <=512 bytes",
+          "sha256": "hex64"
+        }
+      }
+    },
+    "installed_artifact_rules": [
+      "The content-only artifact type remains valid for archives and profile/report blobs. It is forbidden where an executable or installed entry point is required. All such locations require the closed installed_artifact type.",
+      "Resolve inventory_sha256 to the exact approved inventory bytes. Entry identity is SHA-256 over the canonical JSON bytes of one entry, including its path and kind, with no newline. Select entries by exact path and entry hash, never by content digest alone. Each inventory path occurs exactly once.",
+      "For every installed_artifact require path_entry_sha256 to select the entry at path and resolved_entry_sha256 to select the regular endpoint at resolved_path. The endpoint bytes/sha256 equal the reference and inventory entry. Require executable permission in command, linker, verifier and executable component contexts.",
+      "All path parent components must be independently observed real directories in approved sealed mounts. Parent-directory symlinks, dot/parent/empty path components, repeated slashes and trailing slashes in named paths are rejected. Symlinks are permitted only as explicitly inventoried leaf aliases in the bounded chain.",
+      "For a regular path entry require symlink_chain empty, path == resolved_path and path_entry_sha256 == resolved_entry_sha256. Never search for a different same-content file.",
+      "For a symlink path entry require the first chain hash to equal path_entry_sha256. Read the exact target text from that inventory entry and independently verify it by lstat/readlink in the approved namespace. An absolute target is normalized directly; a relative target is joined to the link parent. Normalize dot and parent segments deterministically, reject lexical escape from that approved mount root, and require the resulting parent directories to be real directories. Reject target NUL, non-ASCII bytes, empty text and targets longer than 512 bytes.",
+      "Each normalized target must select exactly one next inventory entry by path. Append its entry hash if it is another leaf symlink, in encounter order. The final non-symlink must be the declared regular resolved entry. Every link entry resolved_path/resolved_sha256 must equal that final endpoint. Reject loops, missing targets, undeclared extra links, different targets, crossing an unapproved mount or more than 32 links. No directory-symlink traversal or fallback resolution is permitted.",
+      "Every actual link and regular endpoint must match its inventoried type and bytes in the independently observed sealed namespace. Directory and mount custody prevents replacement between preflight and launch. A digest check without that custody is insufficient.",
+      "The actual exec program path and argv[0] must equal the installed_artifact.path bytes exactly. Its observed resolved endpoint must equal resolved_path and the endpoint identity. Fixed absolute paths replace PATH search; child executables must satisfy the same rule. No shell, proxy or wrapper may substitute another target unless separately named and approved as an executable.",
+      "Equal content digests at two paths are allowed in an inventory, but grant no alias authority. Only the exact path/entry/chain selected by the reference may run. A different requested path, even with identical bytes, refuses.",
+      "command-profile.executable, linker-profile.entry_point, verifier-enrollment-profile.verifier_artifact and every component-profile.entry_points element require installed_artifact. Library/data entry points use the same installed path identity but do not gain execution permission from it. Executable component roles must be included with their exact installed references in the child allowlist.",
+      "A command/component/linker/verifier reference must use the exact inventory required by its enclosing profile; where it is repeated in the execution allowlist, all installed reference fields must match. The command executable must also appear in that exact allowlist."
+    ],
+    "max_inventory_bytes": 16777216,
+    "max_inventory_entries": 100000,
+    "max_profile_bytes": 1048576,
+    "missing_rule": "Missing actual values block approval. Empty placeholders and all-zero identities are invalid. A schema descriptor is never an input instance.",
+    "observation_rules": [
+      "Both observation variants are closed. Review observations have no run_id, grant_id, nonce, action, future O reference or G hash. Action observations require all action bindings. Neither generic R0 observation-report nor one purpose at the other purpose field is supported.",
+      "R.review_observation_sha256 resolves only to p08-review-observation-1, and its review_id/reviewer_id/manifest/profile/source/observed inputs match R and M. M.issued_at <= observed_at <= R.issued_at <= O.issued_at. The snapshot age at R issuance is no more than P.approval_max_age_s and R remains within M validity. It cannot satisfy any action preflight.",
+      "G.action_observation_sha256 resolves only to p08-action-observation-1. All grant/run/nonce/manifest/O/R/profile/command/scope/source bindings match G exactly. Preallocate these G identifiers, observe, then sign G binding the observation digest. Never put SHA-256(G) in the observation, which would create a cycle.",
+      "Action UTC ordering is max(M.issued_at,R.issued_at,O.issued_at) <= observation_started_at <= observed_at <= G.issued_at <= G.not_before. Existing bounded UTC validity/clock-uncertainty checks also apply. UTC checks do not replace external monotonic launch freshness.",
+      "At actual launch the independent operator requires the same authenticated clock_session_id as the action report and a monotonic launch reading >= completed_monotonic_ns. Let elapsed_ns be their checked unsigned difference. Accept only elapsed_ns <= P.action_observation_max_age_s * 1000000000 with checked u64 arithmetic. Proposed limit is 60 seconds; equality is allowed, limit+1 ns refuses. The 30-second UTC uncertainty is not added to this monotonic budget.",
+      "Freshness is checked immediately before actual process launch, after signature/status/nonce checks and owner signing. It is separate from the 900-second action lease and 24-hour input approval. Current sealed input and executable-path checks still have to hold at launch; a fresh timestamp alone is insufficient.",
+      "If signing or queue delay makes the action observation stale, or the clock session is lost/reset/unknown, refuse launch and record that G/nonce as terminally refused in the independent register. Do not mutate/re-sign/retry that G. A new grant ID/run ID/nonce and fresh action observation are required. M/R/O may remain valid within their own active intervals.",
+      "The external operator supervises its already required monotonic clock session and sealing/launch procedure. No new service or trust anchor is introduced. The guest cannot select clock sessions, timestamps, operator identity or accepted preflight material.",
+      "An identity test repeats binding/authentication checks but does not retrospectively authorize its own compilation or launch. External action preflight and single-use consumption happen before the relevant native command. Test-local time assertions cannot establish external clock or global register authority."
+    ],
+    "path_rule": "Normalized absolute approved paths for tools; relative ASCII source paths without empty, dot or parent components. Reject unapproved link traversal."
+  },
+  "external_review_rules": [
+    "All field lists are exact and required; no unknown fields in any profile/entry variant.",
+    "Every nested artifact/profile digest resolves to complete actual evidence under approved custody. Opaque arbitrary hashes without evidence fail.",
+    "Control-procedure sidecars referenced by digest are exact independently reviewed documents and executable inventories. No runtime dispatch or program download from a sidecar is allowed.",
+    "Source, enrollment and immutable tool-image relationships must be acyclic. Inputs-only approval never includes predicted binary digests.",
+    "The current proposal supplies no operational profile instance, tool version qualification, invented image, keys or installed target.",
+    "Owner source-stage acceptance S uses the separate source-stage namespace and accepted owner key. Profile P excludes S, E, C1, M and all approval record hashes; no trust bootstrap cycle is permitted.",
+    "R1 retains five authority records S/M/R/O/G. Review R and grant G use their distinct new observation fields and v2 schema identities. R0 generic observation shapes and executable content-only references are rejected rather than inferred or upgraded.",
+    "R2 adds a generated-input M/G variant and authenticated compilation-result provenance, with fresh R_test/O_test. Original F01 installed-artifact rules and F02 observation shapes/rules are retained byte-for-byte as normalized JSON blocks."
+  ],
+  "generated_input_rules": [
+    "Only independently verified successful producer actions can become generated inputs. Output existence, zero exit alone, build guest self-report or a receipt with matching local hashes is insufficient. B reviewer authentication and new M_test/R_test/O_test approval are separate requirements.",
+    "Q executables use the exact unchanged installed_artifact shape and path/symlink rules. Each inventory_sha256 equals Q.files_inventory_sha256 and each provenance_sha256 equals Q.compilation_evidence_sha256. Its length/hash/path/endpoint entries must match the outputs actually produced and sealed under that producer action.",
+    "No implicit relocation, copying or installer action is granted. This bounded transition preserves the recorded absolute output paths in the sealed test namespace. Any different handoff/path requires separate explicit authority and exact mapping evidence before a new eligible receipt and input review; it cannot be inferred from equal content.",
+    "Sealing and inspection are allowed only when covered by the exact future grants and existing qualified independent custody/control profile. No new privileged helper or installer is authorized. If immutable custody cannot be established without extra permission or implementation, this transition remains blocked.",
+    "The producer and all descendants must have terminated before custody is established. A failed, interrupted, expired, ambiguous or out-of-scope action is terminally ineligible as a source of test inputs. Preserve its evidence; never select surviving files or relabel it as successful.",
+    "Q and C never reference B, M_test, R_test, O_test or G_test. E references earlier producer facts and I/C, never Q or B. B signs E and Q. This direction prevents self-referential provenance hashes.",
+    "Test action observations must independently recheck generated file bytes/paths/entry identities and continuous custody immediately before launch. A break, changed path, replacement, unapproved alias, stale action report or missing new input acceptance refuses without running the generated file.",
+    "The new test execution profile invokes only exact compiled test binaries, with approved arguments and exact expected test identities/counts. It permits no compiler, Cargo, rustup, provider, runtime stub or automatic rebuild unless a separate grant explicitly adds such work; this R2 transition does not."
+  ],
+  "profiles": {
+    "action-observation-report": {
+      "required": [
+        "schema",
+        "purpose",
+        "operator_id",
+        "grant_id",
+        "run_id",
+        "nonce",
+        "manifest_sha256",
+        "owner_decision_sha256",
+        "review_report_sha256",
+        "trust_profile_sha256",
+        "command_profile_sha256",
+        "authorization_scope",
+        "observation_started_at",
+        "observed_at",
+        "clock_session_id",
+        "completed_monotonic_ns",
+        "source_commit",
+        "source_tree",
+        "profiles",
+        "evidence_sha256",
+        "verdict"
+      ],
+      "types": {
+        "authorization_scope": "exact G action enum",
+        "clock_session_id": "hex32 session ID maintained by external operator under approved clock procedure; independent of guest",
+        "command_profile_sha256": "hex64 equal to G.command_profile_sha256",
+        "completed_monotonic_ns": "u64 external trusted monotonic completion reading for this clock session",
+        "evidence_sha256": "hex64 fresh actual action preflight including exact executable resolution and sealed custody",
+        "grant_id": "hex32 equal to G.grant_id; chosen before observation, not G hash",
+        "manifest_sha256": "hex64 equal to G.manifest_sha256",
+        "nonce": "hex64 equal to G.nonce",
+        "observation_started_at": "u64 UTC start after M/R/O issue and acceptance",
+        "observed_at": "u64 UTC completion, before or equal G.issued_at",
+        "operator_id": "appointed external preflight principal",
+        "owner_decision_sha256": "hex64 equal to G.owner_decision_sha256",
+        "profiles": "array of content-only artifact mapping each observed source/input/environment profile role to exact bytes/sha256; every identity equals M and G.observed_*",
+        "purpose": "ACTION_PREFLIGHT_ONLY",
+        "review_report_sha256": "hex64 equal to G.review_report_sha256",
+        "run_id": "hex32 equal to G.run_id",
+        "schema": "p08-action-observation-1",
+        "source_commit": "hex40 equal to G and M",
+        "source_tree": "hex40 equal to G and M",
+        "trust_profile_sha256": "hex64 equal to G and M",
+        "verdict": "MATCH"
+      }
+    },
+    "build-image-profile": {
+      "required": [
+        "schema",
+        "oci_manifest_sha256",
+        "platform",
+        "layers",
+        "publisher_provenance_sha256",
+        "files_inventory_sha256",
+        "sbom_sha256",
+        "licenses_sha256"
+      ],
+      "types": {
+        "files_inventory_sha256": "hex64",
+        "layers": "array of artifact in layer order by explicit id ordinal",
+        "licenses_sha256": "hex64 complete approved build-input license inventory; equal M.license_inventory_sha256",
+        "oci_manifest_sha256": "hex64 immutable image manifest identity",
+        "platform": "linux/amd64 exact variant, normalized approved value",
+        "publisher_provenance_sha256": "hex64",
+        "sbom_sha256": "hex64 complete approved build-input SBOM including image, sealed source and mounted inputs; equal M.sbom_sha256; publisher image-only SBOM belongs in provenance",
+        "schema": "p08-build-image-1"
+      }
+    },
+    "command-profile": {
+      "required": [
+        "schema",
+        "id",
+        "authorization_scope",
+        "executable",
+        "argv",
+        "working_directory",
+        "expected_results_sha256",
+        "allowed_effects_sha256"
+      ],
+      "types": {
+        "allowed_effects_sha256": "hex64 finite read/write/child/network/time effects",
+        "argv": "array of argument; contiguous exact indexes",
+        "authorization_scope": "one G action enum",
+        "executable": "installed_artifact; actual exec path and argv[0] equal its path; exact approved child-allowlist reference",
+        "expected_results_sha256": "hex64 compiler/test discovery/result and output hash rules",
+        "id": "ASCII command role ID",
+        "schema": "p08-command-2",
+        "working_directory": "exact normalized path"
+      }
+    },
+    "compilation-evidence-report": {
+      "required": [
+        "schema",
+        "producer_manifest_sha256",
+        "producer_review_sha256",
+        "producer_owner_decision_sha256",
+        "producer_grant_sha256",
+        "producer_grant_signature_sha256",
+        "producer_grant_id",
+        "producer_run_id",
+        "producer_nonce",
+        "producer_command_profile_sha256",
+        "source_commit",
+        "source_tree",
+        "started_at",
+        "completed_at",
+        "exit_code",
+        "prebuild_output_inventory_sha256",
+        "output_inventory_sha256",
+        "custody_evidence_sha256",
+        "input_reconciliation_sha256",
+        "process_outcomes_sha256",
+        "effects_audit_sha256",
+        "inspection_authorizations_sha256",
+        "inspection_results_sha256"
+      ],
+      "types": {
+        "completed_at": "u64 UTC",
+        "custody_evidence_sha256": "hex64 C after producer/descendants terminate",
+        "effects_audit_sha256": "hex64 complete allowed writes/children/network/lease/status evidence; no violations or ambiguity",
+        "exit_code": "0, independently evidenced successful compiler exit",
+        "input_reconciliation_sha256": "hex64 complete actual source/tool/environment checks before and after the authorized compilation",
+        "inspection_authorizations_sha256": "hex64 exact separately granted inspection command identities or producer grant finite effects explicitly covering them; receipt preparation grants none",
+        "inspection_results_sha256": "hex64 actual independently retained output identity/ELF/static compile-time test-target identification/SBOM/license reports required by producer expected-result profile; never invoke produced binaries, including --list, before their separate generated-input approval",
+        "output_inventory_sha256": "hex64 actual exact sealed output inventory I",
+        "prebuild_output_inventory_sha256": "hex64 independent observation of fresh exclusive output roots, not prior or cached test binaries",
+        "process_outcomes_sha256": "hex64 raw process tree/status/exit records; no unresolved descendants",
+        "producer_command_profile_sha256": "hex64",
+        "producer_grant_id": "hex32",
+        "producer_grant_sha256": "hex64",
+        "producer_grant_signature_sha256": "hex64",
+        "producer_manifest_sha256": "hex64",
+        "producer_nonce": "hex64",
+        "producer_owner_decision_sha256": "hex64",
+        "producer_review_sha256": "hex64",
+        "producer_run_id": "hex32",
+        "schema": "p08-compilation-evidence-1",
+        "source_commit": "hex40",
+        "source_tree": "hex40",
+        "started_at": "u64 UTC"
+      }
+    },
+    "component-profile": {
+      "required": [
+        "schema",
+        "role",
+        "version",
+        "target",
+        "distribution_provenance_sha256",
+        "files_inventory_sha256",
+        "entry_points",
+        "configuration_sha256",
+        "licenses_sha256"
+      ],
+      "types": {
+        "configuration_sha256": "hex64, actual approved configuration evidence even if config is empty",
+        "distribution_provenance_sha256": "hex64",
+        "entry_points": "array of installed_artifact sorted unique by id, exact executable/library paths and inventory identities; inventory_sha256 equals this profile files_inventory_sha256",
+        "files_inventory_sha256": "hex64 full input-inventory",
+        "licenses_sha256": "hex64",
+        "role": "toolchain, host-std, musl-std or crt",
+        "schema": "p08-component-2",
+        "target": "exact GNU host or musl target as appropriate",
+        "version": "exact approved component version"
+      }
+    },
+    "execution-profile": {
+      "required": [
+        "schema",
+        "commands",
+        "mounts_profile_sha256",
+        "uid_profile_sha256",
+        "write_roots_sha256",
+        "environment",
+        "cargo_ancestry_sha256",
+        "child_allowlist_sha256",
+        "network_control_sha256",
+        "clock_profile_sha256",
+        "observation_procedure_sha256",
+        "evidence_profile_sha256",
+        "source_date_epoch"
+      ],
+      "types": {
+        "cargo_ancestry_sha256": "hex64 all applicable config files or independently observed absence",
+        "child_allowlist_sha256": "hex64 of exact installed_artifact references for all permitted child executables, with invocation paths, inventory/entry identities and declared chains",
+        "clock_profile_sha256": "hex64 independent bounded clock observation",
+        "commands": "array of command-profile sorted unique by id; no shell expansion",
+        "environment": "array of environment; no inherited credential or proxy variables",
+        "evidence_profile_sha256": "hex64 logs, outputs, ELF/SBOM and failure retention",
+        "mounts_profile_sha256": "hex64 read-only sealed source/tool/input paths and TOCTOU/custody rules",
+        "network_control_sha256": "hex64 already qualified no-egress profile",
+        "observation_procedure_sha256": "hex64 reviewed distinct input-review and action-preflight procedures, actual path/source/image/component/custody checks and one external monotonic clock session for each action",
+        "schema": "p08-execution-2",
+        "source_date_epoch": "1794201657, proposed fixed value",
+        "uid_profile_sha256": "hex64 nonprivileged execution identity, operator separation",
+        "write_roots_sha256": "hex64 finite output/cache/home/tmp roots"
+      }
+    },
+    "generated-custody-report": {
+      "required": [
+        "schema",
+        "operator_id",
+        "producer_grant_sha256",
+        "sealed_at",
+        "inventory_sha256",
+        "mounts_profile_sha256",
+        "custody_procedure_sha256",
+        "evidence_sha256",
+        "verdict"
+      ],
+      "types": {
+        "custody_procedure_sha256": "hex64 exact accepted operator procedure and authorized finite effects",
+        "evidence_sha256": "hex64 actual process-termination/path/file/mount/permission/retention observations",
+        "inventory_sha256": "hex64 exact regular output and declared alias inventory",
+        "mounts_profile_sha256": "hex64 independently reviewed existing sealed mount/custody profile",
+        "operator_id": "appointed external operator, not build guest self-assertion",
+        "producer_grant_sha256": "hex64 producer action",
+        "schema": "p08-generated-custody-1",
+        "sealed_at": "u64 UTC after successful producer termination",
+        "verdict": "SEALED_READ_ONLY"
+      }
+    },
+    "generated-inputs-profile": {
+      "required": [
+        "schema",
+        "producer_manifest_sha256",
+        "producer_grant_sha256",
+        "compilation_evidence_sha256",
+        "files_inventory_sha256",
+        "custody_evidence_sha256",
+        "source_commit",
+        "source_tree",
+        "executables"
+      ],
+      "types": {
+        "compilation_evidence_sha256": "hex64 raw E, preceding Q and B; no receipt/descendant hash cycle",
+        "custody_evidence_sha256": "hex64 closed generated-custody report C, actual independent read-only custody",
+        "executables": "nonempty array of existing installed_artifact, unique ids codec_test and/or locked_build_identity, exact actual compiled entries; no runtime stubs",
+        "files_inventory_sha256": "hex64 immutable exact output inventory I, using existing input-inventory schema",
+        "producer_grant_sha256": "hex64 exact consumed successful producer G",
+        "producer_manifest_sha256": "hex64 exact successful producer M",
+        "schema": "p08-generated-inputs-1",
+        "source_commit": "hex40 equal producer, B and new M_test",
+        "source_tree": "hex40 equal producer, B and new M_test"
+      }
+    },
+    "input-inventory": {
+      "required": [
+        "schema",
+        "entries"
+      ],
+      "types": {
+        "entries": "array of closure_regular_file or closure_symlink, sorted unique by path; no extra variant fields",
+        "schema": "p08-input-inventory-1"
+      }
+    },
+    "linker-profile": {
+      "required": [
+        "schema",
+        "driver",
+        "flavor",
+        "entry_point",
+        "files_inventory_sha256",
+        "crt_profile_sha256",
+        "self_contained",
+        "static_form",
+        "arguments",
+        "provenance_sha256",
+        "licenses_sha256"
+      ],
+      "types": {
+        "arguments": "array of argument, exact effective flags",
+        "crt_profile_sha256": "hex64",
+        "driver": "one exact approved driver name",
+        "entry_point": "installed_artifact; inventory_sha256 equals this profile files_inventory_sha256; executable endpoint required",
+        "files_inventory_sha256": "hex64 full linker closure",
+        "flavor": "one exact approved linker flavor",
+        "licenses_sha256": "hex64",
+        "provenance_sha256": "hex64",
+        "schema": "p08-linker-2",
+        "self_contained": "ON or OFF, explicit approved choice",
+        "static_form": "STATIC_PIE or STATIC_NON_PIE, explicit approved choice"
+      }
+    },
+    "review-observation-report": {
+      "required": [
+        "schema",
+        "purpose",
+        "review_id",
+        "reviewer_id",
+        "operator_id",
+        "manifest_sha256",
+        "trust_profile_sha256",
+        "observed_at",
+        "source_commit",
+        "source_tree",
+        "profiles",
+        "evidence_sha256",
+        "verdict"
+      ],
+      "types": {
+        "evidence_sha256": "hex64 retained independent input-review observations and installed-reference reconciliation",
+        "manifest_sha256": "hex64 equal to R.manifest_sha256 and SHA-256(M)",
+        "observed_at": "u64 UTC snapshot completion at input review, not a launch timestamp",
+        "operator_id": "appointed independent input-observation principal",
+        "profiles": "array of content-only artifact for every input profile role, unique by id and matching M; no runtime authority",
+        "purpose": "INPUT_REVIEW_ONLY",
+        "review_id": "hex32 equal to R.review_id; allocated before review signature, not an execution run",
+        "reviewer_id": "enrolled reviewer equal to R.reviewer_id",
+        "schema": "p08-review-observation-1",
+        "source_commit": "hex40 equal to M.source_commit",
+        "source_tree": "hex40 equal to M.source_tree",
+        "trust_profile_sha256": "hex64 equal to R and M",
+        "verdict": "MATCH"
+      }
+    },
+    "rust-provenance-profile": {
+      "required": [
+        "schema",
+        "policy_decision_id",
+        "certificate_sha256",
+        "manifest_sha256",
+        "manifest_signature_sha256",
+        "primary_fingerprint",
+        "signature_algorithm",
+        "signature_time",
+        "archives",
+        "acquisition_receipts_sha256",
+        "extraction_receipts_sha256",
+        "key_status_evidence_sha256"
+      ],
+      "types": {
+        "acquisition_receipts_sha256": "hex64",
+        "archives": "exact four artifact entries; pinned Policy A archive digests, actual byte lengths and authorized provenance",
+        "certificate_sha256": "exact pinned hex64",
+        "extraction_receipts_sha256": "hex64",
+        "key_status_evidence_sha256": "hex64 with UTC, sources/responses and both required status moments",
+        "manifest_sha256": "exact pinned hex64",
+        "manifest_signature_sha256": "exact pinned hex64",
+        "policy_decision_id": "exact accepted Policy A comment ID",
+        "primary_fingerprint": "exact accepted 40-character fingerprint",
+        "schema": "p08-rust-provenance-1",
+        "signature_algorithm": "RSA/SHA512 primary direct signature",
+        "signature_time": "2026-09-03T12:54:14Z"
+      }
+    },
+    "source-inventory": {
+      "required": [
+        "schema",
+        "commit",
+        "tree",
+        "entries"
+      ],
+      "types": {
+        "commit": "hex40, C1",
+        "entries": "array of source_file, sorted unique by path; exact full Git tree and actual source snapshot",
+        "schema": "p08-source-inventory-1",
+        "tree": "hex40, C1 tree"
+      }
+    },
+    "status-report": {
+      "required": [
+        "schema",
+        "operator_id",
+        "run_id",
+        "observed_at",
+        "trust_epoch",
+        "enrollment_sha256",
+        "current_decisions_sha256",
+        "revocations_sha256",
+        "clock_evidence_sha256",
+        "register_observation_sha256",
+        "policy_a_evidence_sha256",
+        "verdict"
+      ],
+      "types": {
+        "clock_evidence_sha256": "hex64",
+        "current_decisions_sha256": "hex64 independent current owner decision records",
+        "enrollment_sha256": "hex64 of explicit human E accepting exact P",
+        "observed_at": "u64 UTC immediately before launch",
+        "operator_id": "appointed external principal",
+        "policy_a_evidence_sha256": "hex64 fresh applicable Policy A status",
+        "register_observation_sha256": "hex64 single-use nonce and epoch checks",
+        "revocations_sha256": "hex64 bounded observed revocation report, including a real empty-status report if none observed",
+        "run_id": "hex32",
+        "schema": "p08-approval-status-1",
+        "trust_epoch": "u64 equal to independent current register epoch",
+        "verdict": "ACTIVE"
+      }
+    },
+    "verifier-enrollment-profile": {
+      "required": [
+        "schema",
+        "keys",
+        "verifier_artifact",
+        "verifier_inventory_sha256",
+        "verification_vectors_sha256",
+        "allowed_signers_sha256",
+        "revocation_procedure_sha256",
+        "status_procedure_sha256",
+        "preflight_procedure_sha256",
+        "operator_appointment_sha256",
+        "clock_procedure_sha256",
+        "one_use_register_procedure_sha256",
+        "approval_max_age_s",
+        "lease_max_s",
+        "clock_skew_max_s",
+        "action_observation_max_age_s"
+      ],
+      "types": {
+        "action_observation_max_age_s": "u64, proposed exact value 60; explicit owner acceptance required, no environment override",
+        "allowed_signers_sha256": "hex64 of exact two-role file bundle; fixed namespace restriction and no wildcards, CA or alternate key",
+        "approval_max_age_s": "u64, proposed 86400",
+        "clock_procedure_sha256": "hex64",
+        "clock_skew_max_s": "u64, proposed 30",
+        "keys": "exactly two distinct authority_key entries with the two separate roles",
+        "lease_max_s": "u64, proposed 900",
+        "one_use_register_procedure_sha256": "hex64 independent freshness/atomic consumption procedure",
+        "operator_appointment_sha256": "hex64 prior human appointment material; not an approval of this profile",
+        "preflight_procedure_sha256": "hex64 independent operator steps and pre-Cargo observations",
+        "revocation_procedure_sha256": "hex64",
+        "schema": "p08-verifier-enrollment-2",
+        "status_procedure_sha256": "hex64",
+        "verification_vectors_sha256": "hex64 fixed argv/role/namespace behavior and later negative-test evidence contract",
+        "verifier_artifact": "installed_artifact; inventory_sha256 equals verifier_inventory_sha256; executable endpoint required",
+        "verifier_inventory_sha256": "hex64 full executable/loader/library/config closure"
+      }
+    }
+  },
+  "revision": "R2_TARGETED_F03_CORRECTION",
+  "status": "PROPOSED_CLOSED_PROFILE_REQUIREMENTS_NOT_INSTANCES"
+}
