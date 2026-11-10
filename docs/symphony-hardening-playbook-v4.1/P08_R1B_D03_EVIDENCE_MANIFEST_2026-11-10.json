@@ -3713,7 +3713,8 @@
         31
       ],
       "expectation_met": true,
-      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY"
+      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY",
+      "observation_set": "SELECTED_INTERMEDIATE_D01_V2"
     },
     {
       "stage": "D01",
@@ -3723,7 +3724,8 @@
         8
       ],
       "expectation_met": true,
-      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY"
+      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY",
+      "observation_set": "SELECTED_INTERMEDIATE_D01_V2"
     },
     {
       "stage": "D01",
@@ -3733,7 +3735,8 @@
         31
       ],
       "expectation_met": true,
-      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY"
+      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY",
+      "observation_set": "SELECTED_INTERMEDIATE_D01_V2"
     },
     {
       "stage": "D01",
@@ -3741,7 +3744,8 @@
       "exit_code": 2,
       "observed_unittest_counts": [],
       "expectation_met": true,
-      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY"
+      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY",
+      "observation_set": "SELECTED_INTERMEDIATE_D01_V2"
     },
     {
       "stage": "D01",
@@ -3749,7 +3753,8 @@
       "exit_code": 2,
       "observed_unittest_counts": [],
       "expectation_met": true,
-      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY"
+      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY",
+      "observation_set": "SELECTED_INTERMEDIATE_D01_V2"
     },
     {
       "stage": "D01",
@@ -3757,7 +3762,8 @@
       "exit_code": 2,
       "observed_unittest_counts": [],
       "expectation_met": true,
-      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY"
+      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY",
+      "observation_set": "SELECTED_INTERMEDIATE_D01_V2"
     },
     {
       "stage": "D01",
@@ -3765,7 +3771,8 @@
       "exit_code": 2,
       "observed_unittest_counts": [],
       "expectation_met": true,
-      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY"
+      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY",
+      "observation_set": "SELECTED_INTERMEDIATE_D01_V2"
     },
     {
       "stage": "D01",
@@ -3773,7 +3780,8 @@
       "exit_code": 2,
       "observed_unittest_counts": [],
       "expectation_met": true,
-      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY"
+      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY",
+      "observation_set": "SELECTED_INTERMEDIATE_D01_V2"
     },
     {
       "stage": "D01",
@@ -3781,7 +3789,8 @@
       "exit_code": 2,
       "observed_unittest_counts": [],
       "expectation_met": true,
-      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY"
+      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY",
+      "observation_set": "SELECTED_INTERMEDIATE_D01_V2"
     },
     {
       "stage": "D01",
@@ -3789,7 +3798,74 @@
       "exit_code": 2,
       "observed_unittest_counts": [],
       "expectation_met": true,
-      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY"
+      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY",
+      "observation_set": "SELECTED_INTERMEDIATE_D01_V2"
+    },
+    {
+      "stage": "D01",
+      "run": "protocol",
+      "observation_set": "FINAL_RETAINED_D01_HANDOFF",
+      "exit_code": 0,
+      "observed_unittest_counts": [
+        32
+      ],
+      "expectation_met": true,
+      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY",
+      "private_record_identity": {
+        "member": "evidence/last-negative-results.json",
+        "bytes": 20509,
+        "sha256": "f625c54a3a6ccfe2bad0660863a6de6baba832725ede09a114b03ac65e4bac11"
+      },
+      "private_stderr_identity": {
+        "member": "evidence/last-protocol.stderr.log",
+        "bytes": 4693,
+        "sha256": "d0e1e290ec8837f2548ff34188c516aafe02b594b1e6b724a54e6468e89f98a7"
+      },
+      "repeat_of_protocol_methods": false
+    },
+    {
+      "stage": "D01",
+      "run": "legacy-functions",
+      "observation_set": "FINAL_RETAINED_D01_HANDOFF",
+      "exit_code": 0,
+      "observed_unittest_counts": [
+        8
+      ],
+      "expectation_met": true,
+      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY",
+      "private_record_identity": {
+        "member": "evidence/last-negative-results.json",
+        "bytes": 20509,
+        "sha256": "f625c54a3a6ccfe2bad0660863a6de6baba832725ede09a114b03ac65e4bac11"
+      },
+      "private_stderr_identity": {
+        "member": "evidence/last-legacy-functions.stderr.log",
+        "bytes": 1140,
+        "sha256": "623e7a0f65d9f512ed9a99ea2017bbb6c58d49c1096232a9324867d2138bc8b4"
+      },
+      "repeat_of_protocol_methods": false
+    },
+    {
+      "stage": "D01",
+      "run": "audit-component",
+      "observation_set": "FINAL_RETAINED_D01_HANDOFF",
+      "exit_code": 0,
+      "observed_unittest_counts": [
+        32
+      ],
+      "expectation_met": true,
+      "classification": "NEGATIVE_OR_COMPONENT_DEVELOPMENT_ONLY",
+      "private_record_identity": {
+        "member": "evidence/last-negative-results.json",
+        "bytes": 20509,
+        "sha256": "f625c54a3a6ccfe2bad0660863a6de6baba832725ede09a114b03ac65e4bac11"
+      },
+      "private_stderr_identity": {
+        "member": "evidence/last-audit-component.stderr.log",
+        "bytes": 5333,
+        "sha256": "2893c8c1fb7613b325020cd72c7ffd408230504b55c4cddd6a3788640b7c8752"
+      },
+      "repeat_of_protocol_methods": true
     }
   ],
   "D02_summary": {
@@ -3836,5 +3912,26 @@
     "GitHub checks do not execute Python formal qualification.",
     "Final publication commit/tree necessarily differ because of additive checkpoint documents."
   ],
-  "development_components": "DORMANT_NON_OPERATIONAL"
+  "development_components": "DORMANT_NON_OPERATIONAL",
+  "D01_command_observation_provenance": {
+    "archive_name": "P08-R1B-D01-DEVELOPMENT-PRIVATE-evidence.zip",
+    "archive_bytes": 1554751,
+    "archive_sha256": "6d611edc17bf8391e312375b17601178bd74ad8db0ebc843f9bb88449c50db60",
+    "selected_intermediate_record": {
+      "member": "evidence/final-negative-results.json",
+      "bytes": 21005,
+      "sha256": "832673ff224b5f4e656b13cd8b98315279ab6e0a8704120747f99ab71f98d8c9"
+    },
+    "final_record": {
+      "member": "evidence/last-negative-results.json",
+      "bytes": 20509,
+      "sha256": "f625c54a3a6ccfe2bad0660863a6de6baba832725ede09a114b03ac65e4bac11"
+    },
+    "final_handoff": {
+      "member": "evidence/D01_HANDOFF.json",
+      "bytes": 35001,
+      "sha256": "fc3716303abe8ac719d5643b9dcb23846f41d8c4e534db0e50a73dde4bf78441"
+    },
+    "scope": "Selected earlier v2 command observations are retained as intermediate history, not the final D01 handoff. The three appended final observations record 32 protocol methods, eight legacy methods and a repeated 32-method audit. The audit is a rerun, not additional distinct coverage. These remain development/component results only."
+  }
 }
