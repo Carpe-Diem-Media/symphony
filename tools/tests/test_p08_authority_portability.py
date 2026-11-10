@@ -501,8 +501,8 @@ class PortabilityTests(unittest.TestCase):
         inventory = {"schema": "p08-r1a-source-inventory-1",
                      "base_commit": policy.SOURCE_BASE_COMMIT, "base_tree": policy.SOURCE_BASE_TREE,
                      "candidate_commit": None, "candidate_tree": tree_id(observed),
-                     "package_files": package, "tree_files": observed}
-        return inventory, observed, base
+                     "package_files": copy.deepcopy(package), "tree_files": copy.deepcopy(observed)}
+        return inventory, observed, copy.deepcopy(base)
 
     def test_absent_release_refuses(self):
         self.refuses("EXTERNAL_RELEASE_ABSENT", policy.require_authentic_release)
