@@ -1,0 +1,365 @@
+{
+  "AUTH_07": "SUSPENDED_UNCONSUMED",
+  "D01_source_preparation": {
+    "acceptance": "SOURCE_PREPARATION_ONLY",
+    "commit": "0622e6cdd480ae4bb632dfbd4e54fee8a8350406",
+    "identity_test": "INCOMPLETE_FAIL_CLOSED",
+    "tree": "bb258a8fa9eb19550ff1de26f6bd8d902da6ec4d"
+  },
+  "D02_contract": {
+    "F01_F03": "CLOSED_CONTRACT_ONLY",
+    "acceptance": "OWNER_ACCEPTED_DESIGN_ONLY",
+    "archive_sha256": "5be1713bd2a96dfe8735a287aadfc6c6adfa518cdd73ab68f459d59ef30879b4",
+    "files": [
+      {
+        "bytes": 40314,
+        "path": "DECISION_PACKET.md",
+        "sha256": "160f5739496c44943961f6c25c3918ca0229859e700e146b2eeb450acdaff207"
+      },
+      {
+        "bytes": 3069,
+        "path": "HANDOVER.md",
+        "sha256": "5c2ac120900913ce5a0d6526897339f10233a5392d0ee667039f97d4ea08fd4d"
+      },
+      {
+        "bytes": 1708,
+        "path": "R2_CHANGELOG.md",
+        "sha256": "103150568204a3ec810c5b1d8fab0e71becb136a384f29f6757919a2b87dd97c"
+      },
+      {
+        "bytes": 8090,
+        "path": "generated-execution-lifecycle.json",
+        "sha256": "0f7d4a7f4725ba2ad22b1c84bfc6b7f4d4eabc48ba6766e990371465bd3a746b"
+      },
+      {
+        "bytes": 2847,
+        "path": "input-status.json",
+        "sha256": "889a7cb947ea99d27b61eb84922d785b9a09fc92df9b525b9420495532ff1968"
+      },
+      {
+        "bytes": 21069,
+        "path": "negative-cases.json",
+        "sha256": "93d980d382d8a6ac2ba0fc3207cd92ad7cf4abcc9ce0f910d67bc6d4507478bd"
+      },
+      {
+        "bytes": 1390,
+        "path": "preserved-r1-boundaries.json",
+        "sha256": "92702b89e07a95a5b6af37a311e7506679cb4a438995b4c7a0fb93a32b7c8b29"
+      },
+      {
+        "bytes": 35511,
+        "path": "profile-requirements.json",
+        "sha256": "0cf688495273e861c424def7e72afcd7b3841f1045ba456d974c3d5adc0af8e6"
+      },
+      {
+        "bytes": 698,
+        "path": "r2-baseline-verification.json",
+        "sha256": "87d259af3ceccbad768d41a00fec742caf768ce29175e7415b977d9987a1376d"
+      },
+      {
+        "bytes": 47739,
+        "path": "record-schemas.json",
+        "sha256": "349f8d1e405ed915481430100c6471dc91338186a645f1aa799fb95b6a0e7430"
+      },
+      {
+        "bytes": 514,
+        "path": "required-result.ini",
+        "sha256": "4c03f9809c34f896dbf2f0158e49424e7b601a487c812f19f863847d932a31b5"
+      },
+      {
+        "bytes": 2456,
+        "path": "requirement-coverage.json",
+        "sha256": "1db9b1d0692c0c72d7f4c3e205b63ae722d6b258636e8213f27d8dae7dfd8e5d"
+      },
+      {
+        "bytes": 5449,
+        "path": "retained-policy-a-decision.json",
+        "sha256": "24c0d3d6cb5092249522f64ff5fc65aa8a0e2c7ccb7d6f75b8c8f39a83767d6b"
+      },
+      {
+        "bytes": 4235,
+        "path": "unresolved-decisions.json",
+        "sha256": "795088b5234e56dee9e0de3f95d9e520b0e695d37e1dbb1f6eac0383a74cf5ba"
+      }
+    ],
+    "scope_sha256": "e9caaef9656c7e63748da346a3582a7f8a93a2cdcb79fae05bcfe0ada9e2300b"
+  },
+  "D05_policy_ceilings": {
+    "accepted": true,
+    "maximum_action_lease_seconds": 900,
+    "maximum_action_observation_to_launch_seconds": 60,
+    "maximum_input_validity_seconds": 86400,
+    "maximum_utc_clock_uncertainty_seconds": 30,
+    "operational_compliance_demonstrated": false
+  },
+  "OP_D00": {
+    "confirmation_basis": "Explicit original owner statement in current checkpoint-planning instruction, corroborated by live Plane governance projection.",
+    "documentary_review": "ACCEPTED",
+    "erroneous_descriptive_count": 17,
+    "operational_P_or_E": "NOT_ISSUED",
+    "originals": "UNCHANGED; historical pending text preserved and followed by later confirmation.",
+    "owner_documentary_interpretation": "CONFIRMED_16_FIELDS",
+    "plane_projection_comment": "d183384c-c6ed-4614-b037-ca8504be5b6f",
+    "required_count": 16,
+    "retained_prose_file": "D03_ENROLLMENT.md",
+    "retained_prose_line": 13,
+    "retained_prose_sha256": "a34f3958266832462c70e2d3212b20cf5e89749a8700c4be7ecae9995c1c91c6",
+    "schema": "p08-verifier-enrollment-2",
+    "schema_sha256": "0cf688495273e861c424def7e72afcd7b3841f1045ba456d974c3d5adc0af8e6",
+    "type_count": 16
+  },
+  "accepted_T03": {
+    "F01_F04": "CLOSED_SOURCE_ONLY",
+    "acceptance": "SOURCE_ONLY_WITH_RECORDED_FOCUSED_ELIXIR_VERIFICATION",
+    "commit": "e2e87701c73c0f55fdef040d29c57bb8ad2b3918",
+    "rust": "UNCOMPILED",
+    "tree": "e2ef1a448bf528b92d34f9c433e2e8d2e557b980"
+  },
+  "accepted_source": {
+    "acceptance": "MASTER_ACCEPTED_SOURCE_ONLY",
+    "commit": "d44d114ba5ff774fa8713aaa195fa37315a24852",
+    "complete_old_history_main_delta": 23,
+    "excluded_T03_T04_files": 14,
+    "github_resolvable_at_planning": false,
+    "nine_file_scope_sha256": "320ced419294997d6e694d992b6f4fc788ae81f354f2988e602ea8087b502e5b",
+    "nine_files": [
+      {
+        "bytes": 10134,
+        "git_blob": "c7adbea966440d045a42d38d485c371733cf65c9",
+        "mode": "100644",
+        "path": "docs/symphony-hardening-playbook-v4.1/P08_T04_AUTHORITY_OPERATOR.md",
+        "sha256": "6371e92fd96315b4053effff5daeae9f999fb8427874578c29c2c79315402f95"
+      },
+      {
+        "bytes": 21534,
+        "git_blob": "ec92e83978283a734b631bf763cca3e108058a31",
+        "mode": "100644",
+        "path": "tools/p08_authority/gate.py",
+        "sha256": "967339bbbc269aa89a9792fb3f956e5e4f18f551951a12e1976ba5af08187bf6"
+      },
+      {
+        "bytes": 35511,
+        "git_blob": "fc6fd6e1b8776519f41ee7c1f25b2a0fc4ac311a",
+        "mode": "100644",
+        "path": "tools/p08_authority/profile-requirements.json",
+        "sha256": "0cf688495273e861c424def7e72afcd7b3841f1045ba456d974c3d5adc0af8e6"
+      },
+      {
+        "bytes": 30938,
+        "git_blob": "74fe31e05a7a2e0e8b46804b21afc68a00ab70cc",
+        "mode": "100644",
+        "path": "tools/p08_authority/qualification-vectors.json",
+        "sha256": "84380bc0557e1a27b933734f015c0c382df618c1ba5669e30436780d1995f715"
+      },
+      {
+        "bytes": 47739,
+        "git_blob": "0f920aeeaf52f01b5b9e06c2ec220fcee2f2a52c",
+        "mode": "100644",
+        "path": "tools/p08_authority/record-schemas.json",
+        "sha256": "349f8d1e405ed915481430100c6471dc91338186a645f1aa799fb95b6a0e7430"
+      },
+      {
+        "bytes": 74514,
+        "git_blob": "7475f3a2a31d7f2a7af10a14a4dae565b4ff3e0f",
+        "mode": "100644",
+        "path": "tools/p08_authority/verify.py",
+        "sha256": "a01245e1ff8e439078655c8bfb08464c4a4b3eb382cae865ab9145b6827bb309"
+      },
+      {
+        "bytes": 16948,
+        "git_blob": "8d3a323ac08f78299189d3dc871f5e7d3005d5cf",
+        "mode": "100644",
+        "path": "tools/tests/p08_qualification_runner.py",
+        "sha256": "95f1a2f2460231271f40a31af8a0bcaf787832ca4a81ab3400bac9bcb384e617"
+      },
+      {
+        "bytes": 45561,
+        "git_blob": "e51a12a4a78c0ab15a5591b62ee347a6c3eb6013",
+        "mode": "100644",
+        "path": "tools/tests/test_p08_authority_gate.py",
+        "sha256": "86013652455743cecff6e301cd67e2567ae21cae3cee9cddd1cd210a83c26f57"
+      },
+      {
+        "bytes": 83080,
+        "git_blob": "61db8f392a2f10988d78580c1c4e8480eb34ffec",
+        "mode": "100644",
+        "path": "tools/tests/test_p08_authority_verify.py",
+        "sha256": "26262bd2b5ffc65d9b894a069e14f3db9424b483b92fa03462a5c6b88a4ed9a4"
+      }
+    ],
+    "parent": "61da2f605ba41c3a707e5e7ec1f05acab9368b92",
+    "proposed_authority_source_only_selection": 9,
+    "tree": "8f4d2e96056c7b4f05c66cd324fd6f32f8bd1241"
+  },
+  "evidence_qualifications": [
+    "This checkpoint summarizes accepted decisions and records exact byte identities. It does not reproduce every original artifact or supply an operational signature.",
+    "Original archive custody remains the owner/evidence custodian responsibility; a hash alone does not preserve artifact content or prove approval.",
+    "Independent OP-D00 documentary review did not freshly inspect all120historical files and nine current-worktree files; local preservation checks are author evidence.",
+    "Master Gate/owner source acceptance is supplied conversation authority. Plane is a derivative projection and cannot issue operational E.",
+    "No new tests, builds, source execution, CI, enrollment, host operations or publication occurred in checkpoint planning.",
+    "The source contains three workstation-path literals in two test files and depends on private retained fixtures. Source publication requires an explicit disclosure/verification-boundary decision. No raw fixtures or archives are selected."
+  ],
+  "existing_checkpoints": [
+    {
+      "merge_commit": "ca0321896e2bc3edc75ab98a81be1f2aa217cf7f",
+      "pr": 66,
+      "preserved": "Accepted P08 v0.7 spec and implementation plan; later acceptance supplied separately.",
+      "url": "https://github.com/JCSchoeman96/symphony/pull/66"
+    },
+    {
+      "merge_commit": "1c045ac215afee47e94d566bf3f3baa0751beb9d",
+      "pr": 67,
+      "preserved": "P08-T02 P01 compatibility projections and tests; no host evidence authority.",
+      "url": "https://github.com/JCSchoeman96/symphony/pull/67"
+    },
+    {
+      "merge_commit": "ced5239092ac368c5498644b2710ce0b19a294c5",
+      "pr": 68,
+      "preserved": "ACQ-EXEC-05 R2 qualification plan and acceptance; no execution.",
+      "url": "https://github.com/JCSchoeman96/symphony/pull/68"
+    },
+    {
+      "merge_commit": "4971ddde384ef54b06498db438d2bfe36a0f108a",
+      "pr": 69,
+      "preserved": "H-100/Gate 2 historical evidence checkpoint, local R3/static scaffold, gaps and authority limits.",
+      "url": "https://github.com/JCSchoeman96/symphony/pull/69"
+    },
+    {
+      "merge_commit": "c4195ba245e3e8478b89ef3a8527f20c4a57148d",
+      "pr": 70,
+      "preserved": "ACQ-EXEC-06 B0/B1 original evidence, reviews, approvals and gaps; separate workstream.",
+      "url": "https://github.com/JCSchoeman96/symphony/pull/70"
+    }
+  ],
+  "governing_P08": {
+    "plan_git_blob": "83774a4185aab4908155abdc60a30a7081b76fbc",
+    "plan_sha256": "ac6debd05e32572fbae567a7300d643110007a6729b1adf975ed8d66985d9b94",
+    "spec_git_blob": "d4185d0f5aa4eacee3f7133db3a84648adffc160",
+    "spec_sha256": "b510eb0c8459c126d3b310d3d5c7225f9d8dda4559a16ff6704842a6fb69568d",
+    "v07_acceptance_comment": "b22a7324-e8f4-47fa-ae82-708658a165dc"
+  },
+  "historical_rebar": {
+    "disposition": "CONTAINED_PROCESS_DEVIATION_OWNER_ACCEPTED",
+    "disposition_record_sha256": "9f09a62b7f05adcc8793d7c31677e73b27be8f2c6c1d628701c48ac2604555ae",
+    "failed_metadata_log_sha256": "f4940761da0f31c62b52eaf4fe4173813f8016d90bd071f30260351d168e2a44",
+    "no_fetch_procedure": "MANDATORY",
+    "original_owner_message_sha256": "04614f7e18dff0d1429267c77129b072c5535533823a33d5ddfd38c499a525ed",
+    "retroactive_authorization": false
+  },
+  "new_information": [
+    "T03 R3 exact source-only acceptance and four closed source findings; no Rust executable qualification.",
+    "T04 C0 ten-file source preparation acceptance; incomplete, deliberately refusing native identity test.",
+    "D01/D02/D05 owner acceptance, exact R2 authority contract and accepted policy ceilings.",
+    "D03/D04 R2 nine-file verifier/gate source acceptance, three closed source findings and recorded synthetic verification.",
+    "Post-source readiness planning acceptance, documentary OP-D00 acceptance and subsequent owner confirmation of16fields.",
+    "Current unresolved host/appointment/custody/qualification/publication boundaries and source-vs-main reconciliation.",
+    "Contained Rebar process-deviation disposition for the T03 run, preserved without retroactive authorization."
+  ],
+  "non_authorizations": {
+    "A2_host_inventory": false,
+    "D04_operational_qualification": false,
+    "D06_native_input_acquisition": false,
+    "D07_native_source_amendment": false,
+    "D08_native_build_or_tests": false,
+    "Gate2_activation": false,
+    "GitHub_publication_or_CI_by_this_checkpoint": false,
+    "P09_integration_or_qualification": false,
+    "Plane_mutation": false,
+    "merge_by_this_checkpoint": false,
+    "operational_signing_or_P_E_issue": false,
+    "real_signer_enrollment": false,
+    "trusted_verifier_installation": false
+  },
+  "record_date": "2026-11-09",
+  "record_kind": "DERIVATIVE_DOCUMENTARY_CHECKPOINT_NOT_OPERATIONAL_AUTHORITY",
+  "record_version": 1,
+  "recorded_source_test_evidence": {
+    "failures": 0,
+    "gate_tests": 35,
+    "independent_reviews_sha256": "d7737b7f61011fb3b3b683925071244dcbb68a12202237b556164abd8bef720d",
+    "interpretation": "Historical inspected synthetic test records for exact source scope. No rerun or portable-candidate/host qualification claimed.",
+    "scenario_ids_observed": 98,
+    "source_scope_sha256": "320ced419294997d6e694d992b6f4fc788ae81f354f2988e602ea8087b502e5b",
+    "test_report_sha256": "701a80fcbb454762f44dc0472bcc5180fc2aa08f115bd3ba3e4988ae8c94141c",
+    "verifier_tests": 35
+  },
+  "reference_main": {
+    "commit": "b6c8813d8ba73acfe63679dc698d38f6637d06ae",
+    "live_verified_in_planning": true,
+    "tree": "25c6dd39309baa81594f4042ade1d438f780040e"
+  },
+  "remaining_owner_decisions": [
+    "OP-D01",
+    "OP-D02",
+    "OP-D03",
+    "OP-D04",
+    "OP-D05",
+    "OP-D06",
+    "OP-D07",
+    "OP-D08",
+    "OP-D09",
+    "OP-D10",
+    "OP-D11",
+    "OP-D12"
+  ],
+  "repository": "JCSchoeman96/symphony",
+  "retained_artifact_identities": [
+    {
+      "bytes": 4526548,
+      "crc": "PASS",
+      "entries": 984,
+      "file": "P08-T04-authority-verifier-d44d114b-review-r2.zip",
+      "id": "accepted-source-r2",
+      "payload_checksums": 983,
+      "sha256": "b8d7fbcc1eff2e84ab2c55044e680c17bcf8c6f64f6949047657a80a7e53c934"
+    },
+    {
+      "bytes": 344840,
+      "crc": "PASS",
+      "entries": 37,
+      "file": "P08-T04-build-input-authority-contract-0622e6cd-r2.zip",
+      "id": "accepted-r2-contract",
+      "payload_checksums": 36,
+      "sha256": "5be1713bd2a96dfe8735a287aadfc6c6adfa518cdd73ab68f459d59ef30879b4"
+    },
+    {
+      "bytes": 5209291,
+      "crc": "PASS",
+      "entries": 59,
+      "file": "P08-T04-post-source-operational-readiness-d44d114b-r0.zip",
+      "id": "accepted-planning",
+      "payload_checksums": 58,
+      "sha256": "e69434b58cde8276ebadc997141a80674d680d8366ff50c11765844cc0038257"
+    },
+    {
+      "bytes": 5024,
+      "file": "OP_D00_ADDITIVE_CLARIFICATION.md",
+      "id": "op-d00-OP_D00_ADDITIVE_CLARIFICATION.md",
+      "sha256": "513107695f9b2365e814ec3175e64958ac968f1b50ff2b1845aad89e57b654e0"
+    },
+    {
+      "bytes": 8038,
+      "file": "master-gate-planning-disposition.original.md",
+      "id": "op-d00-master-gate-planning-disposition.original.md",
+      "sha256": "0997fa5db74ab6eda1074998b399a3750db2d908e32f27a44d0d1cf3e4f86018"
+    },
+    {
+      "bytes": 4557,
+      "file": "disposition-record.json",
+      "id": "op-d00-disposition-record.json",
+      "sha256": "47e1521fd85f4f67da3eff4e77e6171d04d675aca94c1f3893c34f767d2176ab"
+    },
+    {
+      "bytes": 3011,
+      "file": "owner-acceptance.json",
+      "id": "D01-D02-D05-owner-record",
+      "sha256": "1d6c0341086e6506cc6e0659de7de8941ca46726b2224197419a37aa039c5ecc"
+    }
+  ],
+  "scope": "New scoped source/evidence decisions not yet committed as a P08 T03/T04 checkpoint; summaries and exact identities, not full archive preservation.",
+  "source_findings": {
+    "D04-SRC-F01": "CLOSED_SOURCE_ONLY_CLOCK_CONTINUITY",
+    "D04-SRC-F02": "CLOSED_SOURCE_ONLY_NONBLOCKING_READS",
+    "D04-SRC-F03": "CLOSED_SOURCE_ONLY_HISTORY_VALIDATION"
+  }
+}
