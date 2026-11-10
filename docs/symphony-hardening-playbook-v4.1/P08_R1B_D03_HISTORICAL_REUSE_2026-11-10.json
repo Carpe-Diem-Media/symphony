@@ -1,0 +1,504 @@
+{
+  "scope": "READ_ONLY_HISTORICAL_REUSE_ASSESSMENT",
+  "rows": [
+    {
+      "id": "R01",
+      "D03_requirement": "Fixed typed host-to-PID1 launch/stop",
+      "source_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/systemd-followup/source/executor.rs",
+          "bytes": 9234,
+          "sha256": "42c51a84f3915ad1b8fe20ce8e23841b6363789579713e09b1f8d241ad7754e0"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/i2gibhq8/executor.rs",
+          "bytes": 12390,
+          "sha256": "2d8dbe5a9a289e6596808ac4b7a2f3f04dbea01d2d372fe7c246d3ef50c813c6"
+        }
+      ],
+      "historical_evidence": "v3 independently reproduced exact fixture; final-validation fixed-role extension is diagnostic",
+      "reuse_unchanged": "Reuse sd-bus container encoders, exact wire signatures and finite verb validation.",
+      "adaptation_required": "Bind an approved finite D03 profile, attempt, source image and campaign namespace; old fixed unit/path cannot launch D03 unchanged.",
+      "missing_assertion_or_implementation": "Authenticated release must constrain every launch effect; no arbitrary properties, command, mount or signing proxy.",
+      "proposed_regressions": [
+        "Reject extra argv, unknown role, altered unit/image and command injection; preserve unsent signature serialization checks."
+      ],
+      "execution_permission": "Static/Python checks now; native --self-test opens the system bus and is deferred; all create/stop need separate host grant.",
+      "evidence_archive_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/systemd-followup/evidence/manual-2026-10-28-je2_hz97/sf-v1-systemd-followup-evidence-je2_hz97.tar",
+          "bytes": 112640,
+          "sha256": "4635385061a3226091a32de5c2380eebf1da02451a7353a85780f6d94b9c09d6"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/i2gibhq8/original.tar",
+          "bytes": 3614720,
+          "sha256": "c4c91048e1ed00ecbb0367f54562a08b4cfd7b4325c2676d63a389e62d819d90"
+        }
+      ]
+    },
+    {
+      "id": "R02",
+      "D03_requirement": "Privilege reduction before PID1 operations",
+      "source_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/systemd-followup/source/executor.rs",
+          "bytes": 9234,
+          "sha256": "42c51a84f3915ad1b8fe20ce8e23841b6363789579713e09b1f8d241ad7754e0"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/systemd-followup/source/runtime.rs",
+          "bytes": 3415,
+          "sha256": "8c6169d1f67e2f5f89a21ced670345ba48e8cc15b82cd48738d59f57e476d6ae"
+        }
+      ],
+      "historical_evidence": "v3 recorded securebits207, UID0 with all capability sets and bounding set zero, NNP1; worker also zero caps.",
+      "reuse_unchanged": "Reuse reduce() and exact capability/NNP assertions without inventing an account hierarchy.",
+      "adaptation_required": "Rebind executable/library identity and verify under the present boot; controller authentication remains outside the worker.",
+      "missing_assertion_or_implementation": "The unrestricted current agent has sudo/Docker/libvirt access. Capless executor output does not prove that agent lost those routes.",
+      "proposed_regressions": [
+        "Existing test_no_root_caps_required_for_A and test_worker_capabilities_rejected; live unexpected-cap/group rejection before work."
+      ],
+      "execution_permission": "Pure verdict tests passed now; live privilege transitions deferred.",
+      "evidence_archive_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/systemd-followup/evidence/manual-2026-10-28-je2_hz97/sf-v1-systemd-followup-evidence-je2_hz97.tar",
+          "bytes": 112640,
+          "sha256": "4635385061a3226091a32de5c2380eebf1da02451a7353a85780f6d94b9c09d6"
+        }
+      ]
+    },
+    {
+      "id": "R03",
+      "D03_requirement": "Trusted staging, exec mount and stable directory custody",
+      "source_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/systemd-followup/source/admin-probe.py",
+          "bytes": 22632,
+          "sha256": "8e25b13ebcc0f4f91fa3d13be9349b275c6b7b6a6bbf03147c73a6fd8122f518"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/systemd-followup/source/prepare.py",
+          "bytes": 2046,
+          "sha256": "fb5140968ccc2f958c5d695f499451f5f80fe5a05ec477be366318ce765cc11c"
+        }
+      ],
+      "historical_evidence": "kb2 noexec/pre-executor failure; cdd umask/CHDIR failure; v3 explicit directory-mode repair passed.",
+      "reuse_unchanged": "Reuse trusted-ancestor checks, noexec refusal, fixed directory mode manifest and collision refusal tests.",
+      "adaptation_required": "Use one new owner-approved campaign path; preserve old inaccessible stages/quarantines; stage immutable reviewed bytes as root later.",
+      "missing_assertion_or_implementation": "Current root directory ownership alone is insufficient against the source account privileged crossover.",
+      "proposed_regressions": [
+        "Noexec must refuse; umask077/777 must preserve traversal modes; symlink/ownership/ancestry change and collision must refuse."
+      ],
+      "execution_permission": "Read-only stat checks now; scratch-only mode tests eligible later; root staging needs separate grant.",
+      "evidence_archive_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/systemd-followup/evidence/manual-2026-10-28-cddnmf31/sf-v1-systemd-followup-evidence-cddnmf31.tar",
+          "bytes": 71680,
+          "sha256": "ec77b4975c4b1c6bdf719405d305c3a75e5718bf8436e30fc3281ee9c4ef800a"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/systemd-followup/evidence/manual-2026-10-28-je2_hz97/sf-v1-systemd-followup-evidence-je2_hz97.tar",
+          "bytes": 112640,
+          "sha256": "4635385061a3226091a32de5c2380eebf1da02451a7353a85780f6d94b9c09d6"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/systemd-followup/evidence/manual-2026-10-28-kb2m53m8/sf-v1-systemd-followup-evidence-kb2m53m8.tar",
+          "bytes": 61440,
+          "sha256": "9d893433f52dccc498ee347e7e01bdf352080cddd7a2320a9c6c5a435202d7ef"
+        }
+      ]
+    },
+    {
+      "id": "R04",
+      "D03_requirement": "Exact worker image and runtime closure",
+      "source_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/systemd-followup/source/prepare.py",
+          "bytes": 2046,
+          "sha256": "fb5140968ccc2f958c5d695f499451f5f80fe5a05ec477be366318ce765cc11c"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/source/prepare.py",
+          "bytes": 6105,
+          "sha256": "3e6b420783a2cde1632667a4a7878624096848933be4e20d5bc827e491185c03"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/bundle/SHA256SUMS.json",
+          "bytes": 1741200,
+          "sha256": "1998cb9c72a9fd2e04a16f4644c5a81ac964952a36272fc4d362eac36e5847d0"
+        }
+      ],
+      "historical_evidence": "v3 tiny Rust image passed its fixed profile; final current bundle12421/12421 matches its current manifest, which differs from old artifact pin.",
+      "reuse_unchanged": "Reuse complete per-payload hashes and explicit mode manifests, plus immutable code versus private HOME/data separation.",
+      "adaptation_required": "Build an exact new Python/D03 image from selected approved inputs. Changed current prepare.py must not stand in for the archived original.",
+      "missing_assertion_or_implementation": "Fresh source/image/runtime review and live fit under v3 limits; no version-only equivalence.",
+      "proposed_regressions": [
+        "Reject missing/extra file, wrong size/hash/mode, symlink escape, noexec staging and unapproved runtime/library."
+      ],
+      "execution_permission": "Hash/inventory checks now; image materialization remains preparation work, image execution deferred.",
+      "evidence_archive_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/systemd-followup/evidence/manual-2026-10-28-je2_hz97/sf-v1-systemd-followup-evidence-je2_hz97.tar",
+          "bytes": 112640,
+          "sha256": "4635385061a3226091a32de5c2380eebf1da02451a7353a85780f6d94b9c09d6"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/lykp135p/original.tar",
+          "bytes": 4177920,
+          "sha256": "9a969e88214d9a8ea82b80a1f882d68eaffc9774c378495300889054b813debc"
+        }
+      ]
+    },
+    {
+      "id": "R05",
+      "D03_requirement": "Identity under recycled numeric UID",
+      "source_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/i2gibhq8/worker.py",
+          "bytes": 6051,
+          "sha256": "1292fcade6a1be305e978d442d667ffbc473487534ee8c4a6927f3f5725fa377"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/i2gibhq8/admin-probe.py",
+          "bytes": 19234,
+          "sha256": "068d2f398c722ad3960c153c9da14dd5c893e032dea002cceda1e220871471a0"
+        }
+      ],
+      "historical_evidence": "i2 diagnostic PASS: same UID/GID reused for A/B, distinct invocations, retained marker/ref/output, exact cross-alias EACCES/EPERM.",
+      "reuse_unchanged": "Reuse known-present canary setup and ENOENT-is-not-denial assertions.",
+      "adaptation_required": "Bind current boot, invocation, PID/start, executable, cgroup/namespaces and stable pidfd to D03 attempt.",
+      "missing_assertion_or_implementation": "No sampled PID or numeric UID alone may authorize, signal or certify cleanup.",
+      "proposed_regressions": [
+        "Existing test_enoent_is_not_permission_denial passed; new same UID/new invocation cannot inherit a consumed release."
+      ],
+      "execution_permission": "Pure classifier test now; real UID reuse fixture deferred.",
+      "evidence_archive_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/i2gibhq8/original.tar",
+          "bytes": 3614720,
+          "sha256": "c4c91048e1ed00ecbb0367f54562a08b4cfd7b4325c2676d63a389e62d819d90"
+        }
+      ]
+    },
+    {
+      "id": "R06",
+      "D03_requirement": "Concurrent source/builder/reviewer workspace separation",
+      "source_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/i2gibhq8/worker.py",
+          "bytes": 6051,
+          "sha256": "1292fcade6a1be305e978d442d667ffbc473487534ee8c4a6927f3f5725fa377"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/i2gibhq8/executor.rs",
+          "bytes": 12390,
+          "sha256": "2d8dbe5a9a289e6596808ac4b7a2f3f04dbea01d2d372fe7c246d3ef50c813c6"
+        }
+      ],
+      "historical_evidence": "i2 diagnostic PASS for concurrent builder/reviewer barrier, private repos, reciprocal canary denial and selected read-only artifact.",
+      "reuse_unchanged": "Reuse fixed backing-gate, two-alias canary and barrier assertions; no new permanent users.",
+      "adaptation_required": "Map only the required D03 source-execution and review scopes; reviewer appointment still comes from owner, not UID names.",
+      "missing_assertion_or_implementation": "Must establish the actual source/tool route is inside the worker rather than the current privileged account.",
+      "proposed_regressions": [
+        "Both live units must overlap; canaries must be known present; reviewer write denied; unexpected groups/sockets/FDs rejected."
+      ],
+      "execution_permission": "Static/pure assertions now; concurrent privileged unit launch deferred.",
+      "evidence_archive_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/i2gibhq8/original.tar",
+          "bytes": 3614720,
+          "sha256": "c4c91048e1ed00ecbb0367f54562a08b4cfd7b4325c2676d63a389e62d819d90"
+        }
+      ]
+    },
+    {
+      "id": "R07",
+      "D03_requirement": "Separate bounded child scope and lineage",
+      "source_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/lykp135p/original.tar::lineage_worker.py",
+          "bytes": 1686,
+          "sha256": "39998ff10b7be896e69aff239894651b778999252503269f7e17acbdf9f775b1"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/lykp135p/original.tar::continue-tools.py",
+          "bytes": 25574,
+          "sha256": "809c88a447f8acb7747b14125f61c812710e9ce965f37293f065aec158ba3eb2"
+        }
+      ],
+      "historical_evidence": "lykp project-accepted bounded parent/child fixture: distinct identities/workspaces/network profiles and per-activation dummy credential, parent canary denied, both cleaned.",
+      "reuse_unchanged": "Reuse fixed child identity, known-parent-canary denial and separate cleanup checks.",
+      "adaptation_required": "Replace fixture authorization metadata with authentic exact D03 release and one-use child scope.",
+      "missing_assertion_or_implementation": "No production Symphony child-job or T3Code factory execution adapter was established.",
+      "proposed_regressions": [
+        "Child cannot reuse parent release or mutate parent state; interrupt either side and verify both owned scopes."
+      ],
+      "execution_permission": "Source/archive inspection now; actual child units and credentials deferred.",
+      "evidence_archive_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/lykp135p/original.tar",
+          "bytes": 4177920,
+          "sha256": "9a969e88214d9a8ea82b80a1f882d68eaffc9774c378495300889054b813debc"
+        }
+      ]
+    },
+    {
+      "id": "R08",
+      "D03_requirement": "Filesystem writes and safe output recovery",
+      "source_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/i2gibhq8/admin-probe.py",
+          "bytes": 19234,
+          "sha256": "068d2f398c722ad3960c153c9da14dd5c893e032dea002cceda1e220871471a0"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/source/test_probe.py",
+          "bytes": 5834,
+          "sha256": "367c47ed7545bd6fd0252d011c86da2ebfb5b7c2853384c5f089ce38756c7299"
+        }
+      ],
+      "historical_evidence": "i2 diagnostic PASS: recover after security cleanup; no-follow fixed regular export; symlink ELOOP, hardlink/special/oversize rejection.",
+      "reuse_unchanged": "Reuse safe_export dirfd/no-follow/nlink/size checks and conservative recovery ordering.",
+      "adaptation_required": "Use exact D03 output/evidence roots and pre-reserve PID1 stdout/stderr safely; never execute job Git/hooks as root.",
+      "missing_assertion_or_implementation": "Python write audit is not kernel filesystem containment; protect host names and directory custody mechanically.",
+      "proposed_regressions": [
+        "Existing export tests for regular, symlink, hardlink, FIFO and unregistered names; new root-output redirection and substitution cases."
+      ],
+      "execution_permission": "Static checks now; scratch-only export tests eligible; root write paths deferred.",
+      "evidence_archive_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/i2gibhq8/original.tar",
+          "bytes": 3614720,
+          "sha256": "c4c91048e1ed00ecbb0367f54562a08b4cfd7b4325c2676d63a389e62d819d90"
+        }
+      ]
+    },
+    {
+      "id": "R09",
+      "D03_requirement": "Network and host-control exclusion",
+      "source_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/systemd-followup/source/runtime.rs",
+          "bytes": 3415,
+          "sha256": "8c6169d1f67e2f5f89a21ced670345ba48e8cc15b82cd48738d59f57e476d6ae"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/w5clmw_j/network.py",
+          "bytes": 46905,
+          "sha256": "da3d28004d0ddd1c54bc9575f41ba8df0086859099143fc6044b6064dcefc7d0"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/w5clmw_j/network_worker.py",
+          "bytes": 13376,
+          "sha256": "804bbaddbac4dace20c599a53b9040c6fe24d558f8c83376727b64ebf7c25805"
+        }
+      ],
+      "historical_evidence": "v3 only private-network/address-family profile; w5 four network profiles/DNS/normal and crash cleanup project-accepted, no independent current-boot reproduction.",
+      "reuse_unchanged": "Reuse the network:none expectation set and explicit positive/negative coverage rules.",
+      "adaptation_required": "For first D03 smoke use v3 private network plus no host sockets/admin binaries; do not import broad public/NAT/DNS stack.",
+      "missing_assertion_or_implementation": "No sudo/Docker/libvirt/PID1 socket or inherited administrative FD may be reachable; public-egress success never means exfiltration containment.",
+      "proposed_regressions": [
+        "Actual socket/network denial and host-path/FD denial; retain missing positive controls as BLOCKED; do not rerun locked full w5 workflow."
+      ],
+      "execution_permission": "Pure policy tests can be selected after exact snapshot inspection; namespaces/firewall/endpoint units require a separate grant.",
+      "evidence_archive_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/systemd-followup/evidence/manual-2026-10-28-je2_hz97/sf-v1-systemd-followup-evidence-je2_hz97.tar",
+          "bytes": 112640,
+          "sha256": "4635385061a3226091a32de5c2380eebf1da02451a7353a85780f6d94b9c09d6"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/w5clmw_j/original.tar",
+          "bytes": 4096000,
+          "sha256": "cde8ce0eb4f26021cf228a7c5ba666613939a4339884b4d5e3793111fc3e3656"
+        }
+      ]
+    },
+    {
+      "id": "R10",
+      "D03_requirement": "Finite kernel resource limits",
+      "source_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/systemd-followup/source/executor.rs",
+          "bytes": 9234,
+          "sha256": "42c51a84f3915ad1b8fe20ce8e23841b6363789579713e09b1f8d241ad7754e0"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/i2gibhq8/worker.py",
+          "bytes": 6051,
+          "sha256": "1292fcade6a1be305e978d442d667ffbc473487534ee8c4a6927f3f5725fa377"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/i2gibhq8/admin-probe.py",
+          "bytes": 19234,
+          "sha256": "068d2f398c722ad3960c153c9da14dd5c893e032dea002cceda1e220871471a0"
+        }
+      ],
+      "historical_evidence": "v3 independently qualified readbacks50%CPU/256MiB/16tasks/20s/2s; i2 diagnostic pressure tests observed throttling/OOM/pids events under different role profiles.",
+      "reuse_unchanged": "Reuse explicit property types, cgroup readback and before/after event assertions.",
+      "adaptation_required": "Keep the v3 first-smoke limits; Python image fit is a fresh measurement. Do not borrow final-tools300s/32tasks silently.",
+      "missing_assertion_or_implementation": "Current live CPU/memory/tasks values and failure cleanup remain unqualified.",
+      "proposed_regressions": [
+        "Missing/wrong cgroup controller/value refuses; finite pressure variants only when separately selected and authorized."
+      ],
+      "execution_permission": "Static/verdict replay now; pressure and systemd limit tests deferred.",
+      "evidence_archive_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/i2gibhq8/original.tar",
+          "bytes": 3614720,
+          "sha256": "c4c91048e1ed00ecbb0367f54562a08b4cfd7b4325c2676d63a389e62d819d90"
+        }
+      ]
+    },
+    {
+      "id": "R11",
+      "D03_requirement": "PID1 exit, whole-scope cleanup and quarantine",
+      "source_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/systemd-followup/source/admin-probe.py",
+          "bytes": 22632,
+          "sha256": "8e25b13ebcc0f4f91fa3d13be9349b275c6b7b6a6bbf03147c73a6fd8122f518"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/i2gibhq8/admin-probe.py",
+          "bytes": 19234,
+          "sha256": "068d2f398c722ad3960c153c9da14dd5c893e032dea002cceda1e220871471a0"
+        }
+      ],
+      "historical_evidence": "v3 UnitReference preserved PID1 exit, explicit SIGKILL/SIGTERM, descendant/cgroup/runtime/credential/transient definition/mount/tmp cleanup; i2 global network cleanup failed.",
+      "reuse_unchanged": "Reuse UnitReference/identity observations and exit-is-not-cleanup, failed-query-is-not-empty, leftover-mount quarantine tests.",
+      "adaptation_required": "Bind exact D03 attempt/launch token, stable handles and launch-before-invocation crash window; preserve terminal receipts/tombstones.",
+      "missing_assertion_or_implementation": "Host/PID1 evidence must replace trust in launcher-only exit assertions; root inaccessible stages cannot be declared absent.",
+      "proposed_regressions": [
+        "Existing test_cleanup_not_equal_to_exit, test_query_failure_not_empty_success, test_leftovers_fail passed; new launch/reply-loss/restart tests."
+      ],
+      "execution_permission": "Pure tests and read-only current inventory now; signaling, stop, mounts and stage removal deferred.",
+      "evidence_archive_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/systemd-followup/evidence/manual-2026-10-28-je2_hz97/sf-v1-systemd-followup-evidence-je2_hz97.tar",
+          "bytes": 112640,
+          "sha256": "4635385061a3226091a32de5c2380eebf1da02451a7353a85780f6d94b9c09d6"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/i2gibhq8/original.tar",
+          "bytes": 3614720,
+          "sha256": "c4c91048e1ed00ecbb0367f54562a08b4cfd7b4325c2676d63a389e62d819d90"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/lykp135p/original.tar",
+          "bytes": 4177920,
+          "sha256": "9a969e88214d9a8ea82b80a1f882d68eaffc9774c378495300889054b813debc"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/w5clmw_j/original.tar",
+          "bytes": 4096000,
+          "sha256": "cde8ce0eb4f26021cf228a7c5ba666613939a4339884b4d5e3793111fc3e3656"
+        }
+      ]
+    },
+    {
+      "id": "R12",
+      "D03_requirement": "Independent owner release issuer and pinned public trust identity",
+      "source_identities": [
+        {
+          "path": "/tmp/symphony-p08-r1b-d02/adapter/synthetic_host.py",
+          "bytes": 21563,
+          "sha256": "1f118ece9d9001b4179f6a670a1aa11c81bf0625b742b24e6ec9957b2d04c872"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/systemd-followup/source/admin-probe.py",
+          "bytes": 22632,
+          "sha256": "8e25b13ebcc0f4f91fa3d13be9349b275c6b7b6a6bbf03147c73a6fd8122f518"
+        }
+      ],
+      "historical_evidence": "Historical wrapper used root staging and dummy credentials, no signed release protocol. D02 real SSH verification used same-account disposable keys, cooperative only.",
+      "reuse_unchanged": "Reuse D02 canonical signature/binding negative cases and installed verifier identity checks as components.",
+      "adaptation_required": "Use the original-owner issuer/custodian handoff, with exact public key and fingerprint confirmed independently of source preparation.",
+      "missing_assertion_or_implementation": "No owner key/independent source-route handoff or live signing custody has been established in D03A.",
+      "proposed_regressions": [
+        "Absent/unconfirmed key, rogue signature, changed signed bytes, source/runtime/profile/suite mismatch must refuse before launch."
+      ],
+      "execution_permission": "Existing public synthetic signature components only; no key creation/enrollment or real issuer setup now.",
+      "evidence_archive_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/systemd-followup/evidence/manual-2026-10-28-je2_hz97/sf-v1-systemd-followup-evidence-je2_hz97.tar",
+          "bytes": 112640,
+          "sha256": "4635385061a3226091a32de5c2380eebf1da02451a7353a85780f6d94b9c09d6"
+        },
+        {
+          "path": "/tmp/symphony-p08-r1b-d02/P08-R1B-D02-119ee64e-PRIVATE-evidence.zip",
+          "bytes": 899068,
+          "sha256": "de386ce0b99d9024a97b1af55e6b3db88f088b29f3b8e8b1806f0e068343f087"
+        }
+      ]
+    },
+    {
+      "id": "R13",
+      "D03_requirement": "Durable one-use, expiry, revocation and restart",
+      "source_identities": [
+        {
+          "path": "/tmp/symphony-p08-r1b-d02/adapter/synthetic_host.py",
+          "bytes": 21563,
+          "sha256": "1f118ece9d9001b4179f6a670a1aa11c81bf0625b742b24e6ec9957b2d04c872"
+        },
+        {
+          "path": "/tmp/symphony-p08-r1b-d02/adapter/test_host_ledger.py",
+          "bytes": 5469,
+          "sha256": "a1156407b74dd29bad97ad2836c376bed2b89aa4bc907d87703ac6541954efb5"
+        }
+      ],
+      "historical_evidence": "D02 observed atomic consume/replay/concurrent consumers/restart in a cooperative SQLite test double; v3 explicitly excluded broker crash/lease tests.",
+      "reuse_unchanged": "Reuse transaction/state-machine and negative regression logic without treating source-owned storage as authority.",
+      "adaptation_required": "Move ownership to the authenticated host, reserve finite attempts durably before effects and reconcile actual PID1/cgroup state.",
+      "missing_assertion_or_implementation": "Root-custody crash/reboot recovery, lease expiry, authenticated revocation and interrupted-attempt finality remain unqualified.",
+      "proposed_regressions": [
+        "Consume once under concurrency; crash after consume/before launch/after launch-before-reply; slot/history/marker contradictions and clock/boot changes."
+      ],
+      "execution_permission": "Pure storage models belong to preparation grant; live host state/launch failure tests deferred.",
+      "evidence_archive_identities": [
+        {
+          "path": "/tmp/symphony-p08-r1b-d02/P08-R1B-D02-119ee64e-PRIVATE-evidence.zip",
+          "bytes": 899068,
+          "sha256": "de386ce0b99d9024a97b1af55e6b3db88f088b29f3b8e8b1806f0e068343f087"
+        }
+      ]
+    },
+    {
+      "id": "R14",
+      "D03_requirement": "Restricted execution route for the source actor",
+      "source_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/validation/substrate-acceptance-review.json",
+          "bytes": 9976,
+          "sha256": "de39b699074f84e81c80a8107d6c08bc65543d3a4cfae43669acd91ba53c92e9"
+        },
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/lykp135p/original.tar::lineage_worker.py",
+          "bytes": 1686,
+          "sha256": "39998ff10b7be896e69aff239894651b778999252503269f7e17acbdf9f775b1"
+        }
+      ],
+      "historical_evidence": "Existing manual systemd workers were isolated; the T3Code-to-factory/headless adapter remained an implementation obligation. D02 source UID1000 still has privileged crossover.",
+      "reuse_unchanged": "Reuse existing host/PID1/DynamicUser routing and explicit descriptor/environment restrictions.",
+      "adaptation_required": "Bind the actual source actor/tool backend to that restricted route or limit the next claim to one fixed worker. No second device/permanent hierarchy.",
+      "missing_assertion_or_implementation": "A signed statement or restricted sample worker alone cannot mechanically remove the current agent tool endpoints or Docker/libvirt/sudo capability.",
+      "proposed_regressions": [
+        "Observe actual source/tool process UID/groups/caps/NNP, namespaces/cgroup, executable/root and FDs; reject any remaining generic host execution route."
+      ],
+      "execution_permission": "Read-only route/account inventory now; enabling/changing tool backend or privileged host route needs separate exact authority.",
+      "evidence_archive_identities": [
+        {
+          "path": ".scratch/software-factory-v1/spikes/final-validation/evidence/lykp135p/original.tar",
+          "bytes": 4177920,
+          "sha256": "9a969e88214d9a8ea82b80a1f882d68eaffc9774c378495300889054b813debc"
+        },
+        {
+          "path": "/tmp/symphony-p08-r1b-d02/P08-R1B-D02-119ee64e-PRIVATE-evidence.zip",
+          "bytes": 899068,
+          "sha256": "de386ce0b99d9024a97b1af55e6b3db88f088b29f3b8e8b1806f0e068343f087"
+        }
+      ]
+    }
+  ]
+}
