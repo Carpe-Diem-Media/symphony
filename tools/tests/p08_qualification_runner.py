@@ -1,8 +1,8 @@
-"""R1a source-prepared offline launcher with unavailable positive admission.
+"""Offline launcher with a separate owner-issued development profile.
 
-The release interface always refuses. Historical execution controls below it
-are retained as source only; no synthetic test or probe is authorized by R1a.
-It is never an approval verifier.
+The historical R1a profile still always refuses. The new development profile
+requires an independently owner-confirmed public key and signed exact release.
+It supplies no production or formal R1b authority.
 
 Adapted from the retained T03 seccomp-notification launcher. All subprocess
 paths, argv forms and fixture effects are finite. The parent records every
@@ -539,9 +539,35 @@ def _cleanup_adopted(log):
 
 
 def main():
-    profile_id, suite = select_request(sys.argv[1:])
-    select_profile(profile_id)
-    approval = preflight()
+    development = None
+    release = None
+    if sys.argv[1:3] == ['--profile', 'PB-D01-OWNER-RELEASE-1']:
+        # Fixed source-relative import. No provider callback or trust selector.
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('p08_development_release',
+            REPO / 'tools/tests/p08_development_release.py')
+        development = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(development)
+        attempt = development.select_request(sys.argv[1:])
+        # Nothing below, including output creation and native loading, occurs
+        # unless independently authenticated issuance and consumption succeed.
+        release = development.prepare_launch(REPO, attempt)
+        if OUT.exists() or OUT.is_symlink():
+            raise development.Refusal('DEVELOPMENT_OUTPUT_ALREADY_EXISTS')
+        OUT.mkdir(mode=0o700)
+        for name in ('logs', 'tmp', 'home', 'cache'):
+            (OUT / name).mkdir(mode=0o700)
+        suite = development.SUITE
+        SUITES[suite] = development.launcher_command(REPO, attempt)
+        approval = {'scope_sha256': release['source_inventory_sha256']}
+    else:
+        profile_id, suite = select_request(sys.argv[1:])
+        select_profile(profile_id)
+        approval = preflight()
+    return _run_suite(approval, suite, development, release)
+
+
+def _run_suite(approval, suite, development=None, release=None):
     logpath = OUT / "logs" / (suite + "-exec-" + str(time.time_ns()) + ".jsonl")
     log = logpath.open("x", buffering=1)
     log.write(json.dumps({"profile": "OFFLINE_SYNTHETIC_ONLY", "suite": suite, "environment": ENV,
@@ -560,6 +586,12 @@ def main():
         parent.close()
         log.close()
         os.setsid()
+        if development is not None:
+            import resource
+            for kind, bound in ((resource.RLIMIT_CPU, 50), (resource.RLIMIT_AS, 1610612736),
+                                (resource.RLIMIT_FSIZE, 8388608), (resource.RLIMIT_NOFILE, 128),
+                                (resource.RLIMIT_CORE, 0)):
+                resource.setrlimit(kind, (bound, bound))
         null_fd = os.open("/dev/null", os.O_RDONLY | os.O_CLOEXEC)
         os.dup2(null_fd, 0)
         os.dup2(stdio_fd, 1)
@@ -568,6 +600,13 @@ def main():
         # never inherited service/network sockets.
         # Drop inherited service sockets/descriptors before filtering or spawning.
         preserve = {0, 1, 2, child.fileno()}
+        # D02 may pass one preconnected host-control descriptor. It is a
+        # cooperative development adapter, never a production provider.
+        host_fd = getattr(development, 'child_control_fd', None)
+        if host_fd is not None:
+            if type(host_fd) is not int or host_fd < 3:
+                raise RuntimeError('invalid development host descriptor')
+            preserve.add(host_fd)
         for path in Path("/proc/self/fd").iterdir():
             fd = int(path.name)
             if fd not in preserve:
@@ -581,7 +620,7 @@ def main():
         os.close(nfd)
         # Fixture-only key generation is part of this reviewed child profile.
         import subprocess
-        for key in KEYS:
+        for key in (() if development is not None else KEYS):
             if not Path(key).exists():
                 subprocess.run([SSH, "-q", "-t", "ed25519", "-N", "", "-C", "p08-test-only", "-f", key],
                                env=ENV, stdin=subprocess.DEVNULL, check=True)
@@ -590,12 +629,40 @@ def main():
     os.close(stdio_fd)
     alive = True
     nfd = None
+    suite_pidfd = None
+
+    def terminate_leader():
+        if development is not None:
+            # A pidfd remains tied to this child even after exit. Never signal
+            # a numeric process group after its leader has been reaped.
+            if suite_pidfd is not None:
+                try:
+                    signal.pidfd_send_signal(suite_pidfd, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            else:
+                # Still our unreaped child if pidfd acquisition itself failed.
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+        else:
+            try:
+                os.killpg(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
     try:
         child.close()
+        if development is not None:
+            suite_pidfd = os.pidfd_open(pid)
+            development.register_child(REPO, release, pid)
         parent.settimeout(5)
         message, ancillary, flags, address = parent.recvmsg(1, socket.CMSG_SPACE(4))
         if message != b"F" or not ancillary:
-            os.killpg(pid, signal.SIGKILL)
+            terminate_leader()
             raise RuntimeError("seccomp setup not acknowledged")
         received = array.array("i")
         received.frombytes(ancillary[0][2][:4])
@@ -604,22 +671,26 @@ def main():
         first = True
         denied = False
         deadline = time.monotonic() + 120
+        previous_clock = time.time()
         while True:
+            if development is not None:
+                clock = time.time()
+                if clock < previous_clock or clock >= release['expires_at']:
+                    raise development.Refusal('RELEASE_EXPIRED_OR_CLOCK_CHANGED')
+                previous_clock = clock
+                development.check_revocation(REPO, release)
             done, result = os.waitpid(pid, os.WNOHANG)
             if done:
                 alive = False
                 code = os.waitstatus_to_exitcode(result)
-                try:
-                    os.killpg(pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
                 orphans = _cleanup_adopted(log)
                 log.write(json.dumps({"suite_exit": code, "denied_exec": denied, "unexpected_orphans": orphans}) + "\n")
                 print(json.dumps({"suite_exit": code, "denied_exec": denied, "unexpected_orphans": orphans, "stdio_log": str(stdio_path)}), flush=True)
                 return 1 if denied or orphans else code
             if time.monotonic() > deadline:
-                os.killpg(pid, signal.SIGKILL)
+                terminate_leader()
                 os.waitpid(pid, 0)
+                alive = False
                 raise RuntimeError("finite suite deadline exceeded")
             if not select.select([nfd], [], [], 0.05)[0]:
                 continue
@@ -635,8 +706,11 @@ def main():
             try:
                 path, argv = _exec_request(request)
                 initial = request.pid == pid and path == PYTHON and first
+                command_allowed = (argv == SUITES[suite] if initial else
+                    development.permitted_verification(argv, REPO, pid)) if development is not None else \
+                    permitted_argv(argv, suite, initial=initial)
                 permit = path in (PYTHON, SSH) and argv and path == argv[0] \
-                    and digest(path) == PINS[path] and permitted_argv(argv, suite, initial=initial)
+                    and digest(path) == PINS[path] and command_allowed
                 if initial:
                     first = False
             except Exception:
@@ -651,13 +725,7 @@ def main():
                     raise
     finally:
         if alive:
-            try:
-                os.killpg(pid, signal.SIGKILL)
-            except ProcessLookupError:
-                try:
-                    os.kill(pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+            terminate_leader()
             try:
                 os.waitpid(pid, 0)
             except ChildProcessError:
@@ -665,9 +733,15 @@ def main():
         _cleanup_adopted(log)
         if nfd is not None:
             os.close(nfd)
+        if suite_pidfd is not None:
+            os.close(suite_pidfd)
         parent.close()
         log.close()
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except RuntimeError as error:
+        print(str(error), file=sys.stderr)
+        raise SystemExit(2)
