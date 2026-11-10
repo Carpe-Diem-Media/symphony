@@ -1,0 +1,730 @@
+{
+  "accepted_r2_archive_sha256": "5be1713bd2a96dfe8735a287aadfc6c6adfa518cdd73ab68f459d59ef30879b4",
+  "case_count": 98,
+  "cases": [
+    {
+      "case": "S, M, R, O, any required signature or G missing",
+      "effect": "No compilation/test launch",
+      "expected": "APPROVAL_MISSING",
+      "gate": "pre-Cargo and identity",
+      "id": "N01"
+    },
+    {
+      "case": "Unenrolled/self-generated key signs a locally matching manifest",
+      "effect": "Matching hashes cannot grant approval",
+      "expected": "SIGNER_UNAUTHORIZED",
+      "gate": "pre-Cargo and identity",
+      "id": "N02"
+    },
+    {
+      "case": "Current Git commit signer supplied without independent role enrollment",
+      "effect": "Commit integrity supplies no issuer/reviewer authority",
+      "expected": "SIGNER_UNAUTHORIZED",
+      "gate": "pre-Cargo and identity",
+      "id": "N03"
+    },
+    {
+      "case": "Reviewer key used for owner decision, owner key used for reviewer, or same key assigned both roles",
+      "effect": "Distinct accepted roles required",
+      "expected": "ROLE_MISMATCH",
+      "gate": "pre-Cargo and identity",
+      "id": "N04"
+    },
+    {
+      "case": "Valid signature reused under another purpose namespace or altered message bytes",
+      "effect": "No cross-purpose approval",
+      "expected": "SIGNATURE_INVALID",
+      "gate": "pre-Cargo and identity",
+      "id": "N05"
+    },
+    {
+      "case": "Signature corrupt, unsupported algorithm/certificate, unapproved verifier or check-novalidate substituted",
+      "effect": "No mathematical-only approval shortcut",
+      "expected": "VERIFIER_UNAPPROVED",
+      "gate": "pre-Cargo and identity",
+      "id": "N06"
+    },
+    {
+      "case": "Duplicate/unknown/missing keys, noncanonical key order/number, whitespace, escape, Unicode, extra bytes or oversized input",
+      "effect": "Reject before map conversion or approval",
+      "expected": "FORMAT_INVALID",
+      "gate": "pre-Cargo and identity",
+      "id": "N07"
+    },
+    {
+      "case": "Source-stage S is unsigned, signed by an unassigned key, binds another commit/tree, has wrong scope, or its digest differs among M/R/O",
+      "effect": "Review recommendation is not owner acceptance",
+      "expected": "ACCEPTANCE_UNAUTHENTICATED",
+      "gate": "pre-Cargo and identity",
+      "id": "N08"
+    },
+    {
+      "case": "M names C0 instead of final reviewed C1, wrong tree, amended test own hash, or changed frozen T03 file",
+      "effect": "No stale source approval",
+      "expected": "SOURCE_MISMATCH",
+      "gate": "pre-Cargo and identity",
+      "id": "N09"
+    },
+    {
+      "case": "Lockfile, one of four Cargo manifests, toolchain file, implicit targets or source inventory changed",
+      "effect": "Preserve graph and exact reviewed wiring",
+      "expected": "SOURCE_MISMATCH",
+      "gate": "pre-Cargo and identity",
+      "id": "N10"
+    },
+    {
+      "case": "R/O/G references conflicting manifest/profile/report/signature identities",
+      "effect": "Every reference must bind same accepted chain",
+      "expected": "CHAIN_MISMATCH",
+      "gate": "pre-Cargo and identity",
+      "id": "N11"
+    },
+    {
+      "case": "Not-yet-valid/expired approval, overlong validity or backward/unreliable clock",
+      "effect": "No skip or Boolean override",
+      "expected": "APPROVAL_STALE",
+      "gate": "pre-Cargo and identity",
+      "id": "N12"
+    },
+    {
+      "case": "Revoked signer/approval, stale status, epoch rollback or conflicting owner decisions",
+      "effect": "Refuse unresolved status; external register is mandatory",
+      "expected": "STATUS_INVALID",
+      "gate": "external pre-Cargo; identity rechecks signed context",
+      "id": "N13"
+    },
+    {
+      "case": "Previously consumed grant/nonce, substituted run ID or uncertain prior launch",
+      "effect": "Test-local file cannot prove global single use",
+      "expected": "GRANT_REPLAY",
+      "gate": "independent external register",
+      "id": "N14"
+    },
+    {
+      "case": "Only inputs-only O exists, no G; BUILD_ONLY used to launch executable tests",
+      "effect": "Input acceptance never grants execution",
+      "expected": "EXECUTION_NOT_GRANTED",
+      "gate": "external pre-Cargo/test launcher and identity",
+      "id": "N15"
+    },
+    {
+      "case": "Policy A certificate/manifest/signature/archive/signer/algorithm differs",
+      "effect": "Exact policy only",
+      "expected": "PROVENANCE_INVALID",
+      "gate": "external pre-Cargo; identity binds authenticated observation",
+      "id": "N16"
+    },
+    {
+      "case": "Policy A evidence older than 24h, missing immediate pre-acquisition check, unavailable required status or acquisition without authority",
+      "effect": "No fetch or status guess as remediation",
+      "expected": "PROVENANCE_STALE",
+      "gate": "external acquisition gate and pre-Cargo",
+      "id": "N17"
+    },
+    {
+      "case": "Missing host/musl std, CRT, linker closure, image, SBOM or licenses; dummy all-zero digests",
+      "effect": "No GNU target/PATH fallback",
+      "expected": "INPUTS_INCOMPLETE",
+      "gate": "external pre-Cargo; identity binds authenticated observation",
+      "id": "N18"
+    },
+    {
+      "case": "Mutable local tool matches one digest but full loader/library/provenance closure is absent",
+      "effect": "Executable hash alone is insufficient",
+      "expected": "INPUTS_INCOMPLETE",
+      "gate": "external pre-Cargo",
+      "id": "N19"
+    },
+    {
+      "case": "Guest environment variable or self-produced report claims expected image/tool identities",
+      "effect": "Independent actual observations required",
+      "expected": "OBSERVATION_UNAUTHENTICATED",
+      "gate": "external pre-Cargo and identity",
+      "id": "N20"
+    },
+    {
+      "case": "Unexpected Cargo ancestor config, rustup proxy, compiler wrapper, build script, dependency, PATH child or network attempt",
+      "effect": "Stop and retain attempt",
+      "expected": "EXECUTION_PROFILE_MISMATCH",
+      "gate": "external pre-Cargo and supervised command",
+      "id": "N21"
+    },
+    {
+      "case": "Source/tool/input changes after observation or build UID can mutate sealed inputs",
+      "effect": "No check-then-replace success",
+      "expected": "CUSTODY_FAILURE",
+      "gate": "external pre-Cargo and pre/post checks",
+      "id": "N22"
+    },
+    {
+      "case": "Lease expires, status cannot be refreshed, or revocation is observed during command",
+      "effect": "Stop, preserve outputs, no automatic retry",
+      "expected": "LEASE_TERMINATED",
+      "gate": "external supervisor",
+      "id": "N23"
+    },
+    {
+      "case": "No tests discovered, ignored cases, changed expected names, identity target still unconditional refusal or failing codec regression",
+      "effect": "No empty/source-only executable pass",
+      "expected": "QUALIFICATION_FAILED",
+      "gate": "later test result review",
+      "id": "N24"
+    },
+    {
+      "case": "Independent rebuild reuses prior outputs or hashes/ELF form diverge",
+      "effect": "No full T04 acceptance",
+      "expected": "REPRODUCIBILITY_FAILED",
+      "gate": "independent result review",
+      "id": "N25"
+    },
+    {
+      "case": "Command, linker, verifier or component executable supplies content-only artifact or omits required installed-reference fields",
+      "effect": "No executable selection by digest or ambient PATH",
+      "expected": "FORMAT_INVALID",
+      "gate": "external pre-Cargo and identity binding review",
+      "id": "N26"
+    },
+    {
+      "case": "Two inventoried regular files have identical bytes/hash; the requested invocation names the unapproved path",
+      "effect": "Identical content does not grant another path",
+      "expected": "EXECUTABLE_PATH_MISMATCH",
+      "gate": "external launch gate",
+      "id": "N27"
+    },
+    {
+      "case": "Installed reference has expected bytes/hash but selects another inventory or wrong path/endpoint entry identity",
+      "effect": "Select exact entry by path and canonical entry digest",
+      "expected": "EXECUTABLE_INVENTORY_MISMATCH",
+      "gate": "external pre-Cargo",
+      "id": "N28"
+    },
+    {
+      "case": "Declared leaf-symlink target is changed, missing, cyclic, excessive, outside approved roots or absent from the exact chain",
+      "effect": "Reject the chain, preserve refusal",
+      "expected": "EXECUTABLE_RESOLUTION_INVALID",
+      "gate": "external pre-Cargo and launch custody check",
+      "id": "N29"
+    },
+    {
+      "case": "Actual exec path or argv[0] differs from the installed reference path, including a same-content wrapper/alias",
+      "effect": "No invocation substitution",
+      "expected": "EXECUTABLE_PATH_MISMATCH",
+      "gate": "external launch gate",
+      "id": "N30"
+    },
+    {
+      "case": "Named installed path has a symlink parent, or actual endpoint differs from declared resolved regular identity",
+      "effect": "No implicit directory traversal or target fallback",
+      "expected": "EXECUTABLE_RESOLUTION_INVALID",
+      "gate": "external pre-Cargo and launch custody check",
+      "id": "N31"
+    },
+    {
+      "case": "A valid accepted review snapshot is supplied to G.action_observation_sha256, even while M/R/O remain active",
+      "effect": "Never launch using review evidence as action preflight",
+      "expected": "OBSERVATION_PURPOSE_MISMATCH",
+      "gate": "external launch gate and identity binding checks",
+      "id": "N32"
+    },
+    {
+      "case": "Fresh valid action report is from another grant/run/nonce or another exact command/action scope",
+      "effect": "No borrowing current reports across actions",
+      "expected": "ACTION_BINDING_MISMATCH",
+      "gate": "external launch gate and identity binding checks",
+      "id": "N33"
+    },
+    {
+      "case": "G is signed and its 900-second lease is active, but elapsed time since action preflight completion is 60 seconds plus one ns",
+      "effect": "Record terminal refusal of G/nonce; no launch or retry",
+      "expected": "ACTION_OBSERVATION_STALE",
+      "gate": "external actual-launch gate",
+      "id": "N34"
+    },
+    {
+      "case": "Required external clock-session field is present but reset, unknown, different or guest-selected; launch reading is before completion or checked arithmetic cannot represent elapsed bound",
+      "effect": "No timestamp-only or Boolean freshness fallback",
+      "expected": "CLOCK_CONTEXT_INVALID",
+      "gate": "external actual-launch gate",
+      "id": "N35"
+    },
+    {
+      "case": "Review observation includes forbidden run/grant/nonce or other unknown fields",
+      "effect": "Reject unknown fields or wrong closed purpose before acceptance",
+      "expected": "FORMAT_INVALID",
+      "gate": "external input-review gate and identity shape checks",
+      "id": "N36"
+    },
+    {
+      "case": "Review observation belongs to another review_id/reviewer/manifest/source/profile set",
+      "effect": "No fabricated or stale input-review evidence",
+      "expected": "REVIEW_BINDING_INVALID",
+      "gate": "independent input-review gate",
+      "id": "N37"
+    },
+    {
+      "case": "Signing or queue delay makes a previously fresh action report stale just before process launch",
+      "effect": "Freshness must be checked after signing/queue delay",
+      "expected": "ACTION_OBSERVATION_STALE",
+      "gate": "external actual-launch gate",
+      "id": "N38"
+    },
+    {
+      "case": "A terminally stale G is resubmitted after replacing its report or re-signing its old grant/run/nonce",
+      "effect": "Require new identities and a new action report",
+      "expected": "GRANT_REPLAY",
+      "gate": "independent register and launch gate",
+      "id": "N39"
+    },
+    {
+      "case": "Otherwise complete action report binds another M/O/R or source/profile set",
+      "effect": "No inconsistent chain or hash cycle",
+      "expected": "ACTION_BINDING_MISMATCH",
+      "gate": "external pre-Cargo/action gate",
+      "id": "N40"
+    },
+    {
+      "case": "A valid ACTION_PREFLIGHT_ONLY report is supplied to R.review_observation_sha256",
+      "effect": "An action report cannot replace review evidence",
+      "expected": "OBSERVATION_PURPOSE_MISMATCH",
+      "gate": "independent input-review gate",
+      "id": "N41"
+    },
+    {
+      "case": "An otherwise matching review observation was older than the accepted input-review age when R was issued",
+      "effect": "No stale review acceptance",
+      "expected": "REVIEW_OBSERVATION_STALE",
+      "gate": "independent input-review gate",
+      "id": "N42"
+    },
+    {
+      "case": "Action observation lacks run/grant/nonce or another required field, or contains an unknown future-G-hash field",
+      "effect": "No incomplete action identity or hash cycle",
+      "expected": "FORMAT_INVALID",
+      "gate": "external pre-Cargo/action gate and identity shape checks",
+      "id": "N43"
+    },
+    {
+      "case": "All installed-reference fields are present but the named executable path is relative, contains noncanonical path components or requests PATH resolution",
+      "effect": "Only the exact approved normalized absolute path can be selected",
+      "expected": "EXECUTABLE_BINDING_INVALID",
+      "gate": "external pre-Cargo",
+      "id": "N44"
+    },
+    {
+      "case": "Attempt to invoke a newly generated test binary under M_build/O_build/G_build, even with an authentic successful B",
+      "effect": "No generated binary launch; require the complete new test-input chain",
+      "expected": "BUILD_APPROVAL_CANNOT_EXECUTE_OUTPUT",
+      "gate": "external launch stage gate",
+      "id": "N45"
+    },
+    {
+      "case": "Generated-input manifest names receipt/signature digests whose actual B or signature bytes are absent",
+      "effect": "No receipt inferred from file existence or local hashes",
+      "expected": "COMPILATION_RECEIPT_MISSING",
+      "gate": "generated input review and launch gate",
+      "id": "N46"
+    },
+    {
+      "case": "B signature is corrupt, uses another purpose/key/role or was self-issued by the build guest",
+      "effect": "Only the enrolled reviewer build-result attestation can establish producer provenance",
+      "expected": "COMPILATION_RECEIPT_UNAUTHENTICATED",
+      "gate": "generated input review and launch gate",
+      "id": "N47"
+    },
+    {
+      "case": "Authentic B or Q/E binds another producer M/R/O/G, source, command, grant/run/nonce, input profile or output inventory",
+      "effect": "Reject inconsistent lineage",
+      "expected": "BUILD_PROVENANCE_MISMATCH",
+      "gate": "generated input review and launch gate",
+      "id": "N48"
+    },
+    {
+      "case": "Compiler failed, was interrupted, ran outside lease/scope, has ambiguous status, live descendants, incomplete audit or mixed stale outputs despite surviving files",
+      "effect": "No eligible B or promotion of any output from that attempt",
+      "expected": "PRODUCER_NOT_ELIGIBLE",
+      "gate": "result attestation and generated input review gate",
+      "id": "N49"
+    },
+    {
+      "case": "Test binary bytes/length or resolved endpoint differs from B/Q inventory after compilation or sealing",
+      "effect": "No changed binary launch",
+      "expected": "GENERATED_INPUT_MISMATCH",
+      "gate": "generated input review and fresh action preflight",
+      "id": "N50"
+    },
+    {
+      "case": "The same compiled bytes are moved or invoked at a path not covered by B/Q and the accepted test inventory/custody",
+      "effect": "No equal-content relocation authority",
+      "expected": "GENERATED_INPUT_PATH_MISMATCH",
+      "gate": "generated input review and actual launch gate",
+      "id": "N51"
+    },
+    {
+      "case": "Output custody is absent, writable by the build guest, broken, precedes producer termination or cannot be independently verified",
+      "effect": "No transition or launch",
+      "expected": "GENERATED_CUSTODY_INVALID",
+      "gate": "result attestation, input review and fresh action preflight",
+      "id": "N52"
+    },
+    {
+      "case": "M_test exists but fresh R_test or explicit O_test is absent; compilation R_build/O_build is supplied instead",
+      "effect": "Authenticated B never substitutes for new input acceptance",
+      "expected": "TEST_INPUT_ACCEPTANCE_MISSING",
+      "gate": "test grant issuance and launch gate",
+      "id": "N53"
+    },
+    {
+      "case": "G_test requests an executable or command not already in M_test execution profile, Q and exact child allowlist",
+      "effect": "Do not authorize newly discovered commands from a receipt",
+      "expected": "COMMAND_NOT_APPROVED",
+      "gate": "test grant issuance and launch gate",
+      "id": "N54"
+    },
+    {
+      "case": "Q executable provenance refers to B instead of earlier raw E, or E/Q contains a future receipt/test-manifest hash",
+      "effect": "No cyclic or self-generated provenance",
+      "expected": "PROVENANCE_CYCLE_INVALID",
+      "gate": "result attestation and generated input review",
+      "id": "N55"
+    },
+    {
+      "case": "Generated-input executable role is a client/helper runtime stub or another unsupported generated command",
+      "effect": "Existing T04 test scopes only; no runtime activation",
+      "expected": "GENERATED_TARGET_UNSUPPORTED",
+      "gate": "generated input review and launch gate",
+      "id": "N56"
+    },
+    {
+      "case": "One M_test combines outputs from different producer actions without one matching B/Q lineage",
+      "effect": "Use separate input-approval cycles for distinct producer receipts",
+      "expected": "BUILD_PROVENANCE_MISMATCH",
+      "gate": "generated input review",
+      "id": "N57"
+    },
+    {
+      "case": "All canonical S/M/R/O/G records and distinct review/action observations authenticate; exact installed paths, source/inputs, current status, freshness and one-use action pass",
+      "effect": "Future positive fixture cannot establish operational keys",
+      "expected": "ACCEPT_EXACT_ACTION_ONLY",
+      "gate": "external gate then corresponding identity check",
+      "id": "P01"
+    },
+    {
+      "case": "Inventory contains two same-content files; the command invokes only its exact approved path with matching regular endpoint/inventory entry and empty chain",
+      "effect": "The other path remains unauthorized",
+      "expected": "ACCEPT_EXACT_PATH_ONLY",
+      "gate": "future external gate fixture",
+      "id": "P02"
+    },
+    {
+      "case": "Action preflight is current at exactly the approved 60-second monotonic boundary with every other approval, status and custody check satisfied",
+      "effect": "Boundary acceptance conveys no execution authority here",
+      "expected": "ACCEPT_EXACT_ACTION_ONLY",
+      "gate": "future external actual-launch fixture",
+      "id": "P03"
+    },
+    {
+      "case": "The same active M/R/O supports a later explicitly signed distinct G with new grant/run/nonce and newly observed action inputs",
+      "effect": "Retains input review while independently refreshing action observations",
+      "expected": "ACCEPT_NEW_ACTION_ONLY",
+      "gate": "future external action fixture",
+      "id": "P04"
+    },
+    {
+      "case": "Valid M_build/R_build/O_build/G_build succeeds; actual outputs are sealed and authenticated in B; a new matching M_test/R_test/O_test/G_test then passes unchanged F01/F02 checks",
+      "effect": "Same S may be reused; no implementation authority exists here",
+      "expected": "ACCEPT_NEWLY_APPROVED_TEST_ACTION_ONLY",
+      "gate": "future full transition fixture",
+      "id": "P05"
+    },
+    {
+      "case": "Successful producer G is consumed and later naturally expired, but its authenticated historical validity/provenance and current status are verified and a fresh active test-input chain independently accepts its sealed outputs",
+      "effect": "Historical build permission is evidence, never reused as current execution authority",
+      "expected": "ACCEPT_FRESH_TEST_CHAIN_ONLY",
+      "gate": "future provenance and current action fixture",
+      "id": "P06"
+    },
+    {
+      "case": "One successful producer action creates both explicitly expected test targets, and B/Q identifies both; new independently accepted M_test commands and separate one-use G_test actions select each exact executable",
+      "effect": "No predicted hashes or receipt-only approval",
+      "expected": "ACCEPT_EXACT_REVIEWED_TARGET_PER_GRANT",
+      "gate": "future generated input review and action fixture",
+      "id": "P07"
+    },
+    {
+      "case": "Same decoded Ed25519 key under two principal spellings",
+      "executed": false,
+      "expected": "SIGNER_UNAUTHORIZED",
+      "id": "EN01",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_verify.py"
+    },
+    {
+      "case": "Same principal under two different keys",
+      "executed": false,
+      "expected": "SIGNER_UNAUTHORIZED",
+      "id": "EN02",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_verify.py"
+    },
+    {
+      "case": "Certificate, unsupported key algorithm, trailing wire bytes or malformed base64",
+      "executed": false,
+      "expected": "ENROLLMENT_INVALID",
+      "id": "EN03",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_verify.py"
+    },
+    {
+      "case": "Fingerprint hashes the text line instead of exact decoded wire bytes",
+      "executed": false,
+      "expected": "ENROLLMENT_INVALID",
+      "id": "EN04",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_verify.py"
+    },
+    {
+      "case": "Allowed-signers wildcard, CA, extra line, extra namespace or wrong role",
+      "executed": false,
+      "expected": "SIGNER_UNAUTHORIZED",
+      "id": "EN05",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_verify.py"
+    },
+    {
+      "case": "Self-signed enrollment, local ACCEPTED text or Git signature without authentic owner E",
+      "executed": false,
+      "expected": "ENROLLMENT_UNAUTHENTICATED",
+      "id": "EN06",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_verify.py"
+    },
+    {
+      "case": "Absent or conflicting owner confirmation/custody evidence",
+      "executed": false,
+      "expected": "ENROLLMENT_UNAUTHENTICATED",
+      "id": "EN07",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_verify.py"
+    },
+    {
+      "case": "Expired key, future key, revoked key or lost capability reported",
+      "executed": false,
+      "expected": "ENROLLMENT_INACTIVE",
+      "id": "EN08",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_verify.py"
+    },
+    {
+      "case": "New key substituted without new P/E/epoch and dependent source review",
+      "executed": false,
+      "expected": "ENROLLMENT_MISMATCH",
+      "id": "EN09",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_verify.py"
+    },
+    {
+      "case": "Public test key or fixture profile supplied to operational CLI",
+      "executed": false,
+      "expected": "SIGNER_UNAUTHORIZED",
+      "id": "EN10",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_verify.py"
+    },
+    {
+      "case": "Independent confirmed distinct keys, exact role namespaces and authentic externally accepted P/E",
+      "executed": false,
+      "expected": "ACCEPT_ENROLLED_CONTEXT_ONLY",
+      "id": "EN11",
+      "kind": "positive",
+      "test_file": "tools/tests/test_p08_authority_verify.py"
+    },
+    {
+      "case": "Duplicate nested or flat key; bool-as-int, float, leading zero, escape/BOM/newline/trailing bytes",
+      "executed": false,
+      "expected": "CANONICAL_INVALID",
+      "id": "VF01",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_verify.py"
+    },
+    {
+      "case": "Exact/max+1 record/profile/inventory/signature bounds and u64 overflow",
+      "executed": false,
+      "expected": "BOUNDARY_ACCEPT_OR_LIMIT_REFUSAL",
+      "id": "VF02",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_verify.py"
+    },
+    {
+      "case": "Valid SSHSIG changed canonical message, namespace, principal, role key or signature",
+      "executed": false,
+      "expected": "SIGNATURE_INVALID",
+      "id": "VF03",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_verify.py"
+    },
+    {
+      "case": "Successful mocked exit without real verification evidence",
+      "executed": false,
+      "expected": "QUALIFICATION_INCOMPLETE",
+      "id": "VF04",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_verify.py"
+    },
+    {
+      "case": "Real synthetic detached signatures succeed for each of S/R/O/G/B under its distinct purpose",
+      "executed": false,
+      "expected": "ACCEPT_SYNTHETIC_SIGNATURE_ONLY",
+      "id": "VF05",
+      "kind": "positive",
+      "test_file": "tools/tests/test_p08_authority_verify.py"
+    },
+    {
+      "case": "Production CLI accepts a caller-chosen P path, matching digest, alternate executable or environment Boolean",
+      "executed": false,
+      "expected": "TRUST_ROOT_OVERRIDE_REFUSED",
+      "id": "VF06",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_verify.py"
+    },
+    {
+      "case": "Verifier script, imported module, interpreter/stdlib/loader/config/library changed after approval",
+      "executed": false,
+      "expected": "VERIFIER_IDENTITY_MISMATCH",
+      "id": "VF07",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_verify.py"
+    },
+    {
+      "case": "Same-content executable at different path, argv[0] mismatch or extra leaf/directory alias",
+      "executed": false,
+      "expected": "EXECUTABLE_IDENTITY_MISMATCH",
+      "id": "VF08",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_verify.py"
+    },
+    {
+      "case": "B/Q/E/I/C reference cycle, predicted output hash, missing producer history or failed producer",
+      "executed": false,
+      "expected": "GENERATED_INPUTS_INELIGIBLE",
+      "id": "VF09",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_verify.py"
+    },
+    {
+      "case": "M_test executes using R_build/O_build or G_build, absent fresh reviewer/owner acceptance",
+      "executed": false,
+      "expected": "GENERATED_INPUTS_UNAPPROVED",
+      "id": "VF10",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_verify.py"
+    },
+    {
+      "case": "Valid separate build-result and fresh generated-input approval chain, read-only check only",
+      "executed": false,
+      "expected": "ACCEPT_BUNDLE_NO_LAUNCH",
+      "id": "VF11",
+      "kind": "positive",
+      "test_file": "tools/tests/test_p08_authority_verify.py"
+    },
+    {
+      "case": "Two concurrent consumers race on same G/run/nonce",
+      "executed": false,
+      "expected": "EXACTLY_ONE_DURABLE_CONSUMER",
+      "id": "GT01",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_gate.py"
+    },
+    {
+      "case": "Crash before/after durable consumption or fsync failure at each boundary",
+      "executed": false,
+      "expected": "NO_REPLAY_OR_UNCERTAIN_LAUNCH",
+      "id": "GT02",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_gate.py"
+    },
+    {
+      "case": "Epoch rollback, missing register, replaced register/lock, conflicting status or stale revocation snapshot",
+      "executed": false,
+      "expected": "STATUS_UNCERTAIN_REFUSE",
+      "id": "GT03",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_gate.py"
+    },
+    {
+      "case": "Review snapshot substituted for action observation or different G/run/nonce/command",
+      "executed": false,
+      "expected": "ACTION_OBSERVATION_MISMATCH",
+      "id": "GT04",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_gate.py"
+    },
+    {
+      "case": "Monotonic age equals 60,000,000,000ns then exceeds by 1ns; signing/queue delays included",
+      "executed": false,
+      "expected": "EXACT_BOUNDARY_ACCEPT_THEN_STALE_REFUSAL",
+      "id": "GT05",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_gate.py"
+    },
+    {
+      "case": "Clock session reset/backward/unknown, UTC uncertainty >30s, expired lease/input approval",
+      "executed": false,
+      "expected": "CLOCK_OR_EXPIRY_REFUSAL",
+      "id": "GT06",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_gate.py"
+    },
+    {
+      "case": "Input/path/custody/current status changes after validation and before launch",
+      "executed": false,
+      "expected": "FINAL_PREFLIGHT_REFUSAL",
+      "id": "GT07",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_gate.py"
+    },
+    {
+      "case": "No durable consumption, verifier prints success, later independent shell tries launch",
+      "executed": false,
+      "expected": "NO_GATE_LAUNCH_AUTHORITY",
+      "id": "GT08",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_gate.py"
+    },
+    {
+      "case": "Sentinel exec fails or lease expires/observed revocation after launch",
+      "executed": false,
+      "expected": "TERMINAL_STOP_AND_RETAIN_NO_ELIGIBLE_B",
+      "id": "GT09",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_gate.py"
+    },
+    {
+      "case": "Finite exact approved synthetic sentinel consumes once and exits with retained outcome",
+      "executed": false,
+      "expected": "ONE_LAUNCH_ONE_TERMINAL_RESULT",
+      "id": "GT10",
+      "kind": "positive",
+      "test_file": "tools/tests/test_p08_authority_gate.py"
+    },
+    {
+      "case": "Attempt network connection, unlisted exec, provider/Codex/native binary or write outside test profile",
+      "executed": false,
+      "expected": "RUN_FAILED_AND_EFFECT_DENIED",
+      "id": "GT11",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_gate.py"
+    },
+    {
+      "case": "Selected real installation lets preparer/guest write P/E/code/register or replace sealed input",
+      "executed": false,
+      "expected": "D04_INSTALLATION_NOT_QUALIFIED",
+      "id": "GT12",
+      "kind": "negative",
+      "test_file": "tools/tests/test_p08_authority_gate.py"
+    }
+  ],
+  "purpose": "SYNTHETIC_TEST_DEFINITIONS_ONLY_NOT_APPROVAL",
+  "readiness_scope_sha256": "52b907466c121f20963e35ca54ebc5cb4a82f92280764d5dd5652960fb6263be",
+  "result_rule": "Retain concrete inputs, exact expected and actual diagnostics, test name, source identity and authorized profile for each executed case. Specified is not executed. Mixed boundary rows expand into exact positive and negative assertions. No mock pass authenticates human evidence or operational custody.",
+  "scope": "Accepted R2 64 scenarios and 34 D03/D04 extensions; no operational authority"
+}

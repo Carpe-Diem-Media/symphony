@@ -1,0 +1,122 @@
+{
+  "authentication_mechanism": "UNCONFIGURED",
+  "authority_provider_registration": "PROHIBITED",
+  "base_tracked_leaves": 395,
+  "candidate_root": "/tmp/symphony-p08-package-b-r1a/candidate",
+  "descendant_claim": "FINITE_SENTINELS_NOT_ARBITRARY_DESCENDANT_CONTAINMENT",
+  "environment": "CLEARED_FIXED_RUNNER_ENVIRONMENT",
+  "external_inputs": {
+    "BASE_SOURCE_INVENTORY": {
+      "bytes": 112682,
+      "sha256": "c78f7f6e73992b13f912dc18471c2395dce6738560842423f444cc38cfc839eb"
+    },
+    "BOOTSTRAP_REVIEW_ARCHIVE": {
+      "bytes": 244274,
+      "sha256": "956ae09a45c8d1ada5030d67cc32230fb6d5f2454ac8aa89f398488e380152a5"
+    }
+  },
+  "future_prerequisites": [
+    "INDEPENDENT_POSITIVE_AUTHENTICATION_PROTOCOL_AND_CUSTODY_DECISION",
+    "SEPARATE_AUTHENTICATION_SOURCE_AUTHORITY",
+    "RENEWED_EXACT_SOURCE_REVIEW",
+    "SEPARATELY_AUTHORIZED_SOURCE_FREEZE_COMMIT",
+    "EXPLICIT_PRIVATE_FIXTURE_AND_RUNTIME_CUSTODY_PERMISSION",
+    "EXACT_R1B_ATTEMPT_RELEASE",
+    "SEPARATE_R2_PUBLICATION_AUTHORITY"
+  ],
+  "historical_c0_fixture_entries": 407,
+  "historical_case_count": 98,
+  "historical_outcomes": "SOURCE_SPECIFIC_NOT_TRANSFERRED",
+  "historical_test_count": 70,
+  "package_paths": [
+    "docs/symphony-hardening-playbook-v4.1/P08_T04_AUTHORITY_OPERATOR.md",
+    "tools/p08_authority/gate.py",
+    "tools/p08_authority/profile-requirements.json",
+    "tools/p08_authority/qualification-vectors.json",
+    "tools/p08_authority/record-schemas.json",
+    "tools/p08_authority/verify.py",
+    "tools/tests/p08-portability-profiles.json",
+    "tools/tests/p08_qualification_runner.py",
+    "tools/tests/test_p08_authority_gate.py",
+    "tools/tests/test_p08_authority_portability.py",
+    "tools/tests/test_p08_authority_verify.py"
+  ],
+  "platform": {
+    "machine": "x86_64",
+    "seccomp_arch": 3221225534,
+    "system": "Linux"
+  },
+  "positive_admission_result": "UNAVAILABLE",
+  "preserved_source_files": {
+    "tools/p08_authority/gate.py": {
+      "bytes": 21534,
+      "git_blob": "ec92e83978283a734b631bf763cca3e108058a31",
+      "mode": "100644",
+      "sha256": "967339bbbc269aa89a9792fb3f956e5e4f18f551951a12e1976ba5af08187bf6"
+    },
+    "tools/p08_authority/profile-requirements.json": {
+      "bytes": 35511,
+      "git_blob": "fc6fd6e1b8776519f41ee7c1f25b2a0fc4ac311a",
+      "mode": "100644",
+      "sha256": "0cf688495273e861c424def7e72afcd7b3841f1045ba456d974c3d5adc0af8e6"
+    },
+    "tools/p08_authority/qualification-vectors.json": {
+      "bytes": 30938,
+      "git_blob": "74fe31e05a7a2e0e8b46804b21afc68a00ab70cc",
+      "mode": "100644",
+      "sha256": "84380bc0557e1a27b933734f015c0c382df618c1ba5669e30436780d1995f715"
+    },
+    "tools/p08_authority/record-schemas.json": {
+      "bytes": 47739,
+      "git_blob": "0f920aeeaf52f01b5b9e06c2ec220fcee2f2a52c",
+      "mode": "100644",
+      "sha256": "349f8d1e405ed915481430100c6471dc91338186a645f1aa799fb95b6a0e7430"
+    },
+    "tools/p08_authority/verify.py": {
+      "bytes": 74514,
+      "git_blob": "7475f3a2a31d7f2a7af10a14a4dae565b4ff3e0f",
+      "mode": "100644",
+      "sha256": "a01245e1ff8e439078655c8bfb08464c4a4b3eb382cae865ab9145b6827bb309"
+    },
+    "tools/tests/test_p08_authority_gate.py": {
+      "bytes": 45561,
+      "git_blob": "e51a12a4a78c0ab15a5591b62ee347a6c3eb6013",
+      "mode": "100644",
+      "sha256": "86013652455743cecff6e301cd67e2567ae21cae3cee9cddd1cd210a83c26f57"
+    }
+  },
+  "probe_execution": "UNAVAILABLE_PENDING_SEPARATE_PAYLOAD_EFFECT_AND_AUTHENTICATION_REVIEW",
+  "probe_ids": [
+    "PB-EXEC-DENY-01",
+    "PB-NET-DENY-01",
+    "PB-WRITE-DENY-01"
+  ],
+  "profile_id": "PB-R1-LINUX-X86_64-EXACT1",
+  "prospective_tracked_leaves": 406,
+  "purpose": "DESCRIPTIVE_REQUIREMENTS_ONLY",
+  "python_flags": [
+    "-I",
+    "-S",
+    "-B"
+  ],
+  "runtime": {
+    "entry_count": 4324,
+    "inventory_sha256": "66b421203da530fb96bcdc459b4963a3dd9b5437a095e808bb55fa472950b09a",
+    "pins": {
+      "/usr/bin/python3.14": "52e0a13e60a981d8c4b6478be2ba5176f69da07948a056bf49cf6f077e30cb41",
+      "/usr/bin/ssh-keygen": "2dd834413c9d3f4c0e3535b9fcf2e96e14c11f3d36fd23b6c5fc24e50411d051",
+      "/usr/lib/x86_64-linux-gnu/libseccomp.so.2.6.0": "df995d80c824876afc38528b5e71d258e1844eb524cd9d34f9a7898562fd99e7"
+    }
+  },
+  "schema": "p08-synthetic-profile-requirements-1",
+  "source_base_commit": "9d05ef2707c58eb520aadd34660b41d6814871a4",
+  "source_base_tree": "f91fd9227fb4379b93ccd56f45917b29ffb30b6d",
+  "suite_deadline_seconds": 120,
+  "suite_names": [
+    "verify",
+    "gate",
+    "portability"
+  ],
+  "trust_anchor_selection": "PROHIBITED",
+  "write_audit_claim": "SUPPLEMENTAL_PYTHON_AUDIT_NOT_KERNEL_FILESYSTEM_CONTAINMENT"
+}

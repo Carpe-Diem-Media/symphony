@@ -1,0 +1,1292 @@
+{
+  "approval_stages": {
+    "BUILD_INPUTS": {
+      "allowed_actions": [
+        "BUILD_ONLY",
+        "INDEPENDENT_REBUILD"
+      ],
+      "grant_record": "native-execution-grant.json",
+      "grant_schema": "p08-native-execution-grant-2",
+      "manifest_record": "build-input-approval.json",
+      "manifest_schema": "p08-build-input-approval-1",
+      "output_execution": "FORBIDDEN",
+      "prior_compilation_result": "NOT_REFERENCED_OR_PREDICTED",
+      "source_acceptance": "S must already be accepted"
+    },
+    "GENERATED_EXECUTABLE_INPUTS": {
+      "allowed_actions": [
+        "BUILD_IDENTITY_TEST_EXECUTION",
+        "CODEC_TEST_EXECUTION"
+      ],
+      "grant_record": "generated-native-execution-grant.json",
+      "grant_schema": "p08-generated-native-grant-1",
+      "manifest_record": "generated-input-approval.json",
+      "manifest_schema": "p08-generated-input-approval-1",
+      "output_execution": "Only the exact generated entries and commands independently accepted in this new M may be invoked",
+      "prior_compilation_result": "One authenticated SUCCESS_ELIGIBLE_OUTPUTS B and its exact signature are mandatory",
+      "source_acceptance": "The same active accepted S may be reused; fresh M/R/O/G identities are mandatory"
+    }
+  },
+  "canonical_byte_rules": {
+    "compilation_result_max_bytes": 8192,
+    "duplicate_keys": "REJECT_BEFORE_MAP_CONVERSION",
+    "encoding": "ASCII subset of UTF-8",
+    "final_newline": false,
+    "generated_grant_max_bytes": 8192,
+    "generated_manifest_max_bytes": 16384,
+    "json_null_boolean_array_object_values": "FORBIDDEN",
+    "key_order": "strict ascending ASCII bytes",
+    "manifest_max_bytes": 16384,
+    "nested_values_in_five_records": "FORBIDDEN",
+    "numbers": "minimal unsigned decimal, u64 only; 0 allowed, leading zeros forbidden",
+    "other_record_max_bytes": 8192,
+    "sha256": "lowercase hexadecimal over exact bytes",
+    "sshsig_max_bytes": 4096,
+    "string_bytes": "0x20..0x7e excluding quote and backslash; field constraints may narrow further",
+    "string_escapes": "FORBIDDEN",
+    "unknown_or_missing_fields": "REJECT",
+    "whitespace": "NONE"
+  },
+  "cross_record_requirements": [
+    "Source commit is a distinct reviewed successor with exactly C0 as parent. Only the identity-test file may differ; source tree and full inventory must reproduce it.",
+    "Every profile, report, signature and source-stage acceptance reference resolves to exact actual bytes. All-zero identities are invalid.",
+    "Issuer and reviewer must match the two distinct independently enrolled keys, roles and namespaces in the separately owner-accepted trust profile.",
+    "S must authenticate under the owner role and source-stage namespace, bind exact C0 commit/tree/parent, source-preparation-only scope and the reviewed archive. M/R/O must all name SHA-256(S), the same accepted trust profile and consistent issuer/reviewer roles; G must name the accepted M/R/O chain. Retain S and its signature under independent custody. A source-acceptance digest alone is invalid.",
+    "For every observed_* field in G require equality with the corresponding M identity; source commit/tree must equal M. Resolve the execution profile named by M.execution_profile_sha256, find the command-profile entry with SHA-256 equal to G.command_profile_sha256, and require its authorization_scope to equal G.authorization_scope exactly.",
+    "For each record with not_before require issued_at <= not_before < expires_at. R requires issued_at < expires_at. All issue times must be no later than the independent current time uncertainty interval.",
+    "M/R/O lifetime is no more than the approved input-age limit. G lifetime and max_duration_s are nonzero and no more than the approved lease limit. G interval and maximum run fit entirely inside all applicable M/R/O and key/profile validity intervals.",
+    "The independent bounded current-time interval must lie entirely within every applicable active validity interval. No blanket after-expiry skew grace is allowed. Signed timestamps alone do not establish current time.",
+    "G current status report must match the latest independent trust epoch, active enrollment and decisions and the action run ID. External atomic nonce consumption and custody are mandatory before launch.",
+    "Preflight has separately accepted actual full source/tool/image observations, no missing closure/controls and Policy A status. The in-test signature checks cannot substitute for that external evidence.",
+    "Source-stage S has no execution permission and no renewable time lease. Its exact decision remains subject to current revocation/status and accepted key status. Require S.issued_at <= M.issued_at, R.issued_at and O.issued_at.",
+    "M.sbom_sha256 and M.license_inventory_sha256 must equal the respective fields of the resolved build-image profile. Those inventories must cover the complete approved build inputs, including sealed source and mounted toolchain/library inputs; a publisher image-only SBOM is insufficient.",
+    "Every executable and installed component entry point resolves through a closed installed_artifact to its exact approved path, inventory digest and path/endpoint entry identities. Apply all installed_artifact_rules. Require actual exec path and argv[0] equal path and observed resolution equal resolved_path. No search by digest, PATH fallback or undeclared symlink can satisfy this binding.",
+    "R.review_observation_sha256 authenticates only the closed INPUT_REVIEW_ONLY report, with matching review_id/reviewer/manifest/source/profile identities and review-time freshness. It contains no future run/grant identity and never authorizes launch.",
+    "G.action_observation_sha256 authenticates only the closed ACTION_PREFLIGHT_ONLY report. Match grant_id/run_id/nonce/M/O/R/trust/command/scope/source and every observed profile identity to G. Use the independent external observation, clock and launch checks in profile-requirements.json.",
+    "Fresh action observations must satisfy the owner-approved monotonic observation-to-launch maximum, proposed 60 seconds, in the same external clock session. The check is after signing/queue delay immediately before launch. Review observations cannot substitute, even if their hashes and inputs still match.",
+    "Stale, wrong-purpose, wrong-run, missing or unauthenticated action evidence refuses before launch and terminally records the G/nonce. New observation and new grant/run/nonce are mandatory for another proposed action. Do not treat input approval age or the action lease as freshness."
+  ],
+  "description": "Closed field/type descriptors. Stage selection, receipt provenance, byte rules, cross-record checks and profile/lifecycle rules are mandatory. No approval instance or validator implementation is supplied.",
+  "generated_stage_rules": [
+    "An approval bundle has exactly one M and one matching G type from approval_stages. S, R and O retain their exact existing schemas and signature purposes. Unsupported or mixed-stage shapes refuse; a valid signature on the wrong stage is insufficient.",
+    "Original S/M_build/R/O/G_build bodies are unchanged. M_build can select only BUILD_ONLY or INDEPENDENT_REBUILD commands. Its output expectations may name roles/layout but cannot contain predicted generated executable identities or authorize their execution.",
+    "B is an authenticated historical compilation-result attestation, not input approval or execution permission. The existing enrolled independent reviewer signs B under symphony.p08.build-result.v1 only after independently verifying the producer chain, actual zero exit, audits, exact outputs and immutable custody. No third signing role or self-issued build receipt is introduced.",
+    "B must match the exact consumed successful producer G and its M/R/O/signatures, source, command, IDs and nonce. started_at <= completed_at <= issued_at, and producer authorization/lease/status/effects must have remained valid for the action. Failed, interrupted, ambiguous, out-of-scope or unsealed attempts cannot issue eligible B, even if some output bytes exist.",
+    "Each M_test uses the generated-input schema and a new approval_id. compilation_result_sha256 and compilation_result_signature_sha256 identify exact B and its authentic signature. Require M_test.generated_inputs_profile_sha256 == B.generated_inputs_profile_sha256 == SHA-256(Q). The profile source and producer identities must match B and M_test. One B per new M_test is supported in this bounded contract; separate producer actions use separate approval cycles.",
+    "Fresh R_test with a new review_id must independently inspect the new M_test, B/signature, raw evidence, installed output entries, immutable custody and current status. Fresh O_test with a new decision_id must explicitly accept SHA-256(M_test) and R_test. R_build/O_build, B alone or compilation success never substitutes.",
+    "M_test preserves the exact accepted source/tree/frozen files and S. Actual compiler/target/CRT/linker input identities and the tools-only OCI manifest/platform/layers remain bound to the producer. Its execution, generated-input custody, SBOM/licenses and current evidence profiles are independently reviewed anew; no unrelated source/tool/environment change is authorized by this transition.",
+    "G_test must be the generated-native-grant schema, bind only the newly active M_test/R_test/O_test chain and an exact command already in M_test execution_profile. Its executable must equal one of the generated profile installed_artifact entries in every field and be in the new child allowlist. Its scope is one permitted test action. A base build grant or compilation receipt cannot execute it.",
+    "G_test.observed_generated_inputs_profile_sha256 equals M_test.generated_inputs_profile_sha256. The fresh ACTION_PREFLIGHT_ONLY report includes the generated_inputs role in profiles and matches that identity plus all other M/G observations. Existing F01 installed path/chain rules and F02 run/nonce/clock/freshness/status/lease/one-use rules apply unchanged.",
+    "Historical producer G is expected to be consumed and successful. Its later expiry is not a new execution grant and does not erase provenance; verify its historical validity and current disqualifying status. Only the fresh M_test/R_test/O_test/G_test supplies current permission. Revoked, invalid or unverifiable producer provenance/custody blocks descendants.",
+    "The references are acyclic: G_build precedes output inventory/custody and raw compilation evidence E; generated profile Q references E and the inventory/custody, never B or M_test; B references E and Q; M_test references B/signature/Q; R_test then O_test then G_test reference only prior records. Generated installed_artifact.provenance_sha256 equals E, never B, preventing a B/Q hash cycle.",
+    "The same fresh-approval rule applies before any subsequent command invokes an executable generated after its current M was accepted. Reading outputs as data with separately approved inspection tools does not execute them. New actions outside the existing T04 test scopes still require separate authority.",
+    "B.completed_at equals E.completed_at; B.issued_at is no earlier than C.sealed_at and completed_at. B and M_test source/producer/evidence/profile references agree exactly. M_test.issued_at is no earlier than B.issued_at. Reviewer key/status must authorize B at attestation and current provenance checks.",
+    "Generated executable roles are restricted to codec_test and locked_build_identity. Client/helper runtime stubs remain data-only outputs, never permitted generated test targets.",
+    "B.reviewer_id equals the producer M reviewer and the enrolled reviewer principal. B.operator_id equals the appointed producer/custody operator; B.trust_profile_sha256 equals producer M and M_test. E/Q/C producer IDs and inventories agree with B. A different key, operator, profile, action or output set cannot be selected by matching hashes alone.",
+    "The B attestor and fresh R_test reviewer use the existing enrolled independent-reviewer role and remain independent of the build guest, implementation preparer and producer action operator. No new signing role is created. If actual role/custody separation is unavailable, attestation/input review remains blocked rather than self-certified.",
+    "An eligible producer command must actually compile the exact expected test targets into its fresh granted output roots. Successful inspection-only commands, unrelated successful builds, stale cached binaries or mere output existence cannot produce Q/B for a target."
+  ],
+  "revision": "R2_TARGETED_F03_CORRECTION",
+  "schemas": {
+    "build-input-approval.json": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted_contract": {
+          "const": "P08-SPEC-0.7"
+        },
+        "approval_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "build_image_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "build_target": {
+          "const": "x86_64-unknown-linux-musl"
+        },
+        "cargo_lock_sha256": {
+          "const": "b05d465a4d9c6f2d56449a6a56ae99863e96bd192d629c127289694b6f388fe5"
+        },
+        "client_main_sha256": {
+          "const": "04a3bfba43dcbf506735e59afd888c21797146eb230a08f835707b9f8c19f1f2"
+        },
+        "client_manifest_sha256": {
+          "const": "9992404f6217589cff6c5e6e64e8b5eb2ed2a96de6145a1baab3dac0e81351d8"
+        },
+        "crt_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "elixir_codec_sha256": {
+          "const": "8d1760948ffa167e60c4095755073b0da09862aeb07f6ed9db54b8c9d22e0904"
+        },
+        "elixir_codec_test_sha256": {
+          "const": "36da15a6f1de143487a58b2fb3d95718006c47d7a5cc198f632d5a8329b3567c"
+        },
+        "execution_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "expires_at": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "frozen_t03_commit": {
+          "const": "e2e87701c73c0f55fdef040d29c57bb8ad2b3918"
+        },
+        "frozen_t03_tree": {
+          "const": "e2ef1a448bf528b92d34f9c433e2e8d2e557b980"
+        },
+        "helper_main_sha256": {
+          "const": "04a3bfba43dcbf506735e59afd888c21797146eb230a08f835707b9f8c19f1f2"
+        },
+        "helper_manifest_sha256": {
+          "const": "3badc0eae65a520d70e9b6e7b7f0b7d232fc142440c3f83c8004a5e065466a7f"
+        },
+        "host_std_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "host_target": {
+          "const": "x86_64-unknown-linux-gnu"
+        },
+        "identity_test_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "issued_at": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "issuer_id": {
+          "pattern": "^[a-z0-9][a-z0-9._@/-]{0,127}$",
+          "type": "string"
+        },
+        "license_inventory_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "linker_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "musl_std_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "not_before": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "plan_sha256": {
+          "const": "ac6debd05e32572fbae567a7300d643110007a6729b1adf975ed8d66985d9b94"
+        },
+        "policy_a_decision_id": {
+          "const": "5f6773bc-83ef-498f-b468-bd49d809b914"
+        },
+        "protected_main_commit": {
+          "const": "b6c8813d8ba73acfe63679dc698d38f6637d06ae"
+        },
+        "protected_main_tree": {
+          "const": "25c6dd39309baa81594f4042ade1d438f780040e"
+        },
+        "protocol_lib_sha256": {
+          "const": "fd95403a9800907d9f6367daa2dbb83f532f3b82df8b3d52032197c319ce252e"
+        },
+        "protocol_manifest_sha256": {
+          "const": "1bb1c3fc3f401664a1bfbaf4f88a5b4e190fab677aba08c4aaf47be1db02c3b7"
+        },
+        "repository": {
+          "const": "JCSchoeman96/symphony"
+        },
+        "reviewer_id": {
+          "pattern": "^[a-z0-9][a-z0-9._@/-]{0,127}$",
+          "type": "string"
+        },
+        "rust_codec_sha256": {
+          "const": "96f4c84e373d59036589662e619915e9800986c17c3e95457f513b8f1a6a2b9c"
+        },
+        "rust_codec_test_sha256": {
+          "const": "d54eeea32c42a8115101b646323932927d97dae4f284cccc0b6871289a0307cf"
+        },
+        "rust_provenance_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "rust_toolchain_file_sha256": {
+          "const": "461b5cb367e9201275f63ba7a9d2a606cb8094b882b39df7a1e19707a9fc1f5e"
+        },
+        "rust_version": {
+          "const": "1.98.1"
+        },
+        "sbom_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "schema": {
+          "const": "p08-build-input-approval-1"
+        },
+        "scope": {
+          "const": "INPUTS_ONLY"
+        },
+        "source_base_commit": {
+          "const": "0622e6cdd480ae4bb632dfbd4e54fee8a8350406"
+        },
+        "source_base_tree": {
+          "const": "bb258a8fa9eb19550ff1de26f6bd8d902da6ec4d"
+        },
+        "source_commit": {
+          "pattern": "^[0-9a-f]{40}$",
+          "type": "string"
+        },
+        "source_inventory_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_stage_acceptance_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_tree": {
+          "pattern": "^[0-9a-f]{40}$",
+          "type": "string"
+        },
+        "spec_sha256": {
+          "const": "b510eb0c8459c126d3b310d3d5c7225f9d8dda4559a16ff6704842a6fb69568d"
+        },
+        "toolchain_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "trust_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "workspace_manifest_sha256": {
+          "const": "6421408d9d9341df67e2b44069c40c5969c21ee1aea3f3c6ad1ca676dbc449f0"
+        }
+      },
+      "required": [
+        "accepted_contract",
+        "approval_id",
+        "build_image_profile_sha256",
+        "build_target",
+        "cargo_lock_sha256",
+        "client_main_sha256",
+        "client_manifest_sha256",
+        "crt_profile_sha256",
+        "elixir_codec_sha256",
+        "elixir_codec_test_sha256",
+        "execution_profile_sha256",
+        "expires_at",
+        "frozen_t03_commit",
+        "frozen_t03_tree",
+        "helper_main_sha256",
+        "helper_manifest_sha256",
+        "host_std_profile_sha256",
+        "host_target",
+        "identity_test_sha256",
+        "issued_at",
+        "issuer_id",
+        "license_inventory_sha256",
+        "linker_profile_sha256",
+        "musl_std_profile_sha256",
+        "not_before",
+        "plan_sha256",
+        "policy_a_decision_id",
+        "protected_main_commit",
+        "protected_main_tree",
+        "protocol_lib_sha256",
+        "protocol_manifest_sha256",
+        "repository",
+        "reviewer_id",
+        "rust_codec_sha256",
+        "rust_codec_test_sha256",
+        "rust_provenance_profile_sha256",
+        "rust_toolchain_file_sha256",
+        "rust_version",
+        "sbom_sha256",
+        "schema",
+        "scope",
+        "source_base_commit",
+        "source_base_tree",
+        "source_commit",
+        "source_inventory_sha256",
+        "source_stage_acceptance_sha256",
+        "source_tree",
+        "spec_sha256",
+        "toolchain_profile_sha256",
+        "trust_profile_sha256",
+        "workspace_manifest_sha256"
+      ],
+      "type": "object"
+    },
+    "compilation-result.json": {
+      "additionalProperties": false,
+      "properties": {
+        "compilation_evidence_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "completed_at": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "exit_code": {
+          "const": 0
+        },
+        "generated_inputs_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "issued_at": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "operator_id": {
+          "pattern": "^[a-z0-9][a-z0-9._@/-]{0,127}$",
+          "type": "string"
+        },
+        "outcome": {
+          "const": "SUCCESS_ELIGIBLE_OUTPUTS"
+        },
+        "producer_command_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "producer_grant_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "producer_grant_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "producer_grant_signature_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "producer_manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "producer_nonce": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "producer_owner_decision_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "producer_review_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "producer_run_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "receipt_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "reviewer_id": {
+          "pattern": "^[a-z0-9][a-z0-9._@/-]{0,127}$",
+          "type": "string"
+        },
+        "schema": {
+          "const": "p08-compilation-result-1"
+        },
+        "source_commit": {
+          "pattern": "^[0-9a-f]{40}$",
+          "type": "string"
+        },
+        "source_tree": {
+          "pattern": "^[0-9a-f]{40}$",
+          "type": "string"
+        },
+        "started_at": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "trust_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "compilation_evidence_sha256",
+        "completed_at",
+        "exit_code",
+        "generated_inputs_profile_sha256",
+        "issued_at",
+        "operator_id",
+        "outcome",
+        "producer_command_profile_sha256",
+        "producer_grant_id",
+        "producer_grant_sha256",
+        "producer_grant_signature_sha256",
+        "producer_manifest_sha256",
+        "producer_nonce",
+        "producer_owner_decision_sha256",
+        "producer_review_sha256",
+        "producer_run_id",
+        "receipt_id",
+        "reviewer_id",
+        "schema",
+        "source_commit",
+        "source_tree",
+        "started_at",
+        "trust_profile_sha256"
+      ],
+      "type": "object"
+    },
+    "generated-input-approval.json": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted_contract": {
+          "const": "P08-SPEC-0.7"
+        },
+        "approval_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "build_image_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "build_target": {
+          "const": "x86_64-unknown-linux-musl"
+        },
+        "cargo_lock_sha256": {
+          "const": "b05d465a4d9c6f2d56449a6a56ae99863e96bd192d629c127289694b6f388fe5"
+        },
+        "client_main_sha256": {
+          "const": "04a3bfba43dcbf506735e59afd888c21797146eb230a08f835707b9f8c19f1f2"
+        },
+        "client_manifest_sha256": {
+          "const": "9992404f6217589cff6c5e6e64e8b5eb2ed2a96de6145a1baab3dac0e81351d8"
+        },
+        "compilation_result_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "compilation_result_signature_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "crt_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "elixir_codec_sha256": {
+          "const": "8d1760948ffa167e60c4095755073b0da09862aeb07f6ed9db54b8c9d22e0904"
+        },
+        "elixir_codec_test_sha256": {
+          "const": "36da15a6f1de143487a58b2fb3d95718006c47d7a5cc198f632d5a8329b3567c"
+        },
+        "execution_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "expires_at": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "frozen_t03_commit": {
+          "const": "e2e87701c73c0f55fdef040d29c57bb8ad2b3918"
+        },
+        "frozen_t03_tree": {
+          "const": "e2ef1a448bf528b92d34f9c433e2e8d2e557b980"
+        },
+        "generated_inputs_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "helper_main_sha256": {
+          "const": "04a3bfba43dcbf506735e59afd888c21797146eb230a08f835707b9f8c19f1f2"
+        },
+        "helper_manifest_sha256": {
+          "const": "3badc0eae65a520d70e9b6e7b7f0b7d232fc142440c3f83c8004a5e065466a7f"
+        },
+        "host_std_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "host_target": {
+          "const": "x86_64-unknown-linux-gnu"
+        },
+        "identity_test_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "issued_at": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "issuer_id": {
+          "pattern": "^[a-z0-9][a-z0-9._@/-]{0,127}$",
+          "type": "string"
+        },
+        "license_inventory_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "linker_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "musl_std_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "not_before": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "plan_sha256": {
+          "const": "ac6debd05e32572fbae567a7300d643110007a6729b1adf975ed8d66985d9b94"
+        },
+        "policy_a_decision_id": {
+          "const": "5f6773bc-83ef-498f-b468-bd49d809b914"
+        },
+        "protected_main_commit": {
+          "const": "b6c8813d8ba73acfe63679dc698d38f6637d06ae"
+        },
+        "protected_main_tree": {
+          "const": "25c6dd39309baa81594f4042ade1d438f780040e"
+        },
+        "protocol_lib_sha256": {
+          "const": "fd95403a9800907d9f6367daa2dbb83f532f3b82df8b3d52032197c319ce252e"
+        },
+        "protocol_manifest_sha256": {
+          "const": "1bb1c3fc3f401664a1bfbaf4f88a5b4e190fab677aba08c4aaf47be1db02c3b7"
+        },
+        "repository": {
+          "const": "JCSchoeman96/symphony"
+        },
+        "reviewer_id": {
+          "pattern": "^[a-z0-9][a-z0-9._@/-]{0,127}$",
+          "type": "string"
+        },
+        "rust_codec_sha256": {
+          "const": "96f4c84e373d59036589662e619915e9800986c17c3e95457f513b8f1a6a2b9c"
+        },
+        "rust_codec_test_sha256": {
+          "const": "d54eeea32c42a8115101b646323932927d97dae4f284cccc0b6871289a0307cf"
+        },
+        "rust_provenance_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "rust_toolchain_file_sha256": {
+          "const": "461b5cb367e9201275f63ba7a9d2a606cb8094b882b39df7a1e19707a9fc1f5e"
+        },
+        "rust_version": {
+          "const": "1.98.1"
+        },
+        "sbom_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "schema": {
+          "const": "p08-generated-input-approval-1"
+        },
+        "scope": {
+          "const": "INPUTS_ONLY"
+        },
+        "source_base_commit": {
+          "const": "0622e6cdd480ae4bb632dfbd4e54fee8a8350406"
+        },
+        "source_base_tree": {
+          "const": "bb258a8fa9eb19550ff1de26f6bd8d902da6ec4d"
+        },
+        "source_commit": {
+          "pattern": "^[0-9a-f]{40}$",
+          "type": "string"
+        },
+        "source_inventory_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_stage_acceptance_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_tree": {
+          "pattern": "^[0-9a-f]{40}$",
+          "type": "string"
+        },
+        "spec_sha256": {
+          "const": "b510eb0c8459c126d3b310d3d5c7225f9d8dda4559a16ff6704842a6fb69568d"
+        },
+        "toolchain_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "trust_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "workspace_manifest_sha256": {
+          "const": "6421408d9d9341df67e2b44069c40c5969c21ee1aea3f3c6ad1ca676dbc449f0"
+        }
+      },
+      "required": [
+        "accepted_contract",
+        "approval_id",
+        "build_image_profile_sha256",
+        "build_target",
+        "cargo_lock_sha256",
+        "client_main_sha256",
+        "client_manifest_sha256",
+        "compilation_result_sha256",
+        "compilation_result_signature_sha256",
+        "crt_profile_sha256",
+        "elixir_codec_sha256",
+        "elixir_codec_test_sha256",
+        "execution_profile_sha256",
+        "expires_at",
+        "frozen_t03_commit",
+        "frozen_t03_tree",
+        "generated_inputs_profile_sha256",
+        "helper_main_sha256",
+        "helper_manifest_sha256",
+        "host_std_profile_sha256",
+        "host_target",
+        "identity_test_sha256",
+        "issued_at",
+        "issuer_id",
+        "license_inventory_sha256",
+        "linker_profile_sha256",
+        "musl_std_profile_sha256",
+        "not_before",
+        "plan_sha256",
+        "policy_a_decision_id",
+        "protected_main_commit",
+        "protected_main_tree",
+        "protocol_lib_sha256",
+        "protocol_manifest_sha256",
+        "repository",
+        "reviewer_id",
+        "rust_codec_sha256",
+        "rust_codec_test_sha256",
+        "rust_provenance_profile_sha256",
+        "rust_toolchain_file_sha256",
+        "rust_version",
+        "sbom_sha256",
+        "schema",
+        "scope",
+        "source_base_commit",
+        "source_base_tree",
+        "source_commit",
+        "source_inventory_sha256",
+        "source_stage_acceptance_sha256",
+        "source_tree",
+        "spec_sha256",
+        "toolchain_profile_sha256",
+        "trust_profile_sha256",
+        "workspace_manifest_sha256"
+      ],
+      "type": "object"
+    },
+    "generated-native-execution-grant.json": {
+      "additionalProperties": false,
+      "properties": {
+        "action_observation_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "authorization_scope": {
+          "enum": [
+            "BUILD_ONLY",
+            "BUILD_IDENTITY_TEST_EXECUTION",
+            "CODEC_TEST_EXECUTION",
+            "INDEPENDENT_REBUILD"
+          ]
+        },
+        "command_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "expires_at": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "grant_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "issued_at": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "issuer_id": {
+          "pattern": "^[a-z0-9][a-z0-9._@/-]{0,127}$",
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "max_duration_s": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "nonce": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "not_before": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "observed_build_image_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "observed_crt_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "observed_execution_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "observed_generated_inputs_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "observed_host_std_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "observed_linker_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "observed_musl_std_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "observed_rust_provenance_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "observed_source_inventory_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "observed_toolchain_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "owner_decision_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "owner_signature_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "review_report_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "review_signature_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "run_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "schema": {
+          "const": "p08-generated-native-grant-1"
+        },
+        "source_commit": {
+          "pattern": "^[0-9a-f]{40}$",
+          "type": "string"
+        },
+        "source_tree": {
+          "pattern": "^[0-9a-f]{40}$",
+          "type": "string"
+        },
+        "status_report_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "trust_epoch": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "trust_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action_observation_sha256",
+        "authorization_scope",
+        "command_profile_sha256",
+        "expires_at",
+        "grant_id",
+        "issued_at",
+        "issuer_id",
+        "manifest_sha256",
+        "max_duration_s",
+        "nonce",
+        "not_before",
+        "observed_build_image_profile_sha256",
+        "observed_crt_profile_sha256",
+        "observed_execution_profile_sha256",
+        "observed_generated_inputs_profile_sha256",
+        "observed_host_std_profile_sha256",
+        "observed_linker_profile_sha256",
+        "observed_musl_std_profile_sha256",
+        "observed_rust_provenance_profile_sha256",
+        "observed_source_inventory_sha256",
+        "observed_toolchain_profile_sha256",
+        "owner_decision_sha256",
+        "owner_signature_sha256",
+        "review_report_sha256",
+        "review_signature_sha256",
+        "run_id",
+        "schema",
+        "source_commit",
+        "source_tree",
+        "status_report_sha256",
+        "trust_epoch",
+        "trust_profile_sha256"
+      ],
+      "type": "object"
+    },
+    "input-review.json": {
+      "additionalProperties": false,
+      "properties": {
+        "expires_at": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "findings_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "issued_at": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "review_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "review_observation_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "reviewer_id": {
+          "pattern": "^[a-z0-9][a-z0-9._@/-]{0,127}$",
+          "type": "string"
+        },
+        "schema": {
+          "const": "p08-input-review-2"
+        },
+        "source_stage_acceptance_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "trust_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "verdict": {
+          "const": "PASS_INPUTS_ONLY"
+        }
+      },
+      "required": [
+        "expires_at",
+        "findings_sha256",
+        "issued_at",
+        "manifest_sha256",
+        "review_id",
+        "review_observation_sha256",
+        "reviewer_id",
+        "schema",
+        "source_stage_acceptance_sha256",
+        "trust_profile_sha256",
+        "verdict"
+      ],
+      "type": "object"
+    },
+    "native-execution-grant.json": {
+      "additionalProperties": false,
+      "properties": {
+        "action_observation_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "authorization_scope": {
+          "enum": [
+            "BUILD_ONLY",
+            "BUILD_IDENTITY_TEST_EXECUTION",
+            "CODEC_TEST_EXECUTION",
+            "INDEPENDENT_REBUILD"
+          ]
+        },
+        "command_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "expires_at": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "grant_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "issued_at": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "issuer_id": {
+          "pattern": "^[a-z0-9][a-z0-9._@/-]{0,127}$",
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "max_duration_s": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "nonce": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "not_before": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "observed_build_image_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "observed_crt_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "observed_execution_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "observed_host_std_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "observed_linker_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "observed_musl_std_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "observed_rust_provenance_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "observed_source_inventory_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "observed_toolchain_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "owner_decision_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "owner_signature_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "review_report_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "review_signature_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "run_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "schema": {
+          "const": "p08-native-execution-grant-2"
+        },
+        "source_commit": {
+          "pattern": "^[0-9a-f]{40}$",
+          "type": "string"
+        },
+        "source_tree": {
+          "pattern": "^[0-9a-f]{40}$",
+          "type": "string"
+        },
+        "status_report_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "trust_epoch": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "trust_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action_observation_sha256",
+        "authorization_scope",
+        "command_profile_sha256",
+        "expires_at",
+        "grant_id",
+        "issued_at",
+        "issuer_id",
+        "manifest_sha256",
+        "max_duration_s",
+        "nonce",
+        "not_before",
+        "observed_build_image_profile_sha256",
+        "observed_crt_profile_sha256",
+        "observed_execution_profile_sha256",
+        "observed_host_std_profile_sha256",
+        "observed_linker_profile_sha256",
+        "observed_musl_std_profile_sha256",
+        "observed_rust_provenance_profile_sha256",
+        "observed_source_inventory_sha256",
+        "observed_toolchain_profile_sha256",
+        "owner_decision_sha256",
+        "owner_signature_sha256",
+        "review_report_sha256",
+        "review_signature_sha256",
+        "run_id",
+        "schema",
+        "source_commit",
+        "source_tree",
+        "status_report_sha256",
+        "trust_epoch",
+        "trust_profile_sha256"
+      ],
+      "type": "object"
+    },
+    "owner-input-decision.json": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "const": "APPROVE"
+        },
+        "decision_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "expires_at": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "issued_at": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "issuer_id": {
+          "pattern": "^[a-z0-9][a-z0-9._@/-]{0,127}$",
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "not_before": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "review_report_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "review_signature_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "schema": {
+          "const": "p08-input-owner-decision-1"
+        },
+        "scope": {
+          "const": "INPUTS_ONLY"
+        },
+        "source_stage_acceptance_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "trust_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision",
+        "decision_id",
+        "expires_at",
+        "issued_at",
+        "issuer_id",
+        "manifest_sha256",
+        "not_before",
+        "review_report_sha256",
+        "review_signature_sha256",
+        "schema",
+        "scope",
+        "source_stage_acceptance_sha256",
+        "trust_profile_sha256"
+      ],
+      "type": "object"
+    },
+    "source-stage-acceptance.json": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "const": "ACCEPT"
+        },
+        "decision_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "independent_review_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "issued_at": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "issuer_id": {
+          "pattern": "^[a-z0-9][a-z0-9._@/-]{0,127}$",
+          "type": "string"
+        },
+        "repository": {
+          "const": "JCSchoeman96/symphony"
+        },
+        "review_archive_sha256": {
+          "const": "956ae09a45c8d1ada5030d67cc32230fb6d5f2454ac8aa89f398488e380152a5"
+        },
+        "schema": {
+          "const": "p08-source-stage-acceptance-1"
+        },
+        "scope": {
+          "const": "SOURCE_PREPARATION_ONLY"
+        },
+        "source_commit": {
+          "const": "0622e6cdd480ae4bb632dfbd4e54fee8a8350406"
+        },
+        "source_parent": {
+          "const": "e2e87701c73c0f55fdef040d29c57bb8ad2b3918"
+        },
+        "source_tree": {
+          "const": "bb258a8fa9eb19550ff1de26f6bd8d902da6ec4d"
+        },
+        "trust_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision",
+        "decision_id",
+        "independent_review_sha256",
+        "issued_at",
+        "issuer_id",
+        "repository",
+        "review_archive_sha256",
+        "schema",
+        "scope",
+        "source_commit",
+        "source_parent",
+        "source_tree",
+        "trust_profile_sha256"
+      ],
+      "type": "object"
+    }
+  },
+  "signature_bindings": [
+    {
+      "namespace": "symphony.p08.source-stage.v1",
+      "record": "source-stage-acceptance.json",
+      "role": "project-owner-issuer",
+      "signature": "source-stage-acceptance.sshsig"
+    },
+    {
+      "namespace": "symphony.p08.input-review.v1",
+      "record": "input-review.json",
+      "role": "independent-reviewer",
+      "signature": "input-review.sshsig"
+    },
+    {
+      "namespace": "symphony.p08.input-owner.v1",
+      "record": "owner-input-decision.json",
+      "role": "project-owner-issuer",
+      "signature": "owner-input-decision.sshsig"
+    },
+    {
+      "namespace": "symphony.p08.native-grant.v1",
+      "record": "native-execution-grant.json",
+      "role": "project-owner-issuer",
+      "signature": "native-execution-grant.sshsig"
+    },
+    {
+      "namespace": "symphony.p08.build-result.v1",
+      "record": "compilation-result.json",
+      "role": "independent-reviewer",
+      "signature": "compilation-result.sshsig"
+    },
+    {
+      "namespace": "symphony.p08.native-grant.v1",
+      "record": "generated-native-execution-grant.json",
+      "role": "project-owner-issuer",
+      "signature": "generated-native-execution-grant.sshsig"
+    }
+  ],
+  "status": "PROPOSED_NOT_APPROVED"
+}
