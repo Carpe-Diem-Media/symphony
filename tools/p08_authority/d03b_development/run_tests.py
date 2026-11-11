@@ -9,6 +9,11 @@ os.environ['TMPDIR']=str(ROOT/'scratch');os.environ['TMP']=str(ROOT/'scratch');o
 def inside(path):
  if isinstance(path,int):return True
  return Path(os.fsdecode(path)).absolute().is_relative_to(ROOT)
+def synthetic_key_path(value):
+ path=Path(value)
+ return (path.is_absolute() and '..' not in path.parts and
+   path.parent.resolve(strict=True)==path.parent and
+   path.is_relative_to(ROOT/'scratch') and path.name in ['key','rogue','synthetic-issuer'])
 def audit(event,args):
  if event.startswith('socket.') or event in ['os.system','os.fork','os.forkpty','os.exec']:raise PermissionError('development effect denied: '+event)
  if event=='open' and args[2] & (os.O_WRONLY|os.O_RDWR|os.O_CREAT|os.O_TRUNC|os.O_APPEND):
@@ -18,8 +23,18 @@ def audit(event,args):
   if any(not inside(x) for x in paths):raise PermissionError('mutation outside disposable workspace')
  if event in ['subprocess.Popen','os.posix_spawn']:
   argv=args[1]
+  # Only disposable synthetic keys may be created/signed by component tests.
+  # This allowance is absent from the qualification launcher and live host.
+  synthetic_key=(argv[:6]==['/usr/bin/ssh-keygen','-q','-t','ed25519','-N',''] and
+    len(argv)==8 and argv[6]=='-f' and synthetic_key_path(argv[7]))
+  synthetic_sign=(len(argv)==7 and argv[:4]==['/usr/bin/ssh-keygen','-Y','sign','-f'] and
+    synthetic_key_path(argv[4]) and argv[5]=='-n' and
+    argv[6] in ['symphony.p08.f09.enrollment.v1','symphony.p08.f09.checkpoint.v1','symphony.p08.d02.cooperative.v1'])
   permitted=(argv[:3]==['/usr/bin/ssh-keygen','-Y','verify'] or
-    (argv[:4]==['/usr/bin/python3.14','-I','-S','-B'] and Path(argv[4]).parent==ROOT/'src' and Path(argv[4]).name in ['host.py','worker.py']))
+    synthetic_key or synthetic_sign or
+    (argv[:4]==['/usr/bin/python3.14','-I','-S','-B'] and
+     ((Path(argv[4]).parent==ROOT/'src' and Path(argv[4]).name in ['host.py','worker.py']) or
+      Path(argv[4])==ROOT/'tests/f09_process_probe.py')))
   if not permitted:raise PermissionError('unreviewed subprocess')
 sys.addaudithook(audit)
 for name in ['contract','ledger','build_image','host']:

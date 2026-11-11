@@ -170,26 +170,46 @@ class _RegisterStore:
 
     @contextmanager
     def transaction(self):
-        """External prepare is durable before SQLite commit, completion follows fsync.
+        """Reserve externally before SQL mutation; prepare before commit, ack after fsync.
 
         A crash in either gap leaves INTERRUPTED custody, never a fresh grant.
         No automatic recovery advances an uncertain checkpoint.
         """
         with self.custody.lock():
+            checkpoint = None
+            reserved = prepared = False
             try:
                 self.db.execute('BEGIN IMMEDIATE')
                 try:checkpoint=self._check_head()
                 except (Refusal,sqlite3.Error,OSError):
                     self.custody.quarantine('REGISTER_HISTORY_MISMATCH');raise
-                yield
+                def reserve():
+                    # Fixed storage ordering, not a configurable verifier or
+                    # authority callback. Call only after read-only rejection
+                    # checks, immediately before the first SQL mutation.
+                    nonlocal reserved
+                    require(not reserved, 'REGISTER_DOUBLE_RESERVATION')
+                    self.custody.reserve(checkpoint)
+                    reserved = True
+                yield reserve
+                require(reserved, 'REGISTER_RESERVATION_MISSING')
                 self.db.execute('UPDATE register_meta SET revision=revision+1 WHERE id=1')
                 pending=self.snapshot()
+                prepared = True  # Any uncertain prepare acknowledgment burns this intent.
                 self.custody.prepare(checkpoint,pending)
                 self.db.execute('COMMIT');self.sync()
                 self.custody.complete(checkpoint,pending,self.identity(self.path))
             except sqlite3.IntegrityError:
                 if self.db.in_transaction:self.db.execute('ROLLBACK')
+                if reserved and not prepared:self._abort_observed(checkpoint)
                 raise Refusal('RELEASE_REPLAYED') from None
+            except Refusal as failure:
+                if self.db.in_transaction:self.db.execute('ROLLBACK')
+                if reserved and not prepared and failure.code in {
+                    'TRANSITION_INVALID','RELEASE_NOT_VERIFIED','EXECUTION_TERMINAL',
+                    'RELEASE_TIME_INVALID','RELEASE_BINDING_MISMATCH','RELEASE_MALFORMED'}:
+                    self._abort_observed(checkpoint)
+                raise
             except (sqlite3.Error,OSError,ValueError,KeyError,TypeError):
                 if self.db.in_transaction:self.db.execute('ROLLBACK')
                 self.custody.quarantine('REGISTER_UNCERTAIN')
@@ -197,6 +217,13 @@ class _RegisterStore:
             except BaseException:
                 if self.db.in_transaction:self.db.execute('ROLLBACK')
                 raise
+
+    def _abort_observed(self, checkpoint):
+        # Known rejected SQL, not crash recovery: observe rollback and exact old
+        # head before abandoning the reserved intent. Consumed history survives.
+        require(not self.db.in_transaction and self.snapshot()==checkpoint.sha256 and
+                self.identity(self.path)==checkpoint.identity,'REGISTER_ABORT_UNCERTAIN')
+        self.custody.abort(checkpoint)
 
     def validate(self):
         require(self.db.execute('PRAGMA quick_check').fetchone()[0] == 'ok', 'REGISTER_UNCERTAIN')
@@ -247,24 +274,34 @@ class _RegisterStore:
         self.db.execute('INSERT INTO events VALUES(?,?,?)',(attempt,len(rows),raw))
 
     def request(self, claims):
-        with self.transaction():
+        with self.transaction() as reserve:
+            self.custody.check_release(claims)
+            require(self.get(claims['attempt_id']) is None and self.db.execute(
+                'SELECT slot FROM slots WHERE slot=?',(claims['slot'],)).fetchone() is None,
+                'RELEASE_REPLAYED')
+            reserve()
             self.db.execute('INSERT INTO slots VALUES(?,?)',(claims['slot'],claims['attempt_id']))
             self.db.execute('INSERT INTO attempts VALUES(?,?,?,?,?)',
                 (claims['attempt_id'],canonical(claims).decode(),'REQUESTED','NOT_STARTED','{}'))
             self.event(claims['attempt_id'],'REQUESTED')
 
     def advance(self, attempt, state):
-        with self.transaction():
+        with self.transaction() as reserve:
             row=self.get(attempt)
             require(row is not None and state in NEXT.get(row['state'],set()),'TRANSITION_INVALID')
+            reserve()
             self.db.execute('UPDATE attempts SET state=? WHERE attempt=?',(state,attempt))
             self.event(attempt,state)
 
     def consume(self, attempt):
-        with self.transaction():
+        with self.transaction() as reserve:
             row=self.get(attempt)
             require(row is not None and row['state']=='VERIFIED','RELEASE_NOT_VERIFIED')
             claims=json.loads(row['claims'])
+            self.custody.check_release(claims)
+            require(self.db.execute('SELECT attempt FROM used WHERE release=? OR nonce=? OR slot=?',
+                (claims['release_id'],claims['nonce'],claims['slot'])).fetchone() is None,'RELEASE_REPLAYED')
+            reserve()
             self.db.execute('INSERT INTO used VALUES(?,?,?,?)',(attempt,claims['release_id'],claims['nonce'],claims['slot']))
             self.event(attempt,'RELEASED');self.event(attempt,'CONSUMED')
             self.db.execute('UPDATE attempts SET state=?,execution=? WHERE attempt=?',('CONSUMED','START_PENDING',attempt))
@@ -293,10 +330,11 @@ class _RegisterStore:
         return states
 
     def execution(self, attempt, state, detail):
-        with self.transaction():
+        with self.transaction() as reserve:
             row=self.get(attempt)
             require(row is not None and row['state']=='CONSUMED' and
                 state in self.EXECUTION_NEXT.get(row['execution'],set()),'EXECUTION_TERMINAL')
+            reserve()
             self.execution_event(attempt,state,detail)
             self.db.execute('UPDATE attempts SET execution=?,detail=? WHERE attempt=?',(state,canonical(detail).decode(),attempt))
 
