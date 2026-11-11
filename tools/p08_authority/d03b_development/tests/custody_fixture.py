@@ -104,9 +104,25 @@ class Custody:
         return ledger.RegisterCheckpoint(state['enrollment_id'],state['database_id'],state['locator'],
             state['revision'],state['sha256'],tuple(state['identity']),state['phase'])
 
-    def prepare(self,checkpoint,pending):
+    def check_release(self,claims):
+        # Legacy storage fixtures intentionally omit source/profile fields.
+        # The authenticated component validates the complete closed release.
+        pass
+
+    def reserve(self,checkpoint):
         require(self.current(self.path)==checkpoint,'CUSTODY_CHECKPOINT_CHANGED')
+        self._write(self._read()|{'phase':'MUTATION_PENDING'})
+
+    def abort(self,checkpoint):
         state=self._read()
+        require(state['phase']=='MUTATION_PENDING' and state['revision']==checkpoint.revision and
+                state['sha256']==checkpoint.sha256,'CUSTODY_ABORT_UNCERTAIN')
+        self._write(state|{'phase':'ACTIVE'})
+
+    def prepare(self,checkpoint,pending):
+        state=self._read()
+        require(state['phase']=='MUTATION_PENDING' and state['revision']==checkpoint.revision and
+                state['sha256']==checkpoint.sha256,'CUSTODY_CHECKPOINT_CHANGED')
         self._write(state|{'phase':'INTERRUPTED','pending_revision':checkpoint.revision+1,'pending_sha256':pending})
         if self.fault=='after_prepare':raise Refusal('SIMULATED_INTERRUPTION')
 
