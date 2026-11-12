@@ -1,0 +1,1134 @@
+{
+  "schema_version": "P09-QUALIFICATION-1",
+  "scope": "DORMANT_DEVELOPMENT_ASSESSMENT_ONLY",
+  "source_baseline": {
+    "commit": "2ba7cb5f49399cbe41ea527af5abcdac0dda1281",
+    "tree": "75d6df5e972bd253b272974dd8adec6452f5e00d"
+  },
+  "authority_references": [
+    {
+      "path": "docs/symphony-hardening-playbook-v4.1/GATE2_INVENTORY_FREEZE_PACKET_1458bb041215c626.json",
+      "sha256": "a651b1574ec0a186f6b4cd9548787cf9b67009f6692268ce5a8d0669d9d0636a"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-03-gate2-v1-implementation-plan.md",
+      "sha256": "a1d5cdba65c19a09e86ed814a595e8bbae0c9dcfc97afe021ab67826db09ff68",
+      "sections": [
+        "D",
+        "F",
+        "P09",
+        "K4",
+        "K5"
+      ]
+    }
+  ],
+  "state": "UNQUALIFIED",
+  "mechanical_verification": "UNCONFIGURED",
+  "independent_review": "UNCONFIGURED",
+  "gate2_activation": false,
+  "h100_acceptance": false,
+  "supported_evidence_scopes": [
+    "DEVELOPMENT_COMPONENT"
+  ],
+  "operational_host_profiles": [],
+  "mechanical_dependencies": [
+    "P01",
+    "P02",
+    "P03",
+    "P04",
+    "P05",
+    "P06",
+    "P07",
+    "P08",
+    "G00",
+    "ACCEPTED_NUMERICAL_PROFILES",
+    "CLAIM_SPECIFIC_PROOF_VERIFIERS"
+  ],
+  "obligations": [
+    {
+      "id": "OB-001",
+      "title": "Fresh attempt workspace and owner binding",
+      "required_proof_classes": [
+        "I",
+        "C",
+        "MP",
+        "RP",
+        "EB",
+        "IR"
+      ],
+      "acceptance_owner": "Trusted workspace owner",
+      "pass_condition": "Attempt-owned writable view binds attempt/generation/responsibility; no prior writer/view reuse.",
+      "failure_disposition": "Block dispatch; ambiguous ownership quarantined.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-002",
+      "title": "Attempt grant and durable fence",
+      "required_proof_classes": [
+        "I",
+        "MP",
+        "FI",
+        "RP",
+        "EB",
+        "IR"
+      ],
+      "acceptance_owner": "Symphony authority owner",
+      "pass_condition": "All work/resources bind attempt ID, lineage, responsibility; stale events rejected; fence retained until clean proof.",
+      "failure_disposition": "Reject stale authority; retain fence/quarantine.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-003",
+      "title": "Restart discovery and quarantine records",
+      "required_proof_classes": [
+        "I",
+        "FI",
+        "RP",
+        "EB",
+        "IR"
+      ],
+      "acceptance_owner": "Trusted recovery owner",
+      "pass_condition": "Stable identity discovery; known FENCE/RECONCILE/CLEAN/VERIFY; ambiguous QUARANTINE/BLOCK_REUSE.",
+      "failure_disposition": "No reuse while ambiguous.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-004",
+      "title": "Attempt-private storage, hidden objects and capacity bounds",
+      "required_proof_classes": [
+        "I",
+        "C",
+        "CH",
+        "MP",
+        "FI",
+        "RP",
+        "NP",
+        "IR"
+      ],
+      "acceptance_owner": "Trusted host attempt boundary",
+      "pass_condition": "Byte/inode limits owned; all inode/FD/mount/backing refs accounted and verified absent.",
+      "failure_disposition": "Uncertain cleanup -> quarantine.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-005",
+      "title": "Process/cgroup/namespace enforcement and version proof",
+      "required_proof_classes": [
+        "CH",
+        "MP",
+        "FI",
+        "RP",
+        "EB",
+        "IR"
+      ],
+      "acceptance_owner": "Independent host verifier",
+      "pass_condition": "All descendants/process/cgroup/namespace/network/resource classes observed; proof bound to 0.162.1.",
+      "failure_disposition": "Uncertain termination -> quarantine.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-006",
+      "title": "Bearer nondisclosure over every channel",
+      "required_proof_classes": [
+        "I",
+        "C",
+        "MP",
+        "FI",
+        "RP",
+        "EB",
+        "IR"
+      ],
+      "acceptance_owner": "Independent host security reviewer",
+      "pass_condition": "Positive and negative controls show only selected app-server reads access token; refresh remains host-only.",
+      "failure_disposition": "Known/uncertain disclosure -> CLEANUP_UNVERIFIED -> QUARANTINED -> BLOCK_UNSAFE_REUSE; old token may remain valid.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-007",
+      "title": "SIWC registration enrollment and account separation",
+      "required_proof_classes": [
+        "I",
+        "C",
+        "MP",
+        "RP",
+        "EB",
+        "IR"
+      ],
+      "acceptance_owner": "Trusted subscription manager",
+      "pass_condition": "Verified sub/client/host ID/scopes and separate record persist; no T3Code auth.json import.",
+      "failure_disposition": "Failure leaves registration inactive; no cross-account fallback.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-008",
+      "title": "Credential-set generation, serialized refresh and crash-safe rotation",
+      "required_proof_classes": [
+        "I",
+        "FI",
+        "RP",
+        "EB",
+        "IR"
+      ],
+      "acceptance_owner": "Trusted credential owner",
+      "pass_condition": "Replacement generation atomic/recoverable; ambiguous/persist failure blocks dispatch.",
+      "failure_disposition": "No blind retry; CREDENTIAL_STATE_UNCERTAIN or REAUTH_REQUIRED.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-009",
+      "title": "Attempt access materialization and conditional cross-attempt reuse",
+      "required_proof_classes": [
+        "I",
+        "MP",
+        "FI",
+        "RP",
+        "EB",
+        "IR"
+      ],
+      "acceptance_owner": "Trusted grant owner",
+      "pass_condition": "sub/aud/client/scope/iss/iat/exp/jti/nbf valid; prior writers/descendants/FDs/state/network absent; no disclosure.",
+      "failure_disposition": "Without proof or if suspected exposure, do not reuse; quarantine as required.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-010",
+      "title": "Revocation, reauth and secret-free operator state",
+      "required_proof_classes": [
+        "I",
+        "C",
+        "FI",
+        "RP",
+        "EB",
+        "IR"
+      ],
+      "acceptance_owner": "Trusted subscription manager",
+      "pass_condition": "Exception-only reauth; no attempt login and no automatic alternate subscription.",
+      "failure_disposition": "Block selected registration; local deletion is not remote revocation.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-011",
+      "title": "OAuth callback, state/nonce/PKCE and identity verification",
+      "required_proof_classes": [
+        "I",
+        "MP",
+        "FI",
+        "RP",
+        "IR"
+      ],
+      "acceptance_owner": "Trusted subscription manager",
+      "pass_condition": "Only verified token set persists.",
+      "failure_disposition": "Cancel/mismatch/exchange/identity/persist error leaves registration inactive.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-012",
+      "title": "Model egress, DNS/TLS and /v1/models denial",
+      "required_proof_classes": [
+        "I",
+        "C",
+        "CH",
+        "MP",
+        "FI",
+        "RP",
+        "EB",
+        "IR"
+      ],
+      "acceptance_owner": "Trusted network owner",
+      "pass_condition": "DNS/TLS/route enforcement; descendants no raw sockets; app-server works with models route denied.",
+      "failure_disposition": "Unexpected endpoint/path -> block and quarantine.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-013",
+      "title": "Five Plane tools and mutation reconciliation",
+      "required_proof_classes": [
+        "I",
+        "C",
+        "MP",
+        "FI",
+        "RP",
+        "EB",
+        "IR"
+      ],
+      "acceptance_owner": "Trusted Plane adapter/coordinator",
+      "pass_condition": "Bounded args/results; stale attempt rejected; ambiguity reconciled without blind retry.",
+      "failure_disposition": "Unresolved mutation suspends/escalates.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-014",
+      "title": "SourceControl read-only binding and unselected tool exclusion",
+      "required_proof_classes": [
+        "I",
+        "C",
+        "MP",
+        "EB",
+        "IR"
+      ],
+      "acceptance_owner": "Trusted tool binder/SourceControl",
+      "pass_condition": "Only named read tool appears and is repo/candidate bound.",
+      "failure_disposition": "Unexpected tool binding blocks dispatch.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-015",
+      "title": "Writer fence, exact local candidate and safety validation",
+      "required_proof_classes": [
+        "I",
+        "C",
+        "CH",
+        "MP",
+        "FI",
+        "RP",
+        "EB",
+        "IR"
+      ],
+      "acceptance_owner": "Trusted publisher/validator",
+      "pass_condition": "No writer survives; same exact tree is resolved, staged, validated and rechecked.",
+      "failure_disposition": "Fence/validation/identity uncertainty blocks publication.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-016",
+      "title": "Bounded host publisher and credential scope",
+      "required_proof_classes": [
+        "I",
+        "C",
+        "MP",
+        "FI",
+        "EB",
+        "IR"
+      ],
+      "acceptance_owner": "Trusted source-publication owner",
+      "pass_condition": "Only nonprotected host-managed branch and work-item PR are mutated.",
+      "failure_disposition": "Selector/base/repo mismatch rejects publication.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-017",
+      "title": "Publication record, restart reconciliation and fresh CandidateRef",
+      "required_proof_classes": [
+        "I",
+        "FI",
+        "RP",
+        "EB",
+        "IR"
+      ],
+      "acceptance_owner": "Trusted publication recovery owner",
+      "pass_condition": "Unique branch/PR association and exact SHA/tree corroborated; no duplicate PR/blind retry.",
+      "failure_disposition": "Unresolved -> block work item publication and escalate.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-018",
+      "title": "Checks/review/human merge/CompletionProof exact identity",
+      "required_proof_classes": [
+        "I",
+        "MP",
+        "FI",
+        "RP",
+        "EB",
+        "IR"
+      ],
+      "acceptance_owner": "SourceControl, independent reviewer, human merge authority",
+      "pass_condition": "Any movement invalidates checks/review; merged tree matches candidate; CompletionProof bound.",
+      "failure_disposition": "No merge/mismatch -> no completion.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-019",
+      "title": "No generic output/handoff promotion; scanner unchanged",
+      "required_proof_classes": [
+        "I",
+        "C",
+        "MP",
+        "FI",
+        "EB",
+        "IR",
+        "DP"
+      ],
+      "acceptance_owner": "Trusted output owner",
+      "pass_condition": "Only exact validated tree enters GitHub candidate; outside files rejected.",
+      "failure_disposition": "Reject and keep state private.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-020",
+      "title": "Secret-free logs, crash/core, host evidence and diagnostics",
+      "required_proof_classes": [
+        "I",
+        "C",
+        "MP",
+        "FI",
+        "RP",
+        "EB",
+        "IR"
+      ],
+      "acceptance_owner": "Trusted evidence owner",
+      "pass_condition": "Redaction and cleanup evidence binds exact attempt/resource without token content.",
+      "failure_disposition": "Possible leak quarantines.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-021",
+      "title": "Process and host capacity bounds",
+      "required_proof_classes": [
+        "C",
+        "CH",
+        "MP",
+        "FI",
+        "NP",
+        "IR"
+      ],
+      "acceptance_owner": "Host capacity and admission owners",
+      "pass_condition": "Each boundary enforced; aggregate reserve/admission owner defined.",
+      "failure_disposition": "Deny admission if unconfigured/exhausted.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-022",
+      "title": "Persist topology selection and both H100 provenance/lock facts",
+      "required_proof_classes": [
+        "DP",
+        "EB",
+        "IR"
+      ],
+      "acceptance_owner": "Governance documentation owner",
+      "pass_condition": "Later repository record preserves both; task lock remains scope for this task.",
+      "failure_disposition": "No execution authority inferred.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-023",
+      "title": "Claim-specific evidence transfer review",
+      "required_proof_classes": [
+        "EB",
+        "IR",
+        "DP"
+      ],
+      "acceptance_owner": "Independent governance reviewer",
+      "pass_condition": "Transfer and non-transfer listed; no historical evidence overstated.",
+      "failure_disposition": "Reject overbroad transfer.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-024",
+      "title": "T3Code evidence boundary",
+      "required_proof_classes": [
+        "I",
+        "MP",
+        "EB",
+        "IR",
+        "DP"
+      ],
+      "acceptance_owner": "Independent reviewer",
+      "pass_condition": "Symphony-owned independent records; no cross-account client/token mix.",
+      "failure_disposition": "Reject import/shared state.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-025",
+      "title": "Secret-free host diagnostics and evidence controls",
+      "required_proof_classes": [
+        "I",
+        "C",
+        "MP",
+        "FI",
+        "EB",
+        "IR"
+      ],
+      "acceptance_owner": "Trusted host evidence owner",
+      "pass_condition": "Synthetic secret controls show logs/config/core/operator evidence contain no token or refresh value; exact attempt/resource evidence remains attributable.",
+      "failure_disposition": "Known or uncertain disclosure -> CLEANUP_UNVERIFIED -> QUARANTINED -> block reuse.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "id": "OB-026",
+      "title": "Provider request/effect record and ambiguous-result retention",
+      "required_proof_classes": [
+        "I",
+        "MP",
+        "FI",
+        "RP",
+        "EB",
+        "IR"
+      ],
+      "acceptance_owner": "Trusted provider-effect evidence owner",
+      "pass_condition": "Record supports ADMITTED_LOCALLY/SENT_UPSTREAM/accepted-if-evidenced/stream/completed/failure/interrupted/ambiguous and safe restart reconciliation.",
+      "failure_disposition": "Uncertain outcome remains RESULT_AMBIGUOUS; do not infer cancellation or retry blindly.",
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    }
+  ],
+  "transfers": [
+    {
+      "source": "H-050D",
+      "authority_class": "ACCEPTED_HARDENING_AUTHORITY",
+      "original_scope": "HOST credential/channel constraint in original Symphony configuration.",
+      "transfer_status": "TRANSFERS_WITH_BINDING_CONDITION",
+      "transferred_property": "Credential ownership stays host-side; runtime cannot redirect trusted credentialed transport. Does not prove SIWC materialization/nondisclosure/publisher.",
+      "non_transferred_property": "SIWC, access-bearer confinement, new GitHub publisher are not tested claims.",
+      "id": "ET-001",
+      "required_proof_classes": [
+        "EB",
+        "IR"
+      ],
+      "new_proof_required": true,
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "source": "H-060A",
+      "authority_class": "ACCEPTED_HARDENING_AUTHORITY",
+      "original_scope": "Attempt ID/work item/lineage/responsibility checks.",
+      "transfer_status": "TRANSFERS_WITH_BINDING_CONDITION",
+      "transferred_property": "RuntimeAttempt identity and stale-event scope transfer; filesystem/process/token isolation does not.",
+      "non_transferred_property": "No fresh workspace or process containment proof.",
+      "id": "ET-002",
+      "required_proof_classes": [
+        "EB",
+        "IR"
+      ],
+      "new_proof_required": true,
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "source": "H-060B",
+      "authority_class": "ACCEPTED_HARDENING_AUTHORITY",
+      "original_scope": "RecoveryLedger lifecycle checkpoint.",
+      "transfer_status": "TRANSFERS_WITH_BINDING_CONDITION",
+      "transferred_property": "Bound startup/suspension reconciliation transfers; no restore of live attempt, credential or new resource.",
+      "non_transferred_property": "No Gate2 publication/quarantine resources.",
+      "id": "ET-003",
+      "required_proof_classes": [
+        "EB",
+        "IR"
+      ],
+      "new_proof_required": true,
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "source": "H-060C",
+      "authority_class": "ACCEPTED_HARDENING_AUTHORITY",
+      "original_scope": "Workspace OwnershipLedger ownership and shutdown recovery.",
+      "transfer_status": "TRANSFERS_WITH_BINDING_CONDITION",
+      "transferred_property": "Trusted workspace owner/lifecycle transfers; fresh attempt writable instance is not proved.",
+      "non_transferred_property": "No RuntimeAttempt binding in ownership record.",
+      "id": "ET-004",
+      "required_proof_classes": [
+        "EB",
+        "IR"
+      ],
+      "new_proof_required": true,
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "source": "H-080B",
+      "authority_class": "ACCEPTED_HARDENING_AUTHORITY",
+      "original_scope": "Original executable/config/platform evidence.",
+      "transfer_status": "TRANSFERS_WITH_BINDING_CONDITION",
+      "transferred_property": "Accepted runtime isolation remains in scope for tested Codex 0.159.3; required 0.162.1 proof is separate.",
+      "non_transferred_property": "SIWC bearer, selected egress, fresh workspace, publisher. H080B acceptance/design remain intact.",
+      "id": "ET-005",
+      "required_proof_classes": [
+        "EB",
+        "IR"
+      ],
+      "new_proof_required": true,
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "source": "Architecture E/A2",
+      "authority_class": "SCOPED_DESIGN_OR_CHARACTERIZATION",
+      "original_scope": "Specific test topology.",
+      "transfer_status": "TRANSFERS_WITH_BINDING_CONDITION",
+      "transferred_property": "Only tested platform/mount/state rationale transfers.",
+      "non_transferred_property": "Production completeness, different executable, hidden objects, SIWC.",
+      "id": "ET-006",
+      "required_proof_classes": [
+        "EB",
+        "IR"
+      ],
+      "new_proof_required": true,
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "source": "v5/r4",
+      "authority_class": "HISTORICAL_FIXTURE_NOT_ACCEPTED",
+      "original_scope": "Historical synthetic output fixture.",
+      "transfer_status": "NOT_ACCEPTED",
+      "transferred_property": "Fixture cases may inform later checks; R4 remains unaccepted.",
+      "non_transferred_property": "Production output architecture, generic publication, Gate2 acceptance.",
+      "id": "ET-007",
+      "required_proof_classes": [
+        "EB",
+        "IR"
+      ],
+      "new_proof_required": true,
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "source": "Gate2 synthetic evidence",
+      "authority_class": "SYNTHETIC_FIXTURE",
+      "original_scope": "Fixture assumptions and synthetic tests.",
+      "transfer_status": "DIAGNOSTIC_ONLY",
+      "transferred_property": "Only synthetic fixture behavior.",
+      "non_transferred_property": "Host enforcement, actual provider credential, raw lineage acceptance.",
+      "id": "ET-008",
+      "required_proof_classes": [
+        "EB",
+        "IR"
+      ],
+      "new_proof_required": true,
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "source": "Retained Gate2 trace",
+      "authority_class": "PARTIAL_RUN_LINEAGE",
+      "original_scope": "One retained diagnostic trace.",
+      "transfer_status": "DIAGNOSTIC_ONLY",
+      "transferred_property": "Troubleshooting context only; lineage partial, acceptance authority no.",
+      "non_transferred_property": "Proof completion, Gate2 acceptance, execution authorization.",
+      "id": "ET-009",
+      "required_proof_classes": [
+        "EB",
+        "IR"
+      ],
+      "new_proof_required": true,
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "source": "Official OpenAI SIWC docs",
+      "authority_class": "OFFICIAL_PROVIDER_CONTRACT_ONLY",
+      "original_scope": "Provider documentation current as 2026-11-02.",
+      "transfer_status": "TRANSFERS_WITH_BINDING_CONDITION",
+      "transferred_property": "Registration/client/host identity, token claims/lifetimes/rotation/serialization, endpoint and app-server token/restart contract. Does not prove Symphony implementation.",
+      "non_transferred_property": "Local persistence, atomicity implementation, nondisclosure, Gate2 execution.",
+      "id": "ET-010",
+      "required_proof_classes": [
+        "EB",
+        "IR"
+      ],
+      "new_proof_required": true,
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "source": "T3Code operations",
+      "authority_class": "OPERATIONAL_ANALOGY_NOT_AUTHORITY",
+      "original_scope": "T3Code account separation.",
+      "transfer_status": "TRANSFERS_WITH_BINDING_CONDITION",
+      "transferred_property": "Only separate subscription identities may coexist on a host.",
+      "non_transferred_property": "auth.json import, shadow HOME, shared DB/session/config/env do not transfer.",
+      "id": "ET-011",
+      "required_proof_classes": [
+        "EB",
+        "IR"
+      ],
+      "new_proof_required": true,
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "source": "V1 source-control + supplied publisher decision",
+      "authority_class": "NORMATIVE_V1_AUTHORITY_AND_SUPPLIED_GOVERNANCE",
+      "original_scope": "V1 exact candidate model and user-selected publication boundary.",
+      "transfer_status": "TRANSFERS_WITH_BINDING_CONDITION",
+      "transferred_property": "CandidateRef/check/review/human merge remain; host publisher owner fixed. Existing SourceControl does not create commit/push/PR.",
+      "non_transferred_property": "No publisher implementation or recovery record currently exists.",
+      "id": "ET-012",
+      "required_proof_classes": [
+        "EB",
+        "IR"
+      ],
+      "new_proof_required": true,
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "source": "Pinned Unified Roadmap vs supplied Gate2 lock",
+      "authority_class": "REPOSITORY_PROVENANCE_AND_TASK_AUTHORITY",
+      "original_scope": "Roadmap provenance plus current task lock.",
+      "transfer_status": "TRANSFERS_WITH_BINDING_CONDITION",
+      "transferred_property": "Main records H100 active; supplied lock prohibits H100 execution in this task; preserve both.",
+      "non_transferred_property": "No H100/H110/H120B execution authorization from packet.",
+      "id": "ET-013",
+      "required_proof_classes": [
+        "EB",
+        "IR"
+      ],
+      "new_proof_required": true,
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    }
+  ],
+  "bearer_paths": [
+    {
+      "channel_class": "child environment",
+      "positive_control": "Synthetic non-live secret in intended credential slot shows detector sees authorized location.",
+      "negative_control": "Attempt unauthorized read/transfer and verify denial/redaction; no live user token in proof fixture.",
+      "failure_disposition": "Known/uncertain disclosure -> CLEANUP_UNVERIFIED -> QUARANTINED -> BLOCK_UNSAFE_REUSE; old bearer potentially live to exp or provider invalidation.",
+      "id": "BP-01",
+      "required_proof_classes": [
+        "POSITIVE_CONTROL",
+        "NEGATIVE_CONTROL"
+      ],
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "channel_class": "/proc/<appserver>/environ",
+      "positive_control": "Synthetic non-live secret in intended credential slot shows detector sees authorized location.",
+      "negative_control": "Attempt unauthorized read/transfer and verify denial/redaction; no live user token in proof fixture.",
+      "failure_disposition": "Known/uncertain disclosure -> CLEANUP_UNVERIFIED -> QUARANTINED -> BLOCK_UNSAFE_REUSE; old bearer potentially live to exp or provider invalidation.",
+      "id": "BP-02",
+      "required_proof_classes": [
+        "POSITIVE_CONTROL",
+        "NEGATIVE_CONTROL"
+      ],
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "channel_class": "/proc/<appserver>/mem",
+      "positive_control": "Synthetic non-live secret in intended credential slot shows detector sees authorized location.",
+      "negative_control": "Attempt unauthorized read/transfer and verify denial/redaction; no live user token in proof fixture.",
+      "failure_disposition": "Known/uncertain disclosure -> CLEANUP_UNVERIFIED -> QUARANTINED -> BLOCK_UNSAFE_REUSE; old bearer potentially live to exp or provider invalidation.",
+      "id": "BP-03",
+      "required_proof_classes": [
+        "POSITIVE_CONTROL",
+        "NEGATIVE_CONTROL"
+      ],
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "channel_class": "ptrace",
+      "positive_control": "Synthetic non-live secret in intended credential slot shows detector sees authorized location.",
+      "negative_control": "Attempt unauthorized read/transfer and verify denial/redaction; no live user token in proof fixture.",
+      "failure_disposition": "Known/uncertain disclosure -> CLEANUP_UNVERIFIED -> QUARANTINED -> BLOCK_UNSAFE_REUSE; old bearer potentially live to exp or provider invalidation.",
+      "id": "BP-04",
+      "required_proof_classes": [
+        "POSITIVE_CONTROL",
+        "NEGATIVE_CONTROL"
+      ],
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "channel_class": "process_vm_readv or equivalent",
+      "positive_control": "Synthetic non-live secret in intended credential slot shows detector sees authorized location.",
+      "negative_control": "Attempt unauthorized read/transfer and verify denial/redaction; no live user token in proof fixture.",
+      "failure_disposition": "Known/uncertain disclosure -> CLEANUP_UNVERIFIED -> QUARANTINED -> BLOCK_UNSAFE_REUSE; old bearer potentially live to exp or provider invalidation.",
+      "id": "BP-05",
+      "required_proof_classes": [
+        "POSITIVE_CONTROL",
+        "NEGATIVE_CONTROL"
+      ],
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "channel_class": "systemd credential access",
+      "positive_control": "Synthetic non-live secret in intended credential slot shows detector sees authorized location.",
+      "negative_control": "Attempt unauthorized read/transfer and verify denial/redaction; no live user token in proof fixture.",
+      "failure_disposition": "Known/uncertain disclosure -> CLEANUP_UNVERIFIED -> QUARANTINED -> BLOCK_UNSAFE_REUSE; old bearer potentially live to exp or provider invalidation.",
+      "id": "BP-06",
+      "required_proof_classes": [
+        "POSITIVE_CONTROL",
+        "NEGATIVE_CONTROL"
+      ],
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "channel_class": "credential source copies",
+      "positive_control": "Synthetic non-live secret in intended credential slot shows detector sees authorized location.",
+      "negative_control": "Attempt unauthorized read/transfer and verify denial/redaction; no live user token in proof fixture.",
+      "failure_disposition": "Known/uncertain disclosure -> CLEANUP_UNVERIFIED -> QUARANTINED -> BLOCK_UNSAFE_REUSE; old bearer potentially live to exp or provider invalidation.",
+      "id": "BP-07",
+      "required_proof_classes": [
+        "POSITIVE_CONTROL",
+        "NEGATIVE_CONTROL"
+      ],
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "channel_class": "credential materialization copies",
+      "positive_control": "Synthetic non-live secret in intended credential slot shows detector sees authorized location.",
+      "negative_control": "Attempt unauthorized read/transfer and verify denial/redaction; no live user token in proof fixture.",
+      "failure_disposition": "Known/uncertain disclosure -> CLEANUP_UNVERIFIED -> QUARANTINED -> BLOCK_UNSAFE_REUSE; old bearer potentially live to exp or provider invalidation.",
+      "id": "BP-08",
+      "required_proof_classes": [
+        "POSITIVE_CONTROL",
+        "NEGATIVE_CONTROL"
+      ],
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "channel_class": "inherited FDs",
+      "positive_control": "Synthetic non-live secret in intended credential slot shows detector sees authorized location.",
+      "negative_control": "Attempt unauthorized read/transfer and verify denial/redaction; no live user token in proof fixture.",
+      "failure_disposition": "Known/uncertain disclosure -> CLEANUP_UNVERIFIED -> QUARANTINED -> BLOCK_UNSAFE_REUSE; old bearer potentially live to exp or provider invalidation.",
+      "id": "BP-09",
+      "required_proof_classes": [
+        "POSITIVE_CONTROL",
+        "NEGATIVE_CONTROL"
+      ],
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "channel_class": "transferred FDs and SCM_RIGHTS",
+      "positive_control": "Synthetic non-live secret in intended credential slot shows detector sees authorized location.",
+      "negative_control": "Attempt unauthorized read/transfer and verify denial/redaction; no live user token in proof fixture.",
+      "failure_disposition": "Known/uncertain disclosure -> CLEANUP_UNVERIFIED -> QUARANTINED -> BLOCK_UNSAFE_REUSE; old bearer potentially live to exp or provider invalidation.",
+      "id": "BP-10",
+      "required_proof_classes": [
+        "POSITIVE_CONTROL",
+        "NEGATIVE_CONTROL"
+      ],
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "channel_class": "app-server RPC",
+      "positive_control": "Synthetic non-live secret in intended credential slot shows detector sees authorized location.",
+      "negative_control": "Attempt unauthorized read/transfer and verify denial/redaction; no live user token in proof fixture.",
+      "failure_disposition": "Known/uncertain disclosure -> CLEANUP_UNVERIFIED -> QUARANTINED -> BLOCK_UNSAFE_REUSE; old bearer potentially live to exp or provider invalidation.",
+      "id": "BP-11",
+      "required_proof_classes": [
+        "POSITIVE_CONTROL",
+        "NEGATIVE_CONTROL"
+      ],
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "channel_class": "diagnostics/configuration dumps",
+      "positive_control": "Synthetic non-live secret in intended credential slot shows detector sees authorized location.",
+      "negative_control": "Attempt unauthorized read/transfer and verify denial/redaction; no live user token in proof fixture.",
+      "failure_disposition": "Known/uncertain disclosure -> CLEANUP_UNVERIFIED -> QUARANTINED -> BLOCK_UNSAFE_REUSE; old bearer potentially live to exp or provider invalidation.",
+      "id": "BP-12",
+      "required_proof_classes": [
+        "POSITIVE_CONTROL",
+        "NEGATIVE_CONTROL"
+      ],
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "channel_class": "logs/stderr",
+      "positive_control": "Synthetic non-live secret in intended credential slot shows detector sees authorized location.",
+      "negative_control": "Attempt unauthorized read/transfer and verify denial/redaction; no live user token in proof fixture.",
+      "failure_disposition": "Known/uncertain disclosure -> CLEANUP_UNVERIFIED -> QUARANTINED -> BLOCK_UNSAFE_REUSE; old bearer potentially live to exp or provider invalidation.",
+      "id": "BP-13",
+      "required_proof_classes": [
+        "POSITIVE_CONTROL",
+        "NEGATIVE_CONTROL"
+      ],
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "channel_class": "crash output/core dumps",
+      "positive_control": "Synthetic non-live secret in intended credential slot shows detector sees authorized location.",
+      "negative_control": "Attempt unauthorized read/transfer and verify denial/redaction; no live user token in proof fixture.",
+      "failure_disposition": "Known/uncertain disclosure -> CLEANUP_UNVERIFIED -> QUARANTINED -> BLOCK_UNSAFE_REUSE; old bearer potentially live to exp or provider invalidation.",
+      "id": "BP-14",
+      "required_proof_classes": [
+        "POSITIVE_CONTROL",
+        "NEGATIVE_CONTROL"
+      ],
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "channel_class": "temporary/open-unlinked state",
+      "positive_control": "Synthetic non-live secret in intended credential slot shows detector sees authorized location.",
+      "negative_control": "Attempt unauthorized read/transfer and verify denial/redaction; no live user token in proof fixture.",
+      "failure_disposition": "Known/uncertain disclosure -> CLEANUP_UNVERIFIED -> QUARANTINED -> BLOCK_UNSAFE_REUSE; old bearer potentially live to exp or provider invalidation.",
+      "id": "BP-15",
+      "required_proof_classes": [
+        "POSITIVE_CONTROL",
+        "NEGATIVE_CONTROL"
+      ],
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "channel_class": "provider request content",
+      "positive_control": "Synthetic non-live secret in intended credential slot shows detector sees authorized location.",
+      "negative_control": "Attempt unauthorized read/transfer and verify denial/redaction; no live user token in proof fixture.",
+      "failure_disposition": "Known/uncertain disclosure -> CLEANUP_UNVERIFIED -> QUARANTINED -> BLOCK_UNSAFE_REUSE; old bearer potentially live to exp or provider invalidation.",
+      "id": "BP-16",
+      "required_proof_classes": [
+        "POSITIVE_CONTROL",
+        "NEGATIVE_CONTROL"
+      ],
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "channel_class": "provider response content",
+      "positive_control": "Synthetic non-live secret in intended credential slot shows detector sees authorized location.",
+      "negative_control": "Attempt unauthorized read/transfer and verify denial/redaction; no live user token in proof fixture.",
+      "failure_disposition": "Known/uncertain disclosure -> CLEANUP_UNVERIFIED -> QUARANTINED -> BLOCK_UNSAFE_REUSE; old bearer potentially live to exp or provider invalidation.",
+      "id": "BP-17",
+      "required_proof_classes": [
+        "POSITIVE_CONTROL",
+        "NEGATIVE_CONTROL"
+      ],
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "channel_class": "output staging/source tree",
+      "positive_control": "Synthetic non-live secret in intended credential slot shows detector sees authorized location.",
+      "negative_control": "Attempt unauthorized read/transfer and verify denial/redaction; no live user token in proof fixture.",
+      "failure_disposition": "Known/uncertain disclosure -> CLEANUP_UNVERIFIED -> QUARANTINED -> BLOCK_UNSAFE_REUSE; old bearer potentially live to exp or provider invalidation.",
+      "id": "BP-18",
+      "required_proof_classes": [
+        "POSITIVE_CONTROL",
+        "NEGATIVE_CONTROL"
+      ],
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    },
+    {
+      "channel_class": "semantic host-tool arguments/results/logs",
+      "positive_control": "Synthetic non-live secret in intended credential slot shows detector sees authorized location.",
+      "negative_control": "Attempt unauthorized read/transfer and verify denial/redaction; no live user token in proof fixture.",
+      "failure_disposition": "Known/uncertain disclosure -> CLEANUP_UNVERIFIED -> QUARANTINED -> BLOCK_UNSAFE_REUSE; old bearer potentially live to exp or provider invalidation.",
+      "id": "BP-19",
+      "required_proof_classes": [
+        "POSITIVE_CONTROL",
+        "NEGATIVE_CONTROL"
+      ],
+      "disposition": "MISSING",
+      "proof_status": "UNVERIFIED",
+      "claim_applicability": "UNVERIFIED",
+      "evidence_catalog_binding": "UNVERIFIED",
+      "independent_acceptance": "UNVERIFIED"
+    }
+  ],
+  "assessment_input_contract": {
+    "scope": "DEVELOPMENT_PARSER_ONLY",
+    "max_records": 218,
+    "max_artifact_bytes": 1048576,
+    "max_payload_bytes": 228589568,
+    "derivation": "One record per frozen proof slot; aggregate ceiling equals 218 slots times the existing 1 MiB artifact input ceiling. This bounds parser work, not accepted host capacity.",
+    "operational_capacity_authority": "UNCONFIGURED"
+  },
+  "characterization_scope": "ARTIFACT_BYTES_AND_DECLARATIONS_ONLY",
+  "claim_applicability": "UNVERIFIED",
+  "evidence_catalog_binding": "UNVERIFIED",
+  "independent_acceptance": "UNVERIFIED"
+}
