@@ -1,0 +1,27 @@
+{
+  "argv": [
+    "/usr/bin/curl",
+    "-q",
+    "--proto",
+    "=https",
+    "--proto-redir",
+    "=https",
+    "--tlsv1.2",
+    "--fail",
+    "--location",
+    "--silent",
+    "--show-error",
+    "--connect-timeout",
+    "15",
+    "--max-time",
+    "600",
+    "--max-filesize",
+    "1073741824",
+    "--output",
+    "/home/jcschoeman96/sdv02/downloads/devvm-0.1.0-linux-amd64.tar.gz",
+    "https://github.com/devvmhq/devvm/releases/download/v0.1.0/devvm-0.1.0-linux-amd64.tar.gz"
+  ],
+  "start": "2026-11-12T05:25:12.819790+00:00",
+  "end": "2026-11-12T05:25:16.970569+00:00",
+  "exit": 0
+}

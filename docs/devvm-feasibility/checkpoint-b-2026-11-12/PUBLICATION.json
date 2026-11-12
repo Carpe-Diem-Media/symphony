@@ -1,0 +1,11 @@
+{
+  "packet_role": "PUBLIC_REVIEW_EVIDENCE_NON_AUTHORITY",
+  "durable_packet": "/home/jcschoeman96/projects/symphony-artifacts/devvm-checkpoint-b-review-20261112-iurgs4tw",
+  "original_staging_root": "/home/jcschoeman96/sdv02",
+  "publication_base_sha": "2ba7cb5f49399cbe41ea527af5abcdac0dda1281",
+  "publication_base_tree": "75d6df5e972bd253b272974dd8adec6452f5e00d",
+  "full_staged_payload_backup": "NOT_VERIFIED",
+  "cleanup_authorized": false,
+  "checkpoint_c0": "HOLD",
+  "checkpoint_c1": "HOLD"
+}

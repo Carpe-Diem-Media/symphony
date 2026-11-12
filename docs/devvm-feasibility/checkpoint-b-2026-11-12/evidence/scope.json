@@ -1,0 +1,19 @@
+{
+  "devvm_release": "v0.1.0",
+  "devvm_source": "e9bd270398730bf0f7ffe44e8f78f5da323daeb7",
+  "lima_release": "v2.2.1",
+  "lima_source": "27bc4c4b101e27994e01e36566a0f2091bbca507",
+  "root": "/home/jcschoeman96/sdv02",
+  "uid": 1000,
+  "expected_sha256": {
+    "devvm.SHA256SUMS": "9f703c06b2ab3a4b8c9e8963952e024f64964aa0ec9de09bfceefbf8b65df73a",
+    "devvm.SHA256SUMS.minisig": "329cafe0b6659f60d36e3ccb320388276ecf061a411162deddb713864d1a3246",
+    "devvm-0.1.0-linux-amd64.tar.gz": "fc939a651614917404766c8bf1c7f64aed8c136605e133e0602c55101a82284c",
+    "lima.SHA256SUMS": "4805ceeb791229ecaddcde32bf04b14742f4d036b343ad5d8c478ba5d220fff2",
+    "lima.SHA256SUMS.asc": "cc974212784876111d1a1d4ab2539e5c7fe2058de04e6c64c60d3887c8cabf2c",
+    "lima-2.2.1-Linux-x86_64.tar.gz": "b391ac7fcac2b2a5a1628107756463188ded4d18d3104a40a66a8bb6fec01bcb",
+    "lima-key.asc": "74d7c5d29b78a5967b0da91a2e9330b8a805fd1ea2c8a375dfae634ff85a6da0"
+  },
+  "downloaded_execution": false,
+  "cleanup_authorized": false
+}
