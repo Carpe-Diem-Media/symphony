@@ -10,6 +10,7 @@ Checkpoint B evidence needs a durable, inspectable PR so an independent reviewer
 
 - Record the single staging run, signatures, actual archive inventories and payload verification.
 - Include exact scripts, retained manifests, source mappings and corrected audit failures.
+- Record the owner's limited exception for missing pre-correction hashes of five supplemental files.
 - Explain bootstrap blockers and preserve C0/C1, remote admission, F09 and P08 boundaries.
 - Publish text evidence only; retain binary assets locally and preserve a durable review packet.
 
@@ -24,4 +25,5 @@ Checkpoint B evidence needs a durable, inspectable PR so an independent reviewer
 - [x] Include observed eight-case synthetic results and successful staging verification.
 - [x] Run the existing PR-body checker directly with installed pinned Elixir.
 - [ ] make -C elixir all: not run; dependencies are absent and acquisition remains outside authorization.
-- [ ] Exact-candidate CI and independent acceptance.
+- [ ] Fresh exact-candidate CI and independent diff review.
+- [ ] Full-payload preservation, independent backup and formal Checkpoint B acceptance.
