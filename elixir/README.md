@@ -478,6 +478,12 @@ The observability UI now runs on a minimal Phoenix stack:
 
 ## Testing
 
+The dormant [P09 qualification assessment](../docs/symphony-hardening-playbook-v4.1/P09_DEVELOPMENT_ASSESSMENT.md)
+records identity declarations and artifact byte integrity for all frozen OB, ET
+and BP requirements within bounded development inputs. Claim applicability,
+catalog binding, proof verification and independent acceptance remain unverified.
+It does not run host probes or grant runtime or qualification authority.
+
 ```bash
 make all
 ```
