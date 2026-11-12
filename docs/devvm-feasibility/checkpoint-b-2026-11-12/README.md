@@ -53,8 +53,14 @@ inventory covered 289 records and passed verification.
 
 ## Owner decision on correction provenance
 
-On 2026-11-12, the owner approved a limited historical-provenance exception for five supplemental
-audit files. The independent investigator recovered the original staging-session activity. At
+The owner decision is the user message titled `Owner Decision — SYMPHONY_DEVVM_05_R1`, position 48
+in `t3-thread://v2/fdfd1f03-53cf-41e7-8d37-6f5313c72d55/b0edc717-14bb-4f31-88ec-19d5affde10b`,
+recorded at `2026-11-12T06:56:45.510Z`. The approving authority is the user identifying the message
+as the owner decision. It states `APPROVE LIMITED HISTORICAL-PROVENANCE EXCEPTION` and
+`I accept a narrowly scoped evidence exception for the five supplemental Checkpoint B audit files whose pre-correction SHA-256 values were not recorded.`
+Its scope and exclusions are stated below; it does not establish any other acceptance or authority.
+
+The independent investigator recovered the original staging-session activity. At
 position 323, an attempt expecting mode 0644 failed before its permission-changing loop. At position
 325, a scan recorded these five files as mode 0664 and owned by UID 1000. At position 327, the
 recorded Python operation checked each path's type, ownership and mode, called `Path.chmod(0o600)`,
