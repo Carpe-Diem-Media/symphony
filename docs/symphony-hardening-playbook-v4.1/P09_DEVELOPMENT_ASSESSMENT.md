@@ -131,3 +131,79 @@ external review verification before either later lifecycle edge can open.
 This foundation deliberately supplies neither a generic verifier callback nor a
 caller-controlled approval flag. Real Codex/provider/host qualification remains
 outside this task. Existing H-080B proof requirements are unchanged.
+
+## P09-DEV-02 frozen-reference binding
+
+Task `P09_DEV_02` authorizes a dormant local development increment on merged
+main `4dc2cc0369874dc152931c38464e1fdfa87704f2`, tree
+`a659f7c9d8e92ed920b9179bbb1cd22b4cd3dfd5`. It adds
+`SymphonyElixir.Gate2.FrozenClaimBinding` without changing the frozen inventory,
+qualification manifest, operational admission or either higher lifecycle guard.
+
+The single supported selection is `ET-005` / `EB`, and the verified property is
+**frozen-reference binding only**. The accepted freeze packet records H-080B's
+original executable/configuration/platform scope and the need for separate
+0.162.1 proof. The [freeze acceptance](GATE2_INVENTORY_FREEZE_ACCEPTANCE_2026-11-02.md)
+establishes the accepted record. The canonical plan pins its raw bytes; K5 and
+the merged catalogue define ET membership and EB/IR slots. The accepted source
+record is the authoritative producer of this reference definition. There is no
+authenticated producer of a new implementation proof in this slice.
+
+Compilation verifies the exact raw SHA-256 pins of the packet, acceptance record,
+canonical plan and merged P09 catalogue, then decodes the same reads. It compares
+the catalogue's ET-005 projection and EB/IR membership with the pinned definition.
+A future authorized catalogue revision requires a new reviewed verifier pin;
+recomputing a caller-provided hash cannot select a new authority.
+
+`reference/0` returns the fixed catalogue digest, full frozen ET-005 definition
+and source descriptor. That metadata alone is not a verification result.
+`evaluate/3` takes a list of at most one binding, a `QualificationIdentity` and
+an explicit UTC cutoff. The binding has exactly these four fields:
+
+- `catalog_sha256`, the pinned merged catalogue's exact raw identity.
+- `definition`, the complete frozen ET-005 row, including inventory references,
+  linked obligations, authority class, transfer limits and new-proof requirement.
+- `source`, the exact descriptor returned by `reference/0`, including accepted
+  source commit/tree, packet blob/digest and plan/acceptance digests.
+- `evidence`, the existing closed eight-field development envelope. It must
+  select ET-005/EB, bind every identity declaration and contain the exact accepted
+  packet bytes. The existing 1 MiB artifact bound and UTC interval checks apply.
+
+The list walk inspects at most two cells and refuses duplicates or conflicts
+before hashing. Invalid shape, changed source, changed meaning, wrong catalogue,
+wrong proof class or unsupported scope returns `REFUSED` with a fixed reason.
+The byte-integrity check reuses `EvidenceApplicability`; a valid digest of some
+other artifact remains insufficient. No producer name, success flag, callback,
+runtime file path or expected-hash override is accepted.
+
+The result keeps the properties separate:
+
+- `artifact_integrity=VERIFIED_BYTES` means supplied bytes match their digest.
+- `reference_binding=VERIFIED` and
+  `reference_provenance=PINNED_ACCEPTED_RECORD` require those bytes to match the
+  accepted packet, exact definition, source descriptor and catalogue as well.
+  This identifies accepted content provenance, not the submitter or transport.
+- `claim_applicability`, `run_provenance`, `proof_status`,
+  `independent_acceptance` and `operational_host_qualification` remain
+  `UNVERIFIED`, even after a reference binds. Matching qualification declarations
+  do not independently measure the candidate or authenticate a host clock.
+
+Each assessment begins `UNVERIFIED` and ends `REFERENCE_BOUND` only after all
+guards pass; otherwise it ends `REFUSED`. Refusal is terminal for that assessment.
+`reload/4` ignores saved state and recomputes from current records, bytes, identity
+and cutoff. A reference can therefore become refused on expiry or replacement.
+Evaluation has no persistent writes or runtime/host effects. Retrying recomputes
+the same bounded checks and confers no execution entitlement.
+
+The new result is not a qualification evidence envelope. Passing it to
+`Qualification.assess/3` refuses; all 218 proof slots remain unverified. Neither
+mechanical qualification nor independent review is opened. The next dependency
+is still an independently reviewed proof producer/verifier contract, accepted
+predecessor and numerical profiles, and exact applicable host observations.
+
+Focused regression command:
+
+```sh
+cd elixir
+mise exec -- mix test test/symphony_elixir/gate2_frozen_claim_binding_test.exs test/symphony_elixir/gate2_qualification_manifest_test.exs test/symphony_elixir/gate2_governance_projection_test.exs test/symphony_elixir/runtime_isolation_test.exs test/symphony_elixir/governance_check_test.exs
+```
