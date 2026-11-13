@@ -486,8 +486,13 @@ It does not run host probes or grant runtime or qualification authority.
 P09-DEV-02 adds `Gate2.FrozenClaimBinding` for the single ET-005/EB accepted
 frozen-reference property. Exact source/catalogue/definition matching verifies
 that reference only; implementation applicability, external-run provenance and
-all 218 mechanical proof slots remain unverified. The linked P09 document
-defines the closed API, refusal reasons and reload lifecycle.
+all 218 mechanical proof slots remain unverified.
+P09-DEV-03 adds `Gate2.ImplementationProof`: a closed ET-005/EB
+record for the selected Codex 0.162.1 implementation. `assess/3` checks supplied
+bytes and declarations; `verify/3` and `reload/4` refuse proof authentication.
+No installed producer, trusted receipt store or qualified host/profile is implied.
+
+The linked P09 document defines the closed API, refusal reasons and reload lifecycle.
 
 ```bash
 make all
