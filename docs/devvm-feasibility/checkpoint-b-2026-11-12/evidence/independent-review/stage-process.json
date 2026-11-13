@@ -1,0 +1,22 @@
+{
+  "start": {
+    "current_time": "2026-11-12 05:25:09 UTC"
+  },
+  "end": {
+    "current_time": "2026-11-12 05:25:24 UTC"
+  },
+  "result": {
+    "chunk_id": "910b11",
+    "wall_time_seconds": 4.991780933,
+    "exit_code": 0,
+    "original_token_count": 20,
+    "output": "STAGING_COMPLETE_BINARIES_NOT_EXECUTED; cleanup requires separate authorization\n"
+  },
+  "execution_count": 1,
+  "script_identity": {
+    "corrected_shell_sha256": "e3963737564282b6c0265c380a0609e1121704ee159ef46687511feb12860863",
+    "only_accepted_replacements": true,
+    "python_body_sha256": "7d50783d7ba4968bb0ccd6ca2b569616ecbe6658400465992bc3b9cb921dc021",
+    "reviewed_shell_sha256": "7bb1f92021f84523122edc216715c37e2094a32b92c9bdf2fd31428786e3727b"
+  }
+}

@@ -1,0 +1,4 @@
+Operator explicitly replied: Approve Checkpoint B only.
+One staging run authorized. No downloaded executable invocation, image build, VM operation, host configuration change, source modification or cleanup authorized.
+Checkpoint C0=HOLD
+Checkpoint C1=HOLD

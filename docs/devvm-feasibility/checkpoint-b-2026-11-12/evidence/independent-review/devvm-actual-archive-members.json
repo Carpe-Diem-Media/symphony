@@ -1,0 +1,50 @@
+[
+  {
+    "archive_name": "devvm-0.1.0-linux-amd64/CHANGELOG.md",
+    "canonical_name": "devvm-0.1.0-linux-amd64/CHANGELOG.md",
+    "tar_type": "0",
+    "archive_mode": "0o644",
+    "archive_uid": 501,
+    "archive_gid": 20,
+    "size": 3372,
+    "linkname": "",
+    "pax_headers": {},
+    "sha256": "f67608528871b8fe626db30bde92aad86c514fee4a6d34901c1b3b9ac6c774d5"
+  },
+  {
+    "archive_name": "devvm-0.1.0-linux-amd64/LICENSE",
+    "canonical_name": "devvm-0.1.0-linux-amd64/LICENSE",
+    "tar_type": "0",
+    "archive_mode": "0o644",
+    "archive_uid": 501,
+    "archive_gid": 20,
+    "size": 1061,
+    "linkname": "",
+    "pax_headers": {},
+    "sha256": "6a2b097737f1bcad8866ae95af710b9417176f848080bb675b4ef394646eee56"
+  },
+  {
+    "archive_name": "devvm-0.1.0-linux-amd64/README.md",
+    "canonical_name": "devvm-0.1.0-linux-amd64/README.md",
+    "tar_type": "0",
+    "archive_mode": "0o644",
+    "archive_uid": 501,
+    "archive_gid": 20,
+    "size": 6669,
+    "linkname": "",
+    "pax_headers": {},
+    "sha256": "7ccd950090447f44d47e6defe6ae64def74f181c30e136d96b2acd7721450b9f"
+  },
+  {
+    "archive_name": "devvm-0.1.0-linux-amd64/devvm",
+    "canonical_name": "devvm-0.1.0-linux-amd64/devvm",
+    "tar_type": "0",
+    "archive_mode": "0o755",
+    "archive_uid": 501,
+    "archive_gid": 20,
+    "size": 16838816,
+    "linkname": "",
+    "pax_headers": {},
+    "sha256": "76565db17a7866268f86bd82362f0bd6ce1bb8e2d930166bf3bb37f250974c2b"
+  }
+]

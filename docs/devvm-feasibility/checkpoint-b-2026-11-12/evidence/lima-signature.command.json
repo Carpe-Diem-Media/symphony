@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "/usr/bin/gpgv",
+    "--homedir",
+    "/home/jcschoeman96/sdv02/verify",
+    "--status-fd",
+    "1",
+    "--keyring",
+    "/home/jcschoeman96/sdv02/verify/lima-release.gpg",
+    "/home/jcschoeman96/sdv02/downloads/lima.SHA256SUMS.asc",
+    "/home/jcschoeman96/sdv02/downloads/lima.SHA256SUMS"
+  ],
+  "start": "2026-11-12T05:25:12.816930+00:00",
+  "end": "2026-11-12T05:25:12.819120+00:00",
+  "exit": 0
+}

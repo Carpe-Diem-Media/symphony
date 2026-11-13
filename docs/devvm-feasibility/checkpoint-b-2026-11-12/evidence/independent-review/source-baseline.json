@@ -1,0 +1,12 @@
+{
+  "canonical_repository": "Carpe-Diem-Media/symphony",
+  "main_sha": "2ba7cb5f49399cbe41ea527af5abcdac0dda1281",
+  "main_tree": "75d6df5e972bd253b272974dd8adec6452f5e00d",
+  "local_sha": "ea696d1453dfef81c869cdc4fbda77bfa135a416",
+  "local_tree": "d854d294f83124bd2ba4351dfd30fa7da3af6cd9",
+  "main_change_since_review": [
+    "AGENTS.md"
+  ],
+  "index_sha256_before": "0806dd40fcc7a0d399a27bc700181296706a916721c63c88fdf1684865acb3de",
+  "index_sha256_after": "0806dd40fcc7a0d399a27bc700181296706a916721c63c88fdf1684865acb3de"
+}
