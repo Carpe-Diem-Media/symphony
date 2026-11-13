@@ -207,3 +207,140 @@ Focused regression command:
 cd elixir
 mise exec -- mix test test/symphony_elixir/gate2_frozen_claim_binding_test.exs test/symphony_elixir/gate2_qualification_manifest_test.exs test/symphony_elixir/gate2_governance_projection_test.exs test/symphony_elixir/runtime_isolation_test.exs test/symphony_elixir/governance_check_test.exs
 ```
+
+## P09-DEV-03 implementation-proof contract
+
+The scoped owner task `P09_DEV_03` authorizes local source development and
+unprivileged tests on main `90764cc8eabc051c529e7135427a9879c4a5584d`, tree
+`d1c1503ec05d7aef03537478c1349526e6eb7eae`. It adds the dormant
+`SymphonyElixir.Gate2.ImplementationProof` boundary for **ET-005/EB only**.
+`EB` means `EVIDENCE_BINDING` under canonical plan section D. K5 preserves
+H-080B's historical acceptance and separately requires proof for the selected
+Codex 0.162.1 implementation. No frozen inventory or qualification slot changes.
+
+### Authority and producer selection
+
+The existing `FrozenClaimBinding.reference/0` owns the exact frozen claim,
+catalogue and accepted source descriptors, including the pinned plan defining EB.
+The new record must match that whole reference. Those version-controlled pins
+authenticate reference content only. They cannot authenticate a new observation.
+
+P08's [host-evidence specification](GATE2_P08_HOST_EVIDENCE_SPEC.md), sections
+1.4, 2.3, 5 and 11, describes independently installed observer/custody and
+qualification boundaries. Its header still identifies that specification as
+proposed. It is not an accepted ET-005 implementation-proof producer. The
+[P08 authority operator procedure](P08_T04_AUTHORITY_OPERATOR.md), sections
+"Operator trust before verification" and "Refusal-only external release",
+requires independent identity/custody and refuses caller-created receipts.
+`AttemptBoundary` and the qualification runner retain their deliberate verifier
+refusals. This increment reuses those trust limits and the existing P09 identity
+and envelope; it introduces no replacement signing, installation or host protocol.
+
+No accepted new-run ET-005 producer or substantive verifier is available.
+Consequently **all implementation-proof verification refuses**. Neither a
+process name, path, authority-record hash, self-declared signature, caller key,
+test fixture nor an independently intact artifact establishes producer authority.
+
+### Closed development record
+
+`assess/3` receives Elixir terms, not raw JSON or a filesystem path. The record
+has exactly nine string keys, with no extension or approval fields:
+
+- `schema` is `P09-ET005-EB-IMPLEMENTATION-1`.
+- `reference` equals `FrozenClaimBinding.reference/0` in full.
+- `selected_implementation` is exactly `codex-cli 0.162.1`.
+- `evidence` is the existing closed eight-field development envelope. Its claim
+  is ET-005, proof class EB, scope DEVELOPMENT_COMPONENT, and all sixteen
+  `QualificationIdentity` declarations must match the supplied current identity.
+  These cover candidate, source tree, upstream, patch, executable, helper,
+  scanner, kernel, LSM, networking, storage, crypto, configuration, policy,
+  capacity and host-profile digests. Matching declarations are not measurements.
+- `producer` has `component_sha256` and `authority_record_sha256`, both declared
+  SHA-256 references. No key or authority can be selected through them.
+- `observation` has `observation_id`, `run_id`, `attempt_id`, `started_at` and
+  `completed_at`. The IDs are 64 lowercase hex declarations, using P08's nonce
+  representation without claiming uniqueness or enrollment. Times use the
+  existing nonnegative signed-64-bit UTC-second representation.
+- `custody` has `evidence_id`, `evidence_sha256`, `custody_record_sha256` and
+  `integrity_method`. The first two must match the observation ID and artifact
+  digest. The custody-record digest is an untrusted reference. The only method
+  is `SHA256_SUPPLIED_BYTES`, never a signature or custody-authentication method.
+- `prerequisites` has exactly `p08_host_qualification`, `capacity_profile` and
+  `independent_review`, each `UNVERIFIED`. This slice cannot accept a supplied
+  predecessor, operational profile or review assertion.
+- `claimed_result` is PASS, FAIL or UNCERTAIN. It is never a verified result.
+
+The observation must satisfy `started_at <= completed_at = observed_at <= cutoff
+< expires_at`. Future, reversed, missing, mismatched and expired declarations
+refuse. The cutoff and interval are supplied declarations, not an authenticated
+clock or an operational validity grant. No new operational lifetime is chosen.
+
+At most one record is inspected, with at most two list cells examined before
+hashing. Duplicate, conflicting, flooded, improper or non-list submissions
+refuse as a whole. The existing 1 MiB artifact ceiling, fixed field counts,
+fixed labels and digest/time representations bound development validation.
+No caller keys are sorted or recursively enumerated. These checks constrain
+already allocated terms, not a network decoder or accepted host capacity.
+
+### Properties and lifecycle
+
+`assess/3` can establish `artifact_integrity=VERIFIED_BYTES`,
+`catalog_binding=MATCHED_PINNED_DEFINITION` and a current **declared** interval.
+It cannot establish producer/custody/observation authenticity, replay protection,
+actual implementation applicability, host/profile qualification, proof status,
+independent acceptance or a verified result. Those properties remain UNVERIFIED.
+Recomputing a digest after substitution may pass byte characterization; it never
+passes proof verification. This distinction is exercised directly by tests.
+
+The record lifecycle has these guarded transitions:
+
+1. No record yields ABSENT. A single submitted record enters RECEIVED_UNTRUSTED.
+2. Exact schema, frozen reference, selected implementation, identity, correlated
+   metadata, declared interval and supplied-byte integrity yield STRUCTURALLY_VALID.
+   Any failed guard yields REFUSED with a fixed machine-readable reason.
+3. SOURCE_AUTHENTICATED requires an accepted independently controlled producer
+   and custody verifier. The interface is unconfigured, so `verify/3` refuses
+   with TRUSTED_IMPLEMENTATION_PRODUCER_UNCONFIGURED after structural success.
+4. CLAIM_APPLICABLE additionally requires accepted exact host/profile and fresh,
+   replay-protected observations. PROOF_VERIFIED additionally requires substantive
+   ET-005/EB checks. Neither state is reachable here. Independent review remains
+   separate even from those future states.
+
+Verification always terminates REFUSED and preserves the achieved
+`structural_state` and lifecycle path. A structural result is no execution token.
+There are no persistent writes, host probes, processes, callbacks or operational
+side effects. REFUSED is terminal for that assessment. A new call rechecks all
+inputs; retry supplies neither authority nor a reset of consumed entitlement.
+
+`reload/4` discards saved states, hashes, claimed PASS and acceptance flags, then
+calls current verification. It rechecks the compiled pinned reference and current
+supplied identity, bytes and cutoff. It does not independently observe the host
+or reread deployment files. Changed inputs or expiry may regress the structural
+state; no saved record can restore authentication. Without an authoritative
+receipt store, cross-call replay detection is unverified. Repeated receipts,
+including those presented from a fresh process with renewed IDs or times,
+always refuse proof verification. No synthetic fixture is recorded as real proof.
+
+`Qualification`, operational RuntimeIsolation and Governance.Check do not consume
+this result. All 218 operational proof slots remain unverified, both higher
+qualification edges remain closed, and qualification remains UNQUALIFIED.
+
+### Next dependency and verification
+
+The next dependency is an independently accepted ET-005/EB producer/verifier
+contract bound to the actual installed producer, exact source/binary/configuration,
+qualified host/profile, authenticated clock/custody and replay history, and
+substantive new-implementation checks. P01-P08, accepted numerical profiles and
+independent proof review remain prerequisites. No host execution, signing,
+source publication, H-100 or Gate 2 authority follows from this component.
+
+Focused command:
+
+```sh
+cd elixir
+mise exec -- mix test test/symphony_elixir/gate2_implementation_proof_test.exs test/symphony_elixir/gate2_frozen_claim_binding_test.exs test/symphony_elixir/gate2_qualification_manifest_test.exs test/symphony_elixir/gate2_governance_projection_test.exs test/symphony_elixir/runtime_isolation_test.exs test/symphony_elixir/governance_check_test.exs
+```
+
+The existing complete local gate is `make all`. Its H-080B sandbox self-checks
+exercise finite Python sentinels with network disabled; they do not start a model
+turn or use a live provider, and they do not establish this ET-005 proof.
