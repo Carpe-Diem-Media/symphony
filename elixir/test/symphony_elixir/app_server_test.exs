@@ -2058,11 +2058,68 @@ defmodule SymphonyElixir.AppServerTest do
 
       runtime_admit = fn _worker_host, _executable, _opts -> {:ok, :admitted} end
 
+      assert {:error, {:port_exit, 2}} =
+               AppServer.start_session(
+                 workspace,
+                 Profile.runtime_options(profile) ++
+                   [
+                     runtime_session_root: session_root,
+                     test_runtime_workspace_admit: workspace_admit,
+                     test_runtime_isolation_admit: runtime_admit
+                   ]
+               )
+
+      assert Process.get(admission_key) == 2
+      refute File.exists?(session_root)
+    after
+      Process.delete(:h080b_workspace_namespace_spawn_count)
+      File.rm_rf(test_root)
+    end
+  end
+
+  @tag :authority_binding_correction
+  test "pilot launch retains its prepared home when namespace observation is unavailable" do
+    test_root =
+      Path.join(
+        System.tmp_dir!(),
+        "symphony-app-server-namespace-spawn-failure-#{System.unique_integer([:positive])}"
+      )
+
+    workspace_root = Path.join(test_root, "workspaces")
+    workspace = Path.join(workspace_root, "MT-NAMESPACE-SPAWN-FAILURE")
+    codex_binary = Path.join(test_root, "codex")
+    session_root = Path.join(test_root, "session")
+    File.mkdir_p!(workspace)
+    File.write!(codex_binary, "#!/bin/sh\nexit 0\n")
+    File.chmod!(codex_binary, 0o755)
+
+    try do
+      write_workflow_file!(Workflow.workflow_file_path(),
+        tracker_kind: "memory",
+        workspace_root: workspace_root,
+        agent_routing: "routed",
+        codex_command: "#{codex_binary} app-server"
+      )
+
+      profile = Config.settings!().agent.profiles["builder"]
+      admission_key = :h080b_workspace_namespace_spawn_count
+      Process.put(admission_key, 0)
+
+      workspace_admit = fn _issue, _workspace ->
+        invocation = Process.get(admission_key, 0) + 1
+        Process.put(admission_key, invocation)
+        if invocation == 2, do: File.rm_rf!(workspace)
+        :ok
+      end
+
+      runtime_admit = fn _worker_host, _executable, _opts -> {:ok, :admitted} end
+
       assert {:error, {:containment_unconfirmed, :termination_timeout}} =
                AppServer.start_session(
                  workspace,
                  Profile.runtime_options(profile) ++
                    [
+                     absolute_deadline_ms: System.monotonic_time(:millisecond) + 5_000,
                      runtime_session_root: session_root,
                      test_runtime_workspace_admit: workspace_admit,
                      test_runtime_isolation_admit: runtime_admit
@@ -2588,6 +2645,72 @@ defmodule SymphonyElixir.AppServerTest do
     assert File.exists?(Path.join(home, "session-marker"))
   end
 
+  @tag :authority_binding_correction
+  test "routed namespace observation is strict only for a deadline-bearing pilot" do
+    root = Path.join(System.tmp_dir!(), "pilot-namespace-scope-#{System.unique_integer([:positive])}")
+    workspace = Path.join(root, "workspaces/item")
+    binary = Path.join(root, "codex")
+    File.mkdir_p!(workspace)
+
+    thread_result = %{
+      "thread" => %{"id" => "offline-scope"},
+      "activePermissionProfile" => %{"id" => "symphony_planner_read"},
+      "runtimeWorkspaceRoots" => [workspace],
+      "cwd" => workspace
+    }
+
+    write_direct_routed_codex!(binary, thread_result)
+
+    workflow_opts = [
+      tracker_kind: "memory",
+      workspace_root: Path.dirname(workspace),
+      agent_routing: "routed",
+      codex_command: "#{binary} app-server"
+    ]
+
+    write_workflow_file!(Workflow.workflow_file_path(), workflow_opts)
+    profile = Config.settings!().agent.profiles["planner"]
+
+    for pilot? <- [false, true] do
+      admission_opts = [
+        test_runtime_workspace_admit: &admit_workspace_for_test/2,
+        test_runtime_isolation_admit: &admit_for_test/3
+      ]
+
+      opts = Profile.runtime_options(profile) ++ admission_opts
+      opts = if pilot?, do: Keyword.put(opts, :absolute_deadline_ms, System.monotonic_time(:millisecond) + 5_000), else: opts
+      assert {:ok, session} = AppServer.start_session(workspace, opts)
+
+      try do
+        if pilot?, do: assert(is_map(session.runtime_namespace)), else: assert(is_nil(session.runtime_namespace))
+      after
+        assert :ok = AppServer.stop_session(session)
+      end
+    end
+
+    File.rm_rf!(root)
+  end
+
+  @tag :authority_binding_correction
+  test "only a pilot requires PID1 proof after a routed guard acknowledges stop" do
+    for pilot? <- [false, true] do
+      root = Path.join(System.tmp_dir!(), "pilot-guard-proof-scope-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(root)
+      port = Port.open({:spawn_executable, ~c"/usr/bin/python3"}, [:binary, :exit_status, args: [~c"-c", ~c"import sys; sys.stdin.buffer.readline()"]])
+      session = %{port: port, ephemeral_home: root, runtime_containment: :linux_pid_namespace}
+      session = if pilot?, do: Map.put(session, :absolute_deadline_ms, System.monotonic_time(:millisecond) + 500), else: session
+
+      if pilot? do
+        assert {:error, {:containment_unconfirmed, :termination_timeout}} = AppServer.stop_session(session)
+        assert File.dir?(root)
+        File.rm_rf!(root)
+      else
+        assert :ok = AppServer.stop_session(session)
+        refute File.exists?(root)
+      end
+    end
+  end
+
   test "routed containment timeout retains its session home" do
     test_root =
       Path.join(
@@ -2685,7 +2808,8 @@ defmodule SymphonyElixir.AppServerTest do
                port: port,
                os_pid: os_pid,
                ephemeral_home: home,
-               runtime_containment: :linux_pid_namespace
+               runtime_containment: :linux_pid_namespace,
+               absolute_deadline_ms: System.monotonic_time(:millisecond) + 1_000
              })
 
     assert File.exists?(Path.join(home, "session-marker"))

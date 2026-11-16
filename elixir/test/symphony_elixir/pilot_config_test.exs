@@ -79,6 +79,36 @@ defmodule SymphonyElixir.PilotConfigTest do
              Config.pilot_configuration_identity(second, "prompt")
   end
 
+  @tag :authority_binding_correction
+  test "pilot snapshot includes selected Planner bytes and the trusted Git identity" do
+    settings = settings()
+    assert {:ok, snapshot} = Config.pilot_configuration_snapshot(settings, "prompt")
+    assert snapshot.role_policy.bytes == File.read!(snapshot.role_policy.path)
+    assert snapshot.git.path == "/usr/bin/git"
+    assert snapshot.git.sha256 == Base.encode16(:crypto.hash(:sha256, File.read!("/usr/bin/git")), case: :lower)
+    assert snapshot.identity == Config.pilot_configuration_identity(settings, "prompt")
+  end
+
+  @tag :authority_binding_correction
+  test "trusted executable verification refuses missing, user-owned and symlink substitutes" do
+    root = Path.join(System.tmp_dir!(), "pilot-git-trust-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(root)
+    candidate = Path.join(root, "git")
+
+    try do
+      assert {:error, :untrusted_path} = SymphonyElixir.PathSafety.trusted_executable_identity(candidate)
+      File.write!(candidate, "#!/bin/sh\nexit 0\n")
+      File.chmod!(candidate, 0o755)
+      assert {:error, :untrusted_path} = SymphonyElixir.PathSafety.trusted_executable_identity(candidate)
+      File.rm!(candidate)
+      File.ln_s!("/usr/bin/git", candidate)
+      assert {:error, :untrusted_path} = SymphonyElixir.PathSafety.trusted_executable_identity(candidate)
+      assert {:ok, %{path: "/usr/bin/git"}} = SymphonyElixir.PathSafety.trusted_executable_identity("/usr/bin/git")
+    after
+      File.rm_rf!(root)
+    end
+  end
+
   test "schema retains a configured grant and rejects explicit null" do
     settings = settings()
     grant = grant(settings)

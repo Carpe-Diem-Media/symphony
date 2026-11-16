@@ -9,6 +9,7 @@ defmodule SymphonyElixir.AgentRunner do
   alias SymphonyElixir.AgentRuntime.RuntimeAttempt.Identity, as: RuntimeAttemptIdentity
   alias SymphonyElixir.Codex.IsolationProfile
   alias SymphonyElixir.Dependency.Guard
+  alias SymphonyElixir.PathSafety
   alias SymphonyElixir.Tracker.Issue
   alias SymphonyElixir.WorkControl.{LifecycleAssessment, WorkflowLifecycle, WorkItem}
   alias SymphonyElixir.Workspace.OwnershipLedger
@@ -93,13 +94,16 @@ defmodule SymphonyElixir.AgentRunner do
              issue.project_id == grant.plane_project_id,
          %AttemptLedger{} <- ledger,
          :ok <- AttemptLedger.validate_pilot_attempt(ledger, grant, identity),
+         {:ok, authority} <- current_pilot_authority(settings),
+         true <- authority.identity == grant.config_identity,
          :ok <- AttemptLedger.claim_pilot_launch(ledger, grant, identity) do
       deadline = pilot_deadline(Keyword.get(opts, :absolute_deadline_ms), grant.deadline_ms)
-      opts = Keyword.put(opts, :absolute_deadline_ms, deadline)
+      opts = opts |> Keyword.put(:absolute_deadline_ms, deadline) |> Keyword.put(:pilot_authority, authority) |> Keyword.put(:pilot_workflow, authority.workflow)
 
       Process.put({__MODULE__, :pilot_result}, %{
         ledger: ledger,
         grant: grant,
+        authority: authority,
         identity: identity,
         answer: nil,
         item_id: nil,
@@ -211,17 +215,46 @@ defmodule SymphonyElixir.AgentRunner do
       nil ->
         :ok
 
-      %{grant: grant} ->
+      %{grant: grant, authority: %{git: git}} ->
         args = ["--no-optional-locks", "--no-replace-objects", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-C", workspace]
 
-        with {output, 0} <- System.cmd("git", args ++ ["rev-parse", "HEAD", "HEAD^{tree}"], stderr_to_stdout: true),
+        with {output, 0} <- pilot_git(git, args ++ ["rev-parse", "HEAD", "HEAD^{tree}"]),
              [commit, tree] <- String.split(output),
              true <- commit == grant.source_commit and tree == grant.source_tree,
-             {_, 0} <- System.cmd("git", args ++ ["diff", "--quiet", "HEAD", "--"], stderr_to_stdout: true),
-             {"", 0} <- System.cmd("git", args ++ ["ls-files", "--others"], stderr_to_stdout: true) do
+             {_, 0} <- pilot_git(git, args ++ ["diff", "--quiet", "HEAD", "--"]),
+             {"", 0} <- pilot_git(git, args ++ ["ls-files", "--others"]) do
           :ok
         else
           _ -> {:error, :pilot_source_mismatch}
+        end
+    end
+  end
+
+  defp pilot_git(git, args) do
+    case PathSafety.trusted_executable_identity(git.path) do
+      {:ok, ^git} -> System.cmd(git.path, args, stderr_to_stdout: true)
+      _ -> {:error, :pilot_git_untrusted}
+    end
+  end
+
+  defp current_pilot_authority(settings) do
+    with {:ok, %{prompt_template: prompt}} <- SymphonyElixir.Workflow.load() do
+      Config.pilot_configuration_snapshot(settings, prompt)
+    end
+  end
+
+  defp role_prompt_for_launch(route, opts) do
+    case Keyword.get(opts, :pilot_authority) do
+      nil ->
+        {:ok, PromptBuilder.role_prompt(route)}
+
+      authority ->
+        with {:ok, ^authority} <- current_pilot_authority(Config.settings!()),
+             true <- authority.role_policy.profile_name == route.profile_name,
+             true <- authority.role_policy.prompt_name == (route.profile.prompt || route.profile_name) do
+          {:ok, authority.role_policy.bytes}
+        else
+          _ -> {:error, :pilot_authority_changed}
         end
     end
   end
@@ -604,9 +637,8 @@ defmodule SymphonyElixir.AgentRunner do
       |> Keyword.delete(:issue_state_fetcher)
       |> Keyword.delete(:plane_epoch_snapshot_reader)
 
-    role_prompt = PromptBuilder.role_prompt(route)
-
-    with {:ok, session} <- runtime.start_session(workspace, runtime_opts) do
+    with {:ok, role_prompt} <- role_prompt_for_launch(route, opts),
+         {:ok, session} <- runtime.start_session(workspace, runtime_opts) do
       send_runtime_attempt_session_started(codex_update_recipient, issue, runtime_identity)
       notify_runtime_attempt_lifecycle(codex_update_recipient, issue, runtime_identity, :runtime_started)
 
@@ -770,7 +802,8 @@ defmodule SymphonyElixir.AgentRunner do
 
     prompt = build_turn_prompt(context.issue, prompt_opts, turn_number, max_turns)
 
-    with {:ok, turn_result} <-
+    with :ok <- validate_pilot_prompt_authority(context),
+         {:ok, turn_result} <-
            context.runtime.run_turn(
              context.session,
              prompt,
@@ -786,6 +819,17 @@ defmodule SymphonyElixir.AgentRunner do
              )
            ) do
       finish_completed_turn(context, turn_result, turn_number, max_turns)
+    end
+  end
+
+  defp validate_pilot_prompt_authority(context) do
+    if pilot_result_active?() do
+      case role_prompt_for_launch(context.route, context.opts) do
+        {:ok, prompt} when prompt == context.role_prompt -> :ok
+        _ -> {:error, :pilot_authority_changed}
+      end
+    else
+      :ok
     end
   end
 

@@ -18,9 +18,21 @@ budget needs separate owner approval.
 The Symphony project namespace is `project_id`. `plane_project_id` identifies the
 disposable provider project. Calculate `config_identity` with
 `Config.pilot_configuration_identity(settings, workflow_prompt)` after finalizing
-the effective configuration. It hashes the configuration and prompt, excluding
-credential values and the separately retained grant. The checkout must match both
-source identities and have no tracked changes or untracked files before the model starts.
+the effective configuration and effective role-prompt root. The identity includes
+configuration, workflow prompt, the selected Planner policy's exact file bytes and
+resolved paths, and the trusted `/usr/bin/git` path and SHA-256. Credential values
+and the separately retained grant are excluded. Pilot policies require a readable,
+nonempty selected file. Embedded and inline policy fallbacks remain available only
+outside the pilot. A policy/root or Git identity change invalidates the grant.
+Existing grants computed without these inputs cannot authorize this candidate.
+
+AgentRunner captures these inputs before its one-use launch claim, revalidates
+before session launch and the model turn, and renders the captured policy bytes
+without trimming or reloading them. Checkout verification revalidates the trusted
+Git identity before each command and executes its absolute path. The executable
+and its ancestry must be root-owned without group/other write or set-ID bits.
+The checkout must match both source identities and have no tracked changes or
+untracked files before the model starts.
 
 The existing attempt ledger retains the exact grant. Its normal states are
 `configured`, `consumed`, `running`, `stopverified`. Dispatch synchronizes consumption
@@ -36,7 +48,9 @@ and stopping. Incoming data cannot extend it. The routed PID namespace remains i
 use. A stop requires independently captured namespace PID1 identity and observed
 PID1 death, plus outer-port death. Linux terminates every process in a PID namespace
 when its PID1 dies. Outer-port death alone is insufficient. Missing process evidence
-retains the workspace and ephemeral home.
+retains the workspace and ephemeral home. Independent PID1 capture and stop proof
+apply to deadline-bearing pilot sessions. Routed sessions without a pilot deadline
+retain the existing namespace guard and guarded port-stop behavior.
 
 Only a final `agentMessage` with phase `final_answer` is eligible for persistence.
 The ledger binds its complete permitted text, model completion state, attempt outcome, stop disposition and

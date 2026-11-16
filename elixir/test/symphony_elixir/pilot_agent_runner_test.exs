@@ -2,13 +2,16 @@ defmodule SymphonyElixir.PilotSyntheticRuntime do
   def start_session(_workspace, opts) do
     send(Keyword.fetch!(opts, :test_pid), {:synthetic_session, Keyword.get(opts, :absolute_deadline_ms)})
 
+    if callback = opts[:test_after_session_start], do: callback.()
+
     case Keyword.get(opts, :test_behavior) do
       :startup_failure -> {:error, :synthetic_startup_failure}
       _ -> {:ok, %{opts: opts}}
     end
   end
 
-  def run_turn(session, _prompt, _issue, opts) do
+  def run_turn(session, prompt, _issue, opts) do
+    if session.opts[:test_capture_prompt], do: send(session.opts[:test_pid], {:synthetic_prompt, prompt})
     send(Keyword.fetch!(session.opts, :test_pid), :synthetic_turn)
     answer = Keyword.get(session.opts, :test_answer, "The tracked file contains one constant. Plan: inspect its callers.")
 
@@ -75,6 +78,21 @@ defmodule SymphonyElixir.PilotAgentRunnerTest do
     File.write!(codex, "#!/bin/sh\nexit 99\n")
     File.chmod!(codex, 0o700)
 
+    policy_root = Path.join(root, "policies")
+    File.mkdir_p!(policy_root)
+    policy_path = Path.join(policy_root, "planner.md")
+    File.write!(policy_path, "Role policy: synthetic approved Planner\nInspect source only.\n")
+    prior_policy_root = Application.get_env(:symphony_elixir, :role_prompt_root)
+    Application.put_env(:symphony_elixir, :role_prompt_root, policy_root)
+
+    on_exit(fn ->
+      if prior_policy_root do
+        Application.put_env(:symphony_elixir, :role_prompt_root, prior_policy_root)
+      else
+        Application.delete_env(:symphony_elixir, :role_prompt_root)
+      end
+    end)
+
     raw = %{
       "symphony" => %{"project_id" => "pilot-runner"},
       "tracker" => %{"kind" => "plane", "api_key" => "$PLANE_API_KEY", "workspace_slug" => "disposable", "workspace_id" => @workspace, "project_id" => @plane_project},
@@ -103,6 +121,14 @@ defmodule SymphonyElixir.PilotAgentRunnerTest do
           end)
       }
     }
+
+    raw =
+      if context[:pilot_custom_policy] do
+        File.cp!(policy_path, Path.join(policy_root, "approved-custom.md"))
+        put_in(raw, ["agent", "profiles"], %{"planner" => %{"prompt" => "approved-custom"}})
+      else
+        raw
+      end
 
     {:ok, settings} = Schema.parse(raw)
 
@@ -175,7 +201,19 @@ defmodule SymphonyElixir.PilotAgentRunnerTest do
     ]
 
     on_exit(fn -> AttemptLedger.close(ledger) end)
-    {:ok, issue: issue, opts: opts, ledger: ledger, grant: grant, identity: identity, route: route}
+
+    fixture = %{
+      issue: issue,
+      opts: opts,
+      ledger: ledger,
+      grant: grant,
+      identity: identity,
+      route: route,
+      policy_root: policy_root,
+      policy_path: policy_path
+    }
+
+    {:ok, fixture}
   end
 
   test "persists the final answer and correlations before success, survives runtime removal and restart", ctx do
@@ -349,6 +387,100 @@ defmodule SymphonyElixir.PilotAgentRunnerTest do
     assert result.final_answer =~ "Plan: inspect its callers."
     send(orchestrator, {:retry_issue, ctx.issue.id, make_ref()})
     refute_receive :synthetic_turn, 100
+  end
+
+  @tag :authority_binding_correction
+  test "pilot grant refuses policy bytes changed after grant validation", ctx do
+    File.write!(ctx.policy_path, "Role policy: substituted Planner\n")
+    assert_raise ArgumentError, ~r/pilot_configuration_invalid/, fn -> AgentRunner.run(ctx.issue, self(), ctx.opts) end
+    refute_receive {:synthetic_session, _}, 25
+  end
+
+  @tag :authority_binding_correction
+  test "pilot grant refuses a different effective policy root even with identical bytes", ctx do
+    alternate = ctx.policy_root <> "-alternate"
+    File.mkdir_p!(alternate)
+    File.cp!(ctx.policy_path, Path.join(alternate, "planner.md"))
+    Application.put_env(:symphony_elixir, :role_prompt_root, alternate)
+    assert_raise ArgumentError, ~r/pilot_configuration_invalid/, fn -> AgentRunner.run(ctx.issue, self(), ctx.opts) end
+    refute_receive {:synthetic_session, _}, 25
+  end
+
+  for drift <- [:changed, :missing, :root] do
+    @tag :authority_binding_correction
+    @tag policy_drift: drift
+    test "policy #{drift} during admission refuses session launch with the allowance spent", ctx do
+      admission = fn _, _, _ ->
+        case ctx.policy_drift do
+          :changed -> File.write!(ctx.policy_path, "changed after validation")
+          :missing -> File.rm!(ctx.policy_path)
+          :root -> Application.put_env(:symphony_elixir, :role_prompt_root, ctx.policy_root <> "-missing")
+        end
+
+        {:ok, %{synthetic: true}}
+      end
+
+      assert_raise RuntimeError, fn ->
+        AgentRunner.run(ctx.issue, self(), Keyword.put(ctx.opts, :test_runtime_isolation_admit, admission))
+      end
+
+      refute_receive {:synthetic_session, _}, 25
+      assert {:error, _} = AttemptLedger.begin_attempt(ctx.ledger, ctx.issue.id, pilot_binding: ctx.grant)
+    end
+  end
+
+  @tag :authority_binding_correction
+  test "launched Planner prompt uses exactly the validated policy snapshot", ctx do
+    approved = File.read!(ctx.policy_path)
+    assert :ok = AgentRunner.run(ctx.issue, self(), Keyword.put(ctx.opts, :test_capture_prompt, true))
+    assert_receive {:synthetic_prompt, prompt}
+    assert prompt == approved <> "\n\n--- Workflow task ---\n" <> @prompt
+  end
+
+  @tag :authority_binding_correction
+  @tag :pilot_custom_policy
+  test "the configured Planner policy is bound instead of an unselected planner.md", ctx do
+    File.write!(ctx.policy_path, "unselected policy changed")
+    assert :ok = AgentRunner.run(ctx.issue, self(), Keyword.put(ctx.opts, :test_capture_prompt, true))
+    assert_receive {:synthetic_prompt, prompt}
+    assert prompt =~ "Role policy: synthetic approved Planner"
+    refute prompt =~ "unselected policy changed"
+  end
+
+  @tag :authority_binding_correction
+  test "policy removed during session establishment cannot start a model turn", ctx do
+    opts = Keyword.put(ctx.opts, :test_after_session_start, fn -> File.rm!(ctx.policy_path) end)
+    assert_raise RuntimeError, fn -> AgentRunner.run(ctx.issue, self(), opts) end
+    assert_receive {:synthetic_session, _}
+    assert_receive :synthetic_stopped
+    refute_receive :synthetic_turn, 25
+    assert {:error, _} = AttemptLedger.begin_attempt(ctx.ledger, ctx.issue.id, pilot_binding: ctx.grant)
+  end
+
+  @tag :authority_binding_correction
+  test "PATH substituted Git cannot fabricate a clean approved pilot checkout", ctx do
+    {:ok, workspace} = Workspace.create_for_issue(ctx.issue, nil, ctx.opts[:ownership_ledger])
+    File.write!(Path.join(workspace, "sample.ex"), "unapproved tracked bytes\n")
+    fake_bin = Path.join(ctx.policy_root, "fake-bin")
+    File.mkdir_p!(fake_bin)
+    marker = Path.join(fake_bin, "git-was-used")
+
+    File.write!(
+      Path.join(fake_bin, "git"),
+      "#!/bin/sh\nprintf used >> '#{marker}'\ncase \" $* \" in *rev-parse*) printf '%s\\n%s\\n' '#{ctx.grant.source_commit}' '#{ctx.grant.source_tree}';; esac\nexit 0\n"
+    )
+
+    File.chmod!(Path.join(fake_bin, "git"), 0o700)
+    previous = System.fetch_env!("PATH")
+    System.put_env("PATH", fake_bin <> ":" <> previous)
+
+    try do
+      assert_raise RuntimeError, fn -> AgentRunner.run(ctx.issue, self(), ctx.opts) end
+      refute_receive {:synthetic_session, _}, 25
+      refute File.exists?(marker)
+    after
+      System.put_env("PATH", previous)
+    end
   end
 
   defp wait_for_removal(orchestrator, item, remaining) when remaining > 0 do

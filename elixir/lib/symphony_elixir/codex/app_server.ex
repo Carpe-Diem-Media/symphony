@@ -392,7 +392,7 @@ defmodule SymphonyElixir.Codex.AppServer do
 
   defp start_captured_port(port, ephemeral_home, workspace, worker_host, dynamic_tool_binding, opts, session_policies) do
     namespace_result =
-      if routed_policies?(session_policies),
+      if routed_policies?(session_policies) and pilot_execution?(Keyword.get(opts, :absolute_deadline_ms)),
         do: capture_runtime_namespace(port, Keyword.get(opts, :absolute_deadline_ms)),
         else: {:ok, nil}
 
@@ -897,42 +897,7 @@ defmodule SymphonyElixir.Codex.AppServer do
     end
   end
 
-  defp validate_trusted_host_executable(path) do
-    if Enum.all?(trusted_path_ancestors(path), &trusted_path_component?/1),
-      do: :ok,
-      else: {:error, :untrusted_path}
-  rescue
-    _ -> {:error, :untrusted_path}
-  end
-
-  defp trusted_path_component?({candidate, is_executable}) do
-    with {:ok, %File.Stat{} = stat} <- File.stat(candidate),
-         true <- stat.uid == 0,
-         true <- Bitwise.band(stat.mode, 0o022) == 0,
-         true <- Bitwise.band(stat.mode, 0o6000) == 0 do
-      trusted_path_type?(stat, is_executable)
-    else
-      _failure -> false
-    end
-  end
-
-  defp trusted_path_type?(%File.Stat{type: :regular, mode: mode}, true),
-    do: Bitwise.band(mode, 0o111) != 0
-
-  defp trusted_path_type?(%File.Stat{type: :directory}, false), do: true
-  defp trusted_path_type?(_stat, _is_executable), do: false
-
-  defp trusted_path_ancestors(path) do
-    trusted_path_ancestors(Path.dirname(path), [{path, true}])
-  end
-
-  defp trusted_path_ancestors(path, acc) do
-    if path == "/" do
-      [{"/", false} | acc]
-    else
-      trusted_path_ancestors(Path.dirname(path), [{path, false} | acc])
-    end
-  end
+  defp validate_trusted_host_executable(path), do: PathSafety.validate_trusted_executable(path)
 
   defp local_port_env(dynamic_tool_binding, opts) do
     if routed_profile?(opts) do
@@ -2293,7 +2258,8 @@ defmodule SymphonyElixir.Codex.AppServer do
     end
 
     receive do
-      {:DOWN, ^ref, :port, ^port, _reason} -> verify_namespace_stopped(namespace_identity, deadline_ms)
+      {:DOWN, ^ref, :port, ^port, _reason} ->
+        if pilot_execution?(deadline_ms), do: verify_namespace_stopped(namespace_identity, deadline_ms), else: :ok
     after
       receive_timeout(@linux_guard_stop_timeout_ms, deadline_ms) ->
         Process.demonitor(ref, [:flush])

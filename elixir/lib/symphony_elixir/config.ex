@@ -8,6 +8,7 @@ defmodule SymphonyElixir.Config do
   alias SymphonyElixir.AgentRuntime.Profile
   alias SymphonyElixir.Codex.IsolationProfile
   alias SymphonyElixir.Config.Schema
+  alias SymphonyElixir.{PathSafety, PromptBuilder}
   alias SymphonyElixir.Tracker
   alias SymphonyElixir.Workflow
   alias SymphonyElixir.WorkflowStore
@@ -40,20 +41,40 @@ defmodule SymphonyElixir.Config do
   @pilot_keys ~w(project_id plane_project_id work_item_id responsibility source_commit source_tree config_identity runtime_lineage deadline_ms)a
 
   @doc """
-  Hashes the effective pilot configuration and workflow prompt without credential
-  values. The separately retained grant is excluded to avoid a self-reference. This
-  identifies configuration bytes; it does not authorize execution.
+  Hashes the effective pilot configuration, workflow prompt, selected Planner
+  policy bytes/root and trusted Git identity without credential values. The
+  separately retained grant is excluded to avoid a self-reference. This identifies
+  configuration bytes; it does not authorize execution.
   """
   @spec pilot_configuration_identity(Schema.t(), String.t()) :: String.t()
   def pilot_configuration_identity(settings, prompt) when is_binary(prompt) do
-    # Provider credentials are custody data, not part of the execution identity.
-    tracker = %{settings.tracker | api_key: nil, provider: Map.drop(settings.tracker.provider, [:api_key, "api_key"])}
-    effective = %{settings | tracker: tracker, agent: %{settings.agent | pilot: nil}}
+    case pilot_configuration_snapshot(settings, prompt) do
+      {:ok, snapshot} -> snapshot.identity
+      {:error, _} -> raise ArgumentError, "Pilot authority inputs unavailable"
+    end
+  end
 
-    {effective, prompt}
-    |> :erlang.term_to_binary([:deterministic])
-    |> then(&:crypto.hash(:sha256, &1))
-    |> Base.encode16(case: :lower)
+  @doc "Captures immutable pilot authority inputs. Unavailable policy or trusted Git refuses admission."
+  @spec pilot_configuration_snapshot(Schema.t(), String.t()) :: {:ok, map()} | {:error, :pilot_configuration_invalid}
+  def pilot_configuration_snapshot(settings, prompt) do
+    with {:ok, policy} <- PromptBuilder.pilot_role_policy(settings),
+         {:ok, git} <- PathSafety.trusted_executable_identity("/usr/bin/git") do
+      # Provider credentials are custody data, not part of the execution identity.
+      tracker = %{settings.tracker | api_key: nil, provider: Map.drop(settings.tracker.provider, [:api_key, "api_key"])}
+      effective = %{settings | tracker: tracker, agent: %{settings.agent | pilot: nil}}
+
+      identity =
+        {effective, prompt, policy, git}
+        |> :erlang.term_to_binary([:deterministic])
+        |> then(&:crypto.hash(:sha256, &1))
+        |> Base.encode16(case: :lower)
+
+      {:ok, %{identity: identity, role_policy: policy, git: git, workflow: {:ok, %{prompt_template: prompt}}}}
+    else
+      _ -> {:error, :pilot_configuration_invalid}
+    end
+  rescue
+    _ -> {:error, :pilot_configuration_invalid}
   end
 
   @doc "Returns a strictly bound, separately issued pilot grant, or nil when absent."
