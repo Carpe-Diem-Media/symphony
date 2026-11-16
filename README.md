@@ -3,6 +3,10 @@
 Symphony turns project work into isolated, autonomous implementation runs, allowing teams to manage
 work instead of supervising coding agents.
 
+An optional, separately authorized [single Planner pilot](elixir/README.md#single-planner-pilot)
+uses a durable one-use dispatch grant, an absolute attempt deadline and retained final evidence.
+These controls do not authorize a live run or change H-100 acceptance requirements.
+
 [![Symphony demo video preview](.github/media/symphony-demo-poster.jpg)](https://player.vimeo.com/video/1186371009?h=5626e4b899)
 
 The demo video shows upstream prototype behavior with a Linear board and autonomous PR landing. It is historical material, not the current operating contract for this hardened fork.

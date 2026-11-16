@@ -34,6 +34,8 @@ hooks:
   before_remove: |
     cd elixir && mise exec -- mix workspace.before_remove
 agent:
+  # A separately approved agent.pilot grant is documented in README.md.
+  # This legacy sample has no pilot grant and does not authorize a pilot run.
   max_concurrent_agents: 10
   max_turns: 20
   routing: legacy

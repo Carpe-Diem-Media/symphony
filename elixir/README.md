@@ -5,6 +5,52 @@ This directory contains the Elixir/OTP implementation of the `JCSchoeman96/symph
 > [!WARNING]
 > This fork contains the hardened V1 implementation described by its V4.1 authority documents. The legacy Linear sample below remains for compatibility and is not the default hardened routed configuration.
 
+## Single Planner pilot
+
+`agent.pilot` is an optional exact grant for one Plane project UUID, item UUID and
+planning responsibility. It requires routed local execution, one concurrent agent
+and the existing legacy attempt boundary with no Gate 2 binding. Its strict fields
+are `project_id`, `plane_project_id`, `work_item_id`, `responsibility`,
+`source_commit`, `source_tree`, `config_identity`, `runtime_lineage` and
+`deadline_ms`. No grant or deadline is enabled by default. The proposed 120-second
+budget needs separate owner approval.
+
+The Symphony project namespace is `project_id`. `plane_project_id` identifies the
+disposable provider project. Calculate `config_identity` with
+`Config.pilot_configuration_identity(settings, workflow_prompt)` after finalizing
+the effective configuration. It hashes the configuration and prompt, excluding
+credential values and the separately retained grant. The checkout must match both
+source identities and have no tracked changes or untracked files before the model starts.
+
+The existing attempt ledger retains the exact grant. Its normal states are
+`configured`, `consumed`, `running`, `stopverified`. Dispatch synchronizes consumption
+before creating the worker. AgentRunner synchronizes a separate one-use launch claim
+before workspace execution. No ordinary rearm, counter reset, configuration removal,
+retry, continuation, route change or other role can reopen that grant. Ambiguous
+execution enters `quarantined` and retains the allowance and authority fence.
+Startup also quarantines a consumed or running prior attempt without stop proof.
+Ordinary configuration reload does not apply this startup recovery.
+
+The absolute monotonic deadline covers launch, protocol startup, the one model turn
+and stopping. Incoming data cannot extend it. The routed PID namespace remains in
+use. A stop requires independently captured namespace PID1 identity and observed
+PID1 death, plus outer-port death. Linux terminates every process in a PID namespace
+when its PID1 dies. Outer-port death alone is insufficient. Missing process evidence
+retains the workspace and ephemeral home.
+
+Only a final `agentMessage` with phase `final_answer` is eligible for persistence.
+The ledger binds its complete permitted text, model completion state, attempt outcome, stop disposition and
+session/thread/turn IDs to the grant and RuntimeAttempt. Raw protocol events are
+excluded. Ambiguous, oversized or known credential-bearing results cannot become completed
+records. Quarantine retains safe final output when available. Success requires
+synchronized final evidence after verified termination.
+Pilot execution skips the ordinary continuation and after-run cleanup hooks.
+
+Host workspace creation and the approved checkout hook remain host effects. The
+model retains its Planner read-only sandbox and existing controlled Plane tools.
+Authentication, trusted Codex qualification, item adoption, any Planning-to-Ready
+transition and live execution each need their applicable separate authorization.
+
 ## Screenshot
 
 ![Symphony Elixir screenshot](../.github/media/elixir-screenshot.png)

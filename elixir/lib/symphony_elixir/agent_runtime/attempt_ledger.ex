@@ -34,6 +34,27 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
   @history_record_keys @base_record_keys ++ [:closed_reason, :rearm_reason, :rearmed_by, :rearmed_at]
   @allowed_identity_keys [:tracker_kind, :provider_scope]
   @allowed_scope_keys [:project_slug, :repo, :project_key, :project_gid, :workspace_slug, :workspace_id, :project_id]
+  @pilot_grant_keys [
+    :project_id,
+    :plane_project_id,
+    :work_item_id,
+    :responsibility,
+    :source_commit,
+    :source_tree,
+    :config_identity,
+    :runtime_lineage,
+    :deadline_ms
+  ]
+  @pilot_result_keys [:outcome, :model_state, :stop_disposition, :final_answer, :session_id, :thread_id, :turn_id]
+  @pilot_quarantine_reasons [
+    :absolute_deadline,
+    :worker_lost,
+    :launch_failed,
+    :result_persistence_failed,
+    :source_mismatch,
+    :termination_unconfirmed,
+    :sensitive_final_answer
+  ]
 
   defstruct [:table, :path, :project_id, :tracker_identity, :write_fun, :sync_fun, schema_version: 1]
 
@@ -89,18 +110,25 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
   @spec configured_mode(String.t(), String.t(), map(), keyword()) ::
           :ok | {:error, SymphonyElixir.AgentRuntime.AttemptBoundary.error()}
 
-  def configured_mode("legacy", project_id, tracker_identity, opts) do
-    case configured_schema(project_id, tracker_identity, opts) do
+  def configured_mode("legacy", project_id, tracker_identity, opts)
+      when is_binary(project_id) and is_map(tracker_identity) and is_list(opts) do
+    path = path_for(project_id, opts)
+    pilot_runtime? = Keyword.get(opts, :pilot_runtime, false)
+
+    case configured_mode_snapshot(path, project_id, tracker_identity) do
       {:error, :identity_mismatch} ->
         # Existing identity-drift reconciliation must see legacy config changes.
         # The stored identity resolves the binding; caller identity cannot hide it.
-        path = path_for(project_id, opts)
-        path |> configured_schema_for_existing_file(project_id, :stored_identity) |> legacy_mode_decision()
+        path
+        |> configured_mode_snapshot(project_id, :stored_identity)
+        |> legacy_mode_decision(pilot_runtime?)
 
       result ->
-        legacy_mode_decision(result)
+        legacy_mode_decision(result, pilot_runtime?)
     end
   end
+
+  def configured_mode("legacy", _project_id, _tracker_identity, _opts), do: {:error, :invalid_request}
 
   def configured_mode("gate2_foundation", project_id, tracker_identity, opts) do
     case configured_schema(project_id, tracker_identity, opts) do
@@ -116,12 +144,43 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
   def configured_mode(_mode, _project_id, _tracker_identity, _opts),
     do: {:error, :invalid_request}
 
-  defp legacy_mode_decision({:ok, 2, true}), do: {:error, :binding_downgrade_denied}
-  defp legacy_mode_decision({:ok, _version, _has_gate2_binding}), do: :ok
-  defp legacy_mode_decision({:error, :migration_required}), do: :ok
-  defp legacy_mode_decision({:error, reason}), do: {:error, reason}
+  defp legacy_mode_decision({:ok, 2, true, _has_pilot_binding}, _pilot_runtime),
+    do: {:error, :binding_downgrade_denied}
+
+  defp legacy_mode_decision({:ok, _version, _has_gate2_binding, true}, false),
+    do: {:error, :binding_downgrade_denied}
+
+  defp legacy_mode_decision({:ok, _version, _has_gate2_binding, _has_pilot_binding}, _pilot_runtime),
+    do: :ok
+
+  defp legacy_mode_decision({:error, :migration_required}, _pilot_runtime), do: :ok
+  defp legacy_mode_decision({:error, reason}, _pilot_runtime), do: {:error, reason}
+
+  defp configured_mode_snapshot(path, project_id, tracker_identity) do
+    if File.regular?(path),
+      do: configured_mode_snapshot_for_existing_file(path, project_id, tracker_identity),
+      else: {:error, :migration_required}
+  rescue
+    _ -> {:error, :storage_corrupt}
+  end
+
+  defp configured_mode_snapshot_for_existing_file(path, project_id, tracker_identity) do
+    case AttemptLedgerMigration.with_open_lock(path, fn ->
+           read_configured_mode_snapshot(path, project_id, tracker_identity)
+         end) do
+      {:ok, result} -> result
+      {:error, _reason} -> {:error, :migration_in_progress}
+    end
+  end
 
   defp read_configured_schema(path, project_id, tracker_identity) do
+    case read_configured_mode_snapshot(path, project_id, tracker_identity) do
+      {:ok, version, gate2_binding?, _pilot_binding?} -> {:ok, version, gate2_binding?}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp read_configured_mode_snapshot(path, project_id, tracker_identity) do
     # Validate the locked snapshot before checking its receipt. Reopening an
     # already-owned read-write table as read-only would reject a healthy ledger.
     with {:ok, rows} <- read_configured_rows(path),
@@ -135,7 +194,9 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
           _ -> false
         end)
 
-      {:ok, version, gate2_binding?}
+      pilot_binding? = Enum.any?(rows, &match?({{:pilot, _}, _}, &1))
+
+      {:ok, version, gate2_binding?, pilot_binding?}
     else
       {:error, reason} -> {:error, normalize_configured_schema_error(reason)}
     end
@@ -309,6 +370,581 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
       do: AttemptBoundary.bind_gate2_fence_sync(ledger, issue_id, reference)
 
   def bind_gate2_fence_sync(_ledger, _issue_id, _reference), do: {:error, :invalid_request}
+
+  @spec configure_pilot(t(), map()) :: :ok | {:error, term()}
+  def configure_pilot(%__MODULE__{} = ledger, grant) when is_map(grant) do
+    with_pilot_lock(ledger, fn -> configure_pilot_locked(ledger, grant) end)
+  end
+
+  def configure_pilot(_ledger, _grant), do: {:error, :invalid_pilot_grant}
+
+  defp configure_pilot_locked(ledger, grant) do
+    case pilot_status(ledger) do
+      :not_found ->
+        configure_new_pilot(ledger, grant)
+
+      {:ok, %{grant: ^grant}} ->
+        :ok
+
+      {:ok, _existing} ->
+        {:error, :pilot_grant_immutable}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp configure_new_pilot(ledger, grant) do
+    with :ok <- validate_pilot_grant(grant, ledger),
+         :ok <- pilot_schema_allowed(ledger),
+         :ok <- validate_fresh_pilot_ledger(ledger),
+         do: persist_pilot_row(ledger, %{state: :configured, grant: grant, runtime_identity: nil, result: nil})
+  end
+
+  defp pilot_schema_allowed(%{schema_version: 1}), do: :ok
+  defp pilot_schema_allowed(_ledger), do: {:error, :pilot_gate2_mode_denied}
+
+  @spec pilot_status(t()) :: :not_found | {:ok, map()} | {:error, term()}
+  def pilot_status(%__MODULE__{} = ledger) do
+    case safe_lookup(ledger.table, {:pilot, ledger.project_id}) do
+      {:ok, []} ->
+        :not_found
+
+      {:ok, [{{:pilot, project_id}, pilot}]} when project_id == ledger.project_id ->
+        case validate_pilot_record(pilot, ledger) do
+          :ok -> {:ok, pilot}
+          {:error, reason} -> {:error, {:corrupt_attempt_record, {:pilot, project_id}, reason}}
+        end
+
+      {:ok, _rows} ->
+        {:error, {:corrupt_attempt_record, {:pilot, ledger.project_id}, :invalid_record}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @spec consume_pilot(t(), map(), Identity.t()) :: {:ok, map()} | {:error, term()}
+  def consume_pilot(%__MODULE__{} = ledger, grant, %Identity{} = identity) when is_map(grant) do
+    with_pilot_lock(ledger, fn -> consume_pilot_locked(ledger, grant, identity) end)
+  end
+
+  def consume_pilot(_ledger, _grant, _identity), do: {:error, :pilot_binding_mismatch}
+
+  defp consume_pilot_locked(ledger, grant, identity) do
+    with {:ok, %{state: :configured, grant: ^grant} = pilot} <- pilot_status(ledger),
+         :ok <- validate_pilot_grant(grant, ledger),
+         :ok <- validate_pilot_identity(grant, identity),
+         {:ok, {:current, issue_id}, record} <- pilot_current_record(ledger, grant),
+         :ok <- validate_bound_pilot_record(record, identity) do
+      updated = %{pilot | state: :consumed, runtime_identity: identity}
+
+      with :ok <- persist_pilot_row(ledger, updated),
+           {:ok, _persisted} <- current(ledger, issue_id) do
+        {:ok, updated}
+      end
+    else
+      {:ok, %{state: state}}
+      when state in [:consumed, :running, :stopverified, :quarantined] ->
+        {:error, :pilot_already_consumed}
+
+      {:ok, %{grant: _other}} ->
+        {:error, :pilot_binding_mismatch}
+
+      {:error, reason} ->
+        {:error, reason}
+
+      :not_found ->
+        {:error, :pilot_not_configured}
+
+      _ ->
+        {:error, :pilot_binding_mismatch}
+    end
+  end
+
+  defp validate_bound_pilot_record(record, identity) do
+    expected = %{
+      state: :bound,
+      runtime_attempt: identity,
+      route_fingerprint: Map.get(record, :route_fingerprint)
+    }
+
+    if record.authority_fence == expected, do: :ok, else: {:error, :pilot_binding_mismatch}
+  end
+
+  @spec validate_pilot_attempt(t(), map(), Identity.t()) :: :ok | {:error, term()}
+  def validate_pilot_attempt(%__MODULE__{} = ledger, grant, %Identity{} = identity) when is_map(grant) do
+    case pilot_status(ledger) do
+      {:ok, %{state: state, grant: ^grant, runtime_identity: ^identity}}
+      when state in [:consumed, :running, :stopverified, :quarantined] ->
+        :ok
+
+      {:ok, _pilot} ->
+        {:error, :pilot_identity_mismatch}
+
+      :not_found ->
+        {:error, :pilot_not_configured}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  def validate_pilot_attempt(_ledger, _grant, _identity), do: {:error, :pilot_identity_mismatch}
+
+  @spec claim_pilot_launch(t(), map(), Identity.t()) :: :ok | {:error, term()}
+  def claim_pilot_launch(%__MODULE__{} = ledger, grant, %Identity{} = identity) when is_map(grant) do
+    with_pilot_lock(ledger, fn -> claim_pilot_launch_locked(ledger, grant, identity) end)
+  end
+
+  def claim_pilot_launch(_ledger, _grant, _identity), do: {:error, :pilot_identity_mismatch}
+
+  defp claim_pilot_launch_locked(ledger, grant, identity) do
+    case pilot_status(ledger) do
+      {:ok, %{state: :consumed, grant: ^grant, runtime_identity: ^identity} = pilot} ->
+        persist_pilot_row(ledger, %{pilot | state: :running})
+
+      {:ok, %{state: :running, grant: ^grant, runtime_identity: ^identity}} ->
+        {:error, :pilot_launch_already_claimed}
+
+      {:ok, _pilot} ->
+        {:error, :pilot_identity_mismatch}
+
+      :not_found ->
+        {:error, :pilot_not_configured}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @spec quarantine_pilot(t(), Identity.t(), atom()) :: :ok | {:error, term()}
+  def quarantine_pilot(%__MODULE__{} = ledger, %Identity{} = identity, reason) when is_atom(reason) do
+    with_pilot_lock(ledger, fn -> quarantine_pilot_locked(ledger, identity, reason) end)
+  end
+
+  def quarantine_pilot(_ledger, _identity, _reason), do: {:error, :invalid_pilot_quarantine_reason}
+
+  defp quarantine_pilot_locked(ledger, identity, reason) do
+    if reason in @pilot_quarantine_reasons do
+      case pilot_status(ledger) do
+        {:ok, %{state: state, runtime_identity: ^identity} = pilot} when state in [:consumed, :running] ->
+          persist_pilot_row(ledger, Map.merge(pilot, %{state: :quarantined, result: nil, quarantine_reason: reason}))
+
+        {:ok, %{state: :quarantined, runtime_identity: ^identity, quarantine_reason: ^reason}} ->
+          :ok
+
+        {:ok, %{runtime_identity: ^identity}} ->
+          {:error, :pilot_result_immutable}
+
+        {:ok, _pilot} ->
+          {:error, :pilot_identity_mismatch}
+
+        :not_found ->
+          {:error, :pilot_not_configured}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    else
+      {:error, :invalid_pilot_quarantine_reason}
+    end
+  end
+
+  @spec persist_pilot_result(t(), Identity.t(), map()) :: :ok | {:error, term()}
+  def persist_pilot_result(%__MODULE__{} = ledger, %Identity{} = identity, evidence) when is_map(evidence) do
+    with_pilot_lock(ledger, fn -> persist_pilot_result_locked(ledger, identity, evidence) end)
+  end
+
+  def persist_pilot_result(_ledger, _identity, _evidence), do: {:error, :invalid_pilot_result}
+
+  defp persist_pilot_result_locked(ledger, identity, evidence) do
+    with {:ok, %{state: :running, runtime_identity: ^identity} = pilot} <- pilot_status(ledger),
+         :ok <- validate_pilot_result(evidence) do
+      persist_validated_pilot_result(ledger, pilot, identity, evidence)
+    else
+      {:ok, %{state: state}} when state in [:stopverified, :quarantined] -> {:error, :pilot_result_immutable}
+      {:ok, _pilot} -> {:error, :pilot_identity_mismatch}
+      :not_found -> {:error, :pilot_not_configured}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp persist_validated_pilot_result(ledger, pilot, identity, evidence) do
+    cond do
+      sensitive_pilot_answer?(evidence.final_answer) ->
+        quarantine_sensitive_result(ledger, identity)
+
+      evidence.stop_disposition == :quarantined ->
+        quarantine_pilot_evidence(ledger, pilot, evidence)
+
+      true ->
+        persist_pilot_row(ledger, %{pilot | state: :stopverified, result: evidence})
+    end
+  end
+
+  defp quarantine_sensitive_result(ledger, identity) do
+    case quarantine_pilot_locked(ledger, identity, :sensitive_final_answer) do
+      :ok -> {:error, :pilot_result_sensitive}
+      error -> error
+    end
+  end
+
+  defp quarantine_pilot_evidence(ledger, pilot, evidence) do
+    updated =
+      Map.merge(pilot, %{
+        state: :quarantined,
+        result: evidence,
+        quarantine_reason: :termination_unconfirmed
+      })
+
+    persist_pilot_row(ledger, updated)
+  end
+
+  defp validate_pilot_grant(grant, ledger) do
+    valid_keys? = Map.keys(grant) |> Enum.sort() == Enum.sort(@pilot_grant_keys)
+
+    with true <- valid_keys? || {:error, :invalid_pilot_grant},
+         true <- grant.project_id == ledger.project_id || {:error, :pilot_project_mismatch},
+         true <- valid_pilot_uuid?(grant.plane_project_id),
+         true <- valid_pilot_uuid?(grant.work_item_id),
+         true <- grant.responsibility == "planning",
+         true <- valid_hex?(grant.source_commit, 40),
+         true <- valid_hex?(grant.source_tree, 40),
+         true <- valid_hex?(grant.config_identity, 64),
+         true <- safe_pilot_identifier?(grant.runtime_lineage),
+         true <- is_integer(grant.deadline_ms) and grant.deadline_ms > 0 do
+      :ok
+    else
+      {:error, reason} -> {:error, reason}
+      _ -> {:error, :invalid_pilot_grant}
+    end
+  end
+
+  defp validate_pilot_identity(grant, %Identity{} = identity) do
+    if Identity.valid?(identity) and identity.work_item_id == grant.work_item_id and
+         identity.lineage_generation == grant.runtime_lineage and identity.responsibility == grant.responsibility do
+      :ok
+    else
+      {:error, :pilot_binding_mismatch}
+    end
+  end
+
+  defp pilot_current_record(ledger, grant) do
+    case current(ledger, grant.work_item_id) do
+      {:ok, record} when record.lineage_id == grant.runtime_lineage -> {:ok, {:current, grant.work_item_id}, record}
+      {:ok, _record} -> {:error, :pilot_binding_mismatch}
+      :not_found -> {:error, :pilot_attempt_not_started}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp validate_fresh_pilot_ledger(ledger) do
+    with {:ok, rows} <- all_records(ledger) do
+      if Enum.any?(rows, &attempt_record?/1) do
+        {:error, :pilot_ledger_not_fresh}
+      else
+        :ok
+      end
+    end
+  end
+
+  defp attempt_record?({{kind, _key}, _record}) when kind in [:current, :history], do: true
+  defp attempt_record?(_row), do: false
+
+  defp persist_pilot_row(ledger, pilot) do
+    with :ok <- validate_pilot_record(pilot, ledger) do
+      case persist_pilot_row_once(ledger, pilot) do
+        :ok ->
+          :ok
+
+        {:error, _reason} = error ->
+          _ = best_effort_pilot_quarantine(ledger, pilot)
+          error
+      end
+    end
+  end
+
+  defp persist_pilot_row_once(ledger, pilot) do
+    key = {:pilot, ledger.project_id}
+
+    case invoke_write(ledger.write_fun, ledger.table, [{key, pilot}]) do
+      :ok -> invoke_sync(ledger.sync_fun, ledger.table)
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp best_effort_pilot_quarantine(ledger, %{state: state, runtime_identity: %Identity{}} = pilot)
+       when state in [:consumed, :running, :stopverified] do
+    quarantined = Map.merge(pilot, %{state: :quarantined, result: nil, quarantine_reason: :result_persistence_failed})
+
+    with :ok <- validate_pilot_record(quarantined, ledger) do
+      case persist_pilot_row_once(ledger, quarantined) do
+        :ok -> :ok
+        {:error, _reason} -> force_pilot_quarantine_in_memory(ledger, quarantined)
+      end
+    end
+  rescue
+    _ -> {:error, :storage_unavailable}
+  catch
+    _kind, _reason -> {:error, :storage_unavailable}
+  end
+
+  defp best_effort_pilot_quarantine(_ledger, _pilot), do: :ok
+
+  defp force_pilot_quarantine_in_memory(ledger, pilot) do
+    key = {:pilot, ledger.project_id}
+
+    case :dets.insert(ledger.table, {key, pilot}) do
+      :ok -> :dets.sync(ledger.table)
+      error -> error
+    end
+  rescue
+    _ -> {:error, :storage_unavailable}
+  catch
+    _kind, _reason -> {:error, :storage_unavailable}
+  end
+
+  defp with_pilot_lock(%__MODULE__{path: path}, fun) do
+    case :global.trans({path, self()}, fn -> AttemptLedgerMigration.with_open_lock(path, fun) end, [node()], 10) do
+      {:ok, result} -> result
+      _ -> {:error, :storage_unavailable}
+    end
+  rescue
+    _ -> {:error, :storage_unavailable}
+  catch
+    _kind, _reason -> {:error, :storage_unavailable}
+  end
+
+  defp validate_pilot_record(%{state: :configured, grant: grant, runtime_identity: nil, result: nil} = pilot, ledger)
+       when map_size(pilot) == 4,
+       do: validate_pilot_grant(grant, ledger)
+
+  defp validate_pilot_record(%{state: :consumed, grant: grant, runtime_identity: identity, result: nil} = pilot, ledger)
+       when map_size(pilot) == 4 do
+    with :ok <- validate_pilot_grant(grant, ledger), do: validate_pilot_identity(grant, identity)
+  end
+
+  defp validate_pilot_record(%{state: :running, grant: grant, runtime_identity: identity, result: nil} = pilot, ledger)
+       when map_size(pilot) == 4 do
+    with :ok <- validate_pilot_grant(grant, ledger), do: validate_pilot_identity(grant, identity)
+  end
+
+  defp validate_pilot_record(%{state: :stopverified, grant: grant, runtime_identity: identity, result: result} = pilot, ledger)
+       when map_size(pilot) == 4 do
+    with :ok <- validate_pilot_grant(grant, ledger),
+         :ok <- validate_pilot_identity(grant, identity),
+         :ok <- validate_pilot_result(result),
+         false <- sensitive_pilot_answer?(result.final_answer) do
+      :ok
+    else
+      _ -> {:error, :invalid_record}
+    end
+  end
+
+  defp validate_pilot_record(%{state: :quarantined, grant: grant, runtime_identity: identity, result: result, quarantine_reason: reason} = pilot, ledger)
+       when map_size(pilot) == 5 do
+    with true <- reason in @pilot_quarantine_reasons,
+         :ok <- validate_pilot_grant(grant, ledger),
+         :ok <- validate_pilot_identity(grant, identity),
+         :ok <- validate_quarantined_result(result) do
+      :ok
+    else
+      _ -> {:error, :invalid_record}
+    end
+  end
+
+  defp validate_pilot_record(_pilot, _ledger), do: {:error, :invalid_record}
+
+  defp validate_pilot_result(result) when is_map(result) do
+    with true <- Map.keys(result) |> Enum.sort() == Enum.sort(@pilot_result_keys),
+         true <- result.outcome in [:completed, :failed, :stopped, :timeout],
+         true <- result.model_state in [:completed, :failed],
+         true <- result.stop_disposition in [:verified, :quarantined],
+         true <- valid_final_answer?(result.final_answer),
+         true <- Enum.all?([result.session_id, result.thread_id, result.turn_id], &(is_nil(&1) or safe_pilot_identifier?(&1))),
+         true <-
+           result.outcome != :completed or
+             (result.model_state == :completed and result.stop_disposition == :verified and
+                non_empty_binary?(result.final_answer) and
+                Enum.all?([result.session_id, result.thread_id, result.turn_id], &safe_pilot_identifier?/1)) do
+      :ok
+    else
+      _ -> {:error, :invalid_pilot_result}
+    end
+  end
+
+  defp validate_pilot_result(_result), do: {:error, :invalid_pilot_result}
+
+  defp valid_final_answer?(nil), do: true
+
+  defp valid_final_answer?(answer), do: is_binary(answer) and byte_size(answer) <= 65_536
+
+  defp validate_quarantined_result(nil), do: :ok
+
+  defp validate_quarantined_result(result) do
+    case validate_pilot_result(result) do
+      :ok -> validate_quarantined_result_disposition(result)
+      {:error, _reason} -> {:error, :invalid_record}
+    end
+  end
+
+  defp validate_quarantined_result_disposition(result) do
+    if result.stop_disposition == :quarantined and not sensitive_pilot_answer?(result.final_answer),
+      do: :ok,
+      else: {:error, :invalid_record}
+  end
+
+  defp sensitive_pilot_answer?(answer) when is_binary(answer) do
+    patterns = [
+      ~r/(?i)(api[_ -]?key|access[_ -]?token|refresh[_ -]?token|client[_ -]?secret|password|passwd|private[_ -]?key|authorization|cookie|set-cookie|x-api-key)\s*[:=]\s*\S+/,
+      ~r/-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+      ~r/\bsk-[A-Za-z0-9_-]{16,}\b/,
+      ~r/\bgh[pousr]_[A-Za-z0-9]{20,}\b/,
+      ~r/(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+\/-]{8,}={0,2}/,
+      ~r/\bAKIA[0-9A-Z]{16}\b/,
+      ~r/\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/,
+      ~r{[a-z][a-z0-9+.-]*://[^\s/:@]+:[^\s/@]+@}i
+    ]
+
+    Enum.any?(patterns, &Regex.match?(&1, answer))
+  end
+
+  defp sensitive_pilot_answer?(nil), do: false
+  defp sensitive_pilot_answer?(_answer), do: true
+
+  defp non_empty_binary?(value), do: is_binary(value) and String.trim(value) != ""
+  defp safe_pilot_identifier?(value), do: non_empty_binary?(value) and byte_size(value) <= 256 and Regex.match?(~r/\A[A-Za-z0-9.:-]+\z/, value) and not sensitive_pilot_answer?(value)
+  defp valid_pilot_uuid?(value), do: is_binary(value) and match?({:ok, _}, Ecto.UUID.cast(value)) and not sensitive_pilot_answer?(value)
+  defp valid_hex?(value, size), do: is_binary(value) and byte_size(value) == size and Regex.match?(~r/\A[0-9a-f]+\z/, value)
+
+  defp pilot_begin_admission(ledger, issue_id, opts) do
+    case pilot_status(ledger) do
+      :not_found ->
+        pilot_absent_begin_admission(opts)
+
+      {:ok, pilot} ->
+        pilot_configured_begin_admission(ledger, issue_id, opts, pilot)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp pilot_absent_begin_admission(opts) do
+    if Keyword.has_key?(opts, :pilot_binding), do: {:error, :pilot_binding_mismatch}, else: :ok
+  end
+
+  defp pilot_configured_begin_admission(ledger, issue_id, opts, %{state: :configured, grant: grant}) do
+    cond do
+      is_nil(Keyword.get(opts, :pilot_binding)) -> {:error, :pilot_binding_required}
+      Keyword.get(opts, :pilot_binding) != grant -> {:error, :pilot_binding_mismatch}
+      issue_id != grant.work_item_id -> {:error, :pilot_binding_mismatch}
+      current(ledger, issue_id) != :not_found -> {:error, :pilot_attempt_already_started}
+      true -> :ok
+    end
+  end
+
+  defp pilot_configured_begin_admission(_ledger, _issue_id, _opts, %{state: state})
+       when state in [:consumed, :running, :stopverified, :quarantined],
+       do: {:error, :pilot_allowance_consumed}
+
+  defp pilot_configured_begin_admission(_ledger, _issue_id, _opts, _pilot),
+    do: {:error, :pilot_binding_mismatch}
+
+  defp pilot_bind_admission(ledger, issue_id, identity) do
+    case pilot_status(ledger) do
+      :not_found ->
+        :ok
+
+      {:ok, pilot} ->
+        pilot_configured_bind_admission(ledger, issue_id, identity, pilot)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp pilot_configured_bind_admission(ledger, issue_id, identity, %{state: :configured, grant: grant}) do
+    with :ok <- validate_pilot_binding_issue(issue_id, grant),
+         :ok <- validate_pilot_identity(grant, identity),
+         {:ok, record} <- current(ledger, issue_id) do
+      validate_unbound_pilot_record(record, grant)
+    end
+  end
+
+  defp pilot_configured_bind_admission(_ledger, _issue_id, _identity, %{state: state})
+       when state in [:consumed, :running, :stopverified, :quarantined],
+       do: {:error, :pilot_allowance_consumed}
+
+  defp pilot_configured_bind_admission(_ledger, _issue_id, _identity, _pilot),
+    do: {:error, :pilot_binding_mismatch}
+
+  defp validate_pilot_binding_issue(issue_id, %{work_item_id: issue_id}), do: :ok
+  defp validate_pilot_binding_issue(_issue_id, _grant), do: {:error, :pilot_binding_mismatch}
+
+  defp validate_unbound_pilot_record(record, grant) do
+    if record.lineage_id == grant.runtime_lineage and record.in_flight and record.authority_fence == %{state: :armed},
+      do: :ok,
+      else: {:error, :pilot_binding_mismatch}
+  end
+
+  defp valid_pilot_lineage?(issue_id, record, grant) do
+    issue_id == grant.work_item_id and record.lineage_id == grant.runtime_lineage
+  end
+
+  defp pilot_generic_write_admission(ledger) do
+    case pilot_status(ledger) do
+      :not_found ->
+        :ok
+
+      {:ok, %{state: :configured}} ->
+        {:error, :pilot_binding_required}
+
+      {:ok, %{state: state}} when state in [:consumed, :running, :stopverified, :quarantined] ->
+        {:error, :pilot_allowance_consumed}
+
+      {:ok, _pilot} ->
+        {:error, :pilot_binding_mismatch}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp pilot_record_write_admission(ledger, issue_id, record) do
+    case pilot_status(ledger) do
+      :not_found ->
+        :ok
+
+      {:ok, pilot} ->
+        pilot_record_state_admission(issue_id, record, pilot)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp pilot_record_state_admission(issue_id, record, %{state: :configured, grant: grant}) do
+    configured_record_matches?(issue_id, record, grant)
+  end
+
+  defp pilot_record_state_admission(issue_id, record, %{state: state, grant: grant})
+       when state in [:consumed, :running, :stopverified, :quarantined] do
+    if valid_pilot_lineage?(issue_id, record, grant),
+      do: :ok,
+      else: {:error, :pilot_allowance_consumed}
+  end
+
+  defp pilot_record_state_admission(_issue_id, _record, _pilot),
+    do: {:error, :pilot_binding_mismatch}
+
+  defp configured_record_matches?(issue_id, record, grant) do
+    matches? =
+      valid_pilot_lineage?(issue_id, record, grant) and record.in_flight and record.status == :open
+
+    if matches?, do: :ok, else: {:error, :pilot_binding_mismatch}
+  end
 
   @spec release_gate2_authority_fence(
           t(),
@@ -560,7 +1196,8 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
     issue_id = Map.get(record, :issue_id)
     current_record = if is_binary(issue_id), do: current(ledger, issue_id), else: :not_found
 
-    with :ok <- preserve_boundary_binding(current_record, record),
+    with :ok <- pilot_record_write_admission(ledger, issue_id, record),
+         :ok <- preserve_boundary_binding(current_record, record),
          :ok <- validate_put_fence(current_record, record),
          :ok <- validate_record(record, ledger, issue_id, @base_record_keys),
          issue_id when is_binary(issue_id) <- issue_id,
@@ -617,7 +1254,14 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
 
   @spec begin_attempt(t(), String.t(), keyword()) :: {:ok, record()} | {:error, term()}
   def begin_attempt(%__MODULE__{} = ledger, issue_id, opts) when is_binary(issue_id) do
-    with :ok <- legacy_write_allowed(ledger, issue_id) do
+    with_pilot_lock(ledger, fn -> begin_attempt_locked(ledger, issue_id, opts) end)
+  end
+
+  def begin_attempt(_ledger, _issue_id, _opts), do: {:error, :invalid_attempt_arguments}
+
+  defp begin_attempt_locked(ledger, issue_id, opts) do
+    with :ok <- pilot_begin_admission(ledger, issue_id, opts),
+         :ok <- legacy_write_allowed(ledger, issue_id) do
       case current(ledger, issue_id) do
         {:ok, %{status: :exhausted}} ->
           {:error, :lineage_exhausted}
@@ -664,14 +1308,19 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
     end
   end
 
-  def begin_attempt(_ledger, _issue_id, _opts), do: {:error, :invalid_attempt_arguments}
-
   @spec fence_attempt(t(), String.t()) :: {:ok, record()} | {:error, term()}
   def fence_attempt(ledger, issue_id), do: fence_attempt(ledger, issue_id, [])
 
   @spec fence_attempt(t(), String.t(), keyword()) :: {:ok, record()} | {:error, term()}
   def fence_attempt(%__MODULE__{} = ledger, issue_id, opts) when is_binary(issue_id) do
-    with :ok <- legacy_write_allowed(ledger, issue_id) do
+    with_pilot_lock(ledger, fn -> fence_attempt_locked(ledger, issue_id, opts) end)
+  end
+
+  def fence_attempt(_ledger, _issue_id, _opts), do: {:error, :invalid_attempt_arguments}
+
+  defp fence_attempt_locked(ledger, issue_id, opts) do
+    with :ok <- pilot_generic_write_admission(ledger),
+         :ok <- legacy_write_allowed(ledger, issue_id) do
       case current(ledger, issue_id) do
         {:ok, %{status: :exhausted}} ->
           {:error, :lineage_exhausted}
@@ -717,11 +1366,16 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
     end
   end
 
-  def fence_attempt(_ledger, _issue_id, _opts), do: {:error, :invalid_attempt_arguments}
-
   @spec bind_runtime_attempt(t(), String.t(), Identity.t()) :: {:ok, record()} | {:error, term()}
   def bind_runtime_attempt(%__MODULE__{} = ledger, issue_id, %Identity{} = identity) do
-    with :ok <- legacy_write_allowed(ledger, issue_id),
+    with_pilot_lock(ledger, fn -> bind_runtime_attempt_locked(ledger, issue_id, identity) end)
+  end
+
+  def bind_runtime_attempt(_ledger, _issue_id, _identity), do: {:error, :invalid_runtime_attempt_identity}
+
+  defp bind_runtime_attempt_locked(ledger, issue_id, identity) do
+    with :ok <- pilot_bind_admission(ledger, issue_id, identity),
+         :ok <- legacy_write_allowed(ledger, issue_id),
          true <- Identity.valid?(identity) || {:error, :invalid_runtime_attempt_identity},
          {:ok, record} <- current(ledger, issue_id),
          true <- identity.work_item_id == issue_id || {:error, :runtime_attempt_identity_mismatch},
@@ -749,8 +1403,6 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
       _ -> {:error, :authority_fence_transition_invalid}
     end
   end
-
-  def bind_runtime_attempt(_ledger, _issue_id, _identity), do: {:error, :invalid_runtime_attempt_identity}
 
   @spec release_armed_authority_fence(t(), String.t()) :: :ok | {:error, term()}
   def release_armed_authority_fence(%__MODULE__{} = ledger, issue_id) when is_binary(issue_id) do
@@ -1244,6 +1896,14 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
   def rearm(_ledger, _issue_id, _reason, _operator, _timestamp), do: {:error, :invalid_rearm_arguments}
 
   defp rearm_binding_allowed(ledger, issue_id) do
+    case pilot_status(ledger) do
+      {:ok, _pilot} -> {:error, :pilot_allowance_consumed}
+      {:error, reason} -> {:error, reason}
+      :not_found -> rearm_current_binding_allowed(ledger, issue_id)
+    end
+  end
+
+  defp rearm_current_binding_allowed(ledger, issue_id) do
     case current(ledger, issue_id) do
       {:ok, %{boundary_binding: %{kind: :gate2}}} -> {:error, :gate2_boundary_required}
       {:ok, _record} -> :ok
@@ -1343,45 +2003,46 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
     do: {:error, {:ledger_tracker_identity_mismatch, stored, expected}}
 
   defp validate_stored_records(records, ledger) do
-    Enum.reduce_while(records, :ok, fn
-      {{:meta, _project_id}, _metadata}, :ok ->
-        {:cont, :ok}
-
-      {{:current, issue_id}, record}, :ok ->
-        case validate_record(record, ledger, issue_id, allowed_record_keys(record)) do
-          :ok ->
-            {:cont, :ok}
-
-          {:error, {:ledger_schema_version_unsupported, version}} ->
-            {:halt, {:error, {:ledger_schema_version_unsupported, version}}}
-
-          {:error, reason} ->
-            {:halt, {:error, {:corrupt_attempt_record, {:current, issue_id}, reason}}}
-        end
-
-      # P01 has no Gate 2 release/rearm transaction that can produce history.
-      {{:history, lineage_id}, %{boundary_binding: %{kind: :gate2}}}, :ok ->
-        {:halt, {:error, {:corrupt_attempt_record, {:history, lineage_id}, :invalid_record}}}
-
-      {{:history, lineage_id}, record}, :ok ->
-        case validate_record(record, ledger, record_issue_id(record), @history_record_keys) do
-          :ok when record.lineage_id == lineage_id ->
-            {:cont, :ok}
-
-          :ok ->
-            {:halt, {:error, {:corrupt_attempt_record, {:history, lineage_id}, :invalid_record}}}
-
-          {:error, {:ledger_schema_version_unsupported, version}} ->
-            {:halt, {:error, {:ledger_schema_version_unsupported, version}}}
-
-          {:error, reason} ->
-            {:halt, {:error, {:corrupt_attempt_record, {:history, lineage_id}, reason}}}
-        end
-
-      {key, _record}, :ok ->
-        {:halt, {:error, {:corrupt_attempt_record, key, :invalid_record}}}
+    Enum.reduce_while(records, :ok, fn row, :ok ->
+      case validate_stored_record(row, ledger) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
     end)
   end
+
+  defp validate_stored_record({{:meta, _project_id}, _metadata}, _ledger), do: :ok
+
+  defp validate_stored_record({{:current, issue_id}, record}, ledger) do
+    case validate_record(record, ledger, issue_id, allowed_record_keys(record)) do
+      :ok -> :ok
+      {:error, {:ledger_schema_version_unsupported, version}} -> {:error, {:ledger_schema_version_unsupported, version}}
+      {:error, reason} -> {:error, {:corrupt_attempt_record, {:current, issue_id}, reason}}
+    end
+  end
+
+  # P01 has no Gate 2 release/rearm transaction that can produce history.
+  defp validate_stored_record({{:history, lineage_id}, %{boundary_binding: %{kind: :gate2}}}, _ledger),
+    do: {:error, {:corrupt_attempt_record, {:history, lineage_id}, :invalid_record}}
+
+  defp validate_stored_record({{:history, lineage_id}, record}, ledger) do
+    case validate_record(record, ledger, record_issue_id(record), @history_record_keys) do
+      :ok when record.lineage_id == lineage_id -> :ok
+      :ok -> {:error, {:corrupt_attempt_record, {:history, lineage_id}, :invalid_record}}
+      {:error, {:ledger_schema_version_unsupported, version}} -> {:error, {:ledger_schema_version_unsupported, version}}
+      {:error, reason} -> {:error, {:corrupt_attempt_record, {:history, lineage_id}, reason}}
+    end
+  end
+
+  defp validate_stored_record({{:pilot, project_id}, pilot}, ledger) when project_id == ledger.project_id do
+    case validate_pilot_record(pilot, ledger) do
+      :ok -> :ok
+      {:error, reason} -> {:error, {:corrupt_attempt_record, {:pilot, project_id}, reason}}
+    end
+  end
+
+  defp validate_stored_record({key, _record}, _ledger),
+    do: {:error, {:corrupt_attempt_record, key, :invalid_record}}
 
   defp allowed_record_keys(record) when is_map(record) do
     if Map.get(record, :status) == :closed, do: @history_record_keys, else: @base_record_keys
@@ -1782,6 +2443,15 @@ defmodule SymphonyElixir.AgentRuntime.AttemptLedger do
   defp validate_non_empty_string(_value, _field), do: {:error, :invalid_record}
 
   defp lineage_id_for(ledger, issue_id) do
+    case pilot_status(ledger) do
+      {:ok, %{state: :configured, grant: %{work_item_id: ^issue_id, runtime_lineage: lineage}}} -> {:ok, lineage}
+      {:ok, _pilot} -> {:error, :pilot_allowance_consumed}
+      {:error, reason} -> {:error, reason}
+      :not_found -> lineage_id_for_current(ledger, issue_id)
+    end
+  end
+
+  defp lineage_id_for_current(ledger, issue_id) do
     case current(ledger, issue_id) do
       {:ok, %{lineage_id: lineage_id, status: status}} when status in [:open, :exhausted] ->
         {:ok, lineage_id}

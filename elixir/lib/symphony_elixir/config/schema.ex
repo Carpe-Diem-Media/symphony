@@ -233,6 +233,7 @@ defmodule SymphonyElixir.Config.Schema do
       # Legacy workflows remain outside the routed permission model unless the
       # operator opts in explicitly with `routing: routed`.
       field(:routing, :string, default: "legacy")
+      field(:pilot, :map)
       embeds_one(:attempt_boundary, AttemptBoundary, on_replace: :update, defaults_to_struct: true)
       field(:profiles, :map)
       field(:routes, :map, default: %{})
@@ -249,6 +250,7 @@ defmodule SymphonyElixir.Config.Schema do
           :max_retry_backoff_ms,
           :max_concurrent_agents_by_state,
           :routing,
+          :pilot,
           :profiles,
           :routes
         ],
@@ -487,6 +489,19 @@ defmodule SymphonyElixir.Config.Schema do
   end
 
   defp validate_attempt_boundary_input(config) do
+    case fetch_config_key(config, :agent) do
+      {:ok, agent} when is_map(agent) ->
+        case fetch_config_key(agent, :pilot) do
+          {:ok, pilot} when not is_map(pilot) -> {:error, "agent.pilot must be a map"}
+          _ -> validate_attempt_boundary_map(config)
+        end
+
+      _ ->
+        validate_attempt_boundary_map(config)
+    end
+  end
+
+  defp validate_attempt_boundary_map(config) do
     with {:ok, agent} <- fetch_config_key(config, :agent),
          true <- is_map(agent) || :ok,
          {:ok, attempt_boundary} <- fetch_config_key(agent, :attempt_boundary) do
