@@ -212,29 +212,104 @@ defmodule SymphonyElixir.AgentRunner do
 
   defp validate_pilot_checkout(workspace) do
     case Process.get({__MODULE__, :pilot_result}) do
-      nil ->
-        :ok
-
-      %{grant: grant, authority: %{git: git}} ->
-        args = ["--no-optional-locks", "--no-replace-objects", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-C", workspace]
-
-        with {output, 0} <- pilot_git(git, args ++ ["rev-parse", "HEAD", "HEAD^{tree}"]),
-             [commit, tree] <- String.split(output),
-             true <- commit == grant.source_commit and tree == grant.source_tree,
-             {_, 0} <- pilot_git(git, args ++ ["diff", "--quiet", "HEAD", "--"]),
-             {"", 0} <- pilot_git(git, args ++ ["ls-files", "--others"]) do
-          :ok
-        else
-          _ -> {:error, :pilot_source_mismatch}
-        end
+      nil -> :ok
+      %{grant: grant, authority: %{git: git}} -> validate_pilot_checkout(workspace, grant, git)
     end
+  end
+
+  # Read-only proof only. Dispatch, ownership and credential admission remain
+  # separate, mandatory boundaries in the normal AgentRunner path.
+  @doc false
+  @spec validate_pilot_checkout(Path.t(), map(), map()) :: :ok | {:error, :pilot_source_mismatch}
+  def validate_pilot_checkout(workspace, grant, git) do
+    with {:ok, workspace} <- PathSafety.canonicalize(workspace),
+         {:ok, %File.Stat{type: :directory}} <- File.lstat(workspace) do
+      args = ["--no-optional-locks", "--no-replace-objects", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-C", workspace]
+
+      with {root, 0} <- pilot_git(git, args ++ ["rev-parse", "--show-toplevel"]),
+           [root, ""] <- String.split(root, "\n"),
+           {:ok, ^workspace} <- PathSafety.canonicalize(root),
+           {output, 0} <- pilot_git(git, args ++ ["rev-parse", "HEAD", "HEAD^{tree}"]),
+           [commit, tree] <- String.split(output),
+           true <- commit == grant.source_commit and tree == grant.source_tree,
+           {_, 0} <- pilot_git(git, args ++ ["diff", "--no-ext-diff", "--no-textconv", "--quiet", "HEAD", "--"]),
+           {"", 0} <- pilot_git(git, args ++ ["ls-files", "--others"]),
+           {entries, 0} <- pilot_git(git, args ++ ["ls-tree", "-rz", "--full-tree", grant.source_tree]),
+           true <- pilot_tree_contents_match?(workspace, entries) do
+        :ok
+      else
+        _ -> {:error, :pilot_source_mismatch}
+      end
+    else
+      _ -> {:error, :pilot_source_mismatch}
+    end
+  rescue
+    _ -> {:error, :pilot_source_mismatch}
+  end
+
+  defp pilot_tree_contents_match?(workspace, entries) do
+    records = :binary.split(entries, <<0>>, [:global])
+
+    List.last(records) == "" and
+      Enum.all?(Enum.drop(records, -1), &pilot_tree_entry_matches?(workspace, &1))
+  end
+
+  defp pilot_tree_entry_matches?(workspace, entry) do
+    with [metadata, relative] <- String.split(entry, "\t", parts: 2),
+         [mode, "blob", oid] <- String.split(metadata, " "),
+         true <- relative != "" and Path.type(relative) == :relative,
+         false <- Enum.any?(Path.split(relative), &(&1 in [".", "..", ".git"])),
+         path <- Path.join(workspace, relative),
+         parent <- Path.dirname(path),
+         {:ok, ^parent} <- PathSafety.canonicalize(parent),
+         {:ok, before_read} <- File.lstat(path),
+         {:ok, bytes} <- pilot_source_bytes(path, mode, before_read),
+         {:ok, after_read} <- File.lstat(path),
+         true <- stable_pilot_source_entry?(before_read, after_read) do
+      blob = :crypto.hash(:sha, ["blob ", Integer.to_string(byte_size(bytes)), <<0>>, bytes])
+      Base.encode16(blob, case: :lower) == oid
+    else
+      _ -> false
+    end
+  end
+
+  defp pilot_source_bytes(path, "120000", %File.Stat{type: :symlink}), do: File.read_link(path)
+
+  defp pilot_source_bytes(path, mode, %File.Stat{type: :regular, mode: permissions})
+       when mode in ["100644", "100755"] do
+    if Bitwise.band(permissions, 0o100) != 0 == (mode == "100755"),
+      do: File.read(path),
+      else: {:error, :pilot_source_mode_mismatch}
+  end
+
+  defp pilot_source_bytes(_path, _mode, _stat), do: {:error, :pilot_source_type_mismatch}
+
+  defp stable_pilot_source_entry?(before_read, after_read) do
+    fields = [:type, :mode, :size, :inode, :major_device, :minor_device, :mtime, :ctime, :uid, :gid]
+    Map.take(before_read, fields) == Map.take(after_read, fields)
   end
 
   defp pilot_git(git, args) do
     case PathSafety.trusted_executable_identity(git.path) do
-      {:ok, ^git} -> System.cmd(git.path, args, stderr_to_stdout: true)
+      {:ok, ^git} -> System.cmd(git.path, args, env: pilot_git_environment(), stderr_to_stdout: true)
       _ -> {:error, :pilot_git_untrusted}
     end
+  end
+
+  defp pilot_git_environment do
+    System.get_env()
+    |> Map.keys()
+    |> Map.new(&{&1, nil})
+    |> Map.merge(%{
+      "PATH" => "/usr/bin:/bin",
+      "LC_ALL" => "C",
+      "GIT_CONFIG_NOSYSTEM" => "1",
+      "GIT_CONFIG_SYSTEM" => "/dev/null",
+      "GIT_CONFIG_GLOBAL" => "/dev/null",
+      "GIT_CONFIG_COUNT" => "0",
+      "GIT_NO_LAZY_FETCH" => "1"
+    })
+    |> Enum.to_list()
   end
 
   defp current_pilot_authority(settings) do

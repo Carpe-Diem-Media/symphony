@@ -32,7 +32,16 @@ without trimming or reloading them. Checkout verification revalidates the truste
 Git identity before each command and executes its absolute path. The executable
 and its ancestry must be root-owned without group/other write or set-ID bits.
 The checkout must match both source identities and have no tracked changes or
-untracked files before the model starts.
+untracked files before the model starts. Each verification Git child receives an
+isolated environment with global/system configuration and lazy fetching disabled.
+Its effective canonical worktree must equal the approved workspace. The admission
+check also hashes actual tracked file or symlink bytes and checks type/mode against
+the pinned tree, independently of index stat caches, assume-unchanged or skip-worktree.
+It changes no index flags, configuration or checkout contents. Content-transforming
+checkouts and unsupported tree entry types fail closed when they do not match the
+pinned raw tree. Linked Git worktrees are supported by this read-only proof; the
+normal runtime still requires its existing ownership and credential admission,
+including its Git-metadata containment rule.
 
 The existing attempt ledger retains the exact grant. Its normal states are
 `configured`, `consumed`, `running`, `stopverified`. Dispatch synchronizes consumption

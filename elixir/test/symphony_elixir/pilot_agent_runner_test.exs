@@ -216,6 +216,7 @@ defmodule SymphonyElixir.PilotAgentRunnerTest do
     {:ok, fixture}
   end
 
+  @tag :f03
   test "persists the final answer and correlations before success, survives runtime removal and restart", ctx do
     recipient = self()
     worker = Task.async(fn -> AgentRunner.run(ctx.issue, recipient, ctx.opts) end)
@@ -299,6 +300,7 @@ defmodule SymphonyElixir.PilotAgentRunnerTest do
     assert {:error, _} = AttemptLedger.begin_attempt(ledger, ctx.issue.id, pilot_binding: ctx.grant)
   end
 
+  @tag :f03
   test "a changed tracked checkout cannot start the synthetic model", ctx do
     {:ok, workspace} = Workspace.create_for_issue(ctx.issue, nil, ctx.opts[:ownership_ledger])
     File.write!(Path.join(workspace, "sample.ex"), "changed tracked bytes\n")
@@ -307,6 +309,7 @@ defmodule SymphonyElixir.PilotAgentRunnerTest do
     assert {:error, _} = AttemptLedger.begin_attempt(ctx.ledger, ctx.issue.id, pilot_binding: ctx.grant)
   end
 
+  @tag :f03
   test "untracked source outside the pinned tree cannot enter the pilot workspace", ctx do
     {:ok, workspace} = Workspace.create_for_issue(ctx.issue, nil, ctx.opts[:ownership_ledger])
     File.write!(Path.join(workspace, "unexpected.ex"), "untracked source\n")
@@ -458,6 +461,7 @@ defmodule SymphonyElixir.PilotAgentRunnerTest do
   end
 
   @tag :authority_binding_correction
+  @tag :f03
   test "PATH substituted Git cannot fabricate a clean approved pilot checkout", ctx do
     {:ok, workspace} = Workspace.create_for_issue(ctx.issue, nil, ctx.opts[:ownership_ledger])
     File.write!(Path.join(workspace, "sample.ex"), "unapproved tracked bytes\n")
@@ -481,6 +485,89 @@ defmodule SymphonyElixir.PilotAgentRunnerTest do
     after
       System.put_env("PATH", previous)
     end
+  end
+
+  for flag <- ["--assume-unchanged", "--skip-worktree"] do
+    @tag :f03
+    @tag index_flag: flag
+    test "actual modified tracked bytes refuse despite #{flag}", ctx do
+      {:ok, workspace} = Workspace.create_for_issue(ctx.issue, nil, ctx.opts[:ownership_ledger])
+      git!(workspace, ["update-index", ctx.index_flag, "sample.ex"])
+      File.write!(Path.join(workspace, "sample.ex"), "unapproved tracked content\n")
+      assert_original_checkout_checks_pass!(workspace, ctx.grant)
+      before_index = File.read!(Path.join(workspace, ".git/index"))
+      assert_raise RuntimeError, fn -> AgentRunner.run(ctx.issue, self(), ctx.opts) end
+      refute_receive {:synthetic_session, _}, 25
+      assert File.read!(Path.join(workspace, ".git/index")) == before_index
+    end
+  end
+
+  @tag :f03
+  test "GIT_DIR and GIT_WORK_TREE cannot substitute another clean repository", ctx do
+    {:ok, workspace} = Workspace.create_for_issue(ctx.issue, nil, ctx.opts[:ownership_ledger])
+    File.write!(Path.join(workspace, "sample.ex"), "unapproved tracked content\n")
+    source = Path.join(Path.dirname(ctx.policy_root), "source")
+
+    with_git_environment(%{"GIT_DIR" => Path.join(source, ".git"), "GIT_WORK_TREE" => source}, fn ->
+      assert_original_checkout_checks_pass!(workspace, ctx.grant)
+      assert_raise RuntimeError, fn -> AgentRunner.run(ctx.issue, self(), ctx.opts) end
+      refute_receive {:synthetic_session, _}, 25
+    end)
+  end
+
+  @tag :f03
+  test "repository core.worktree cannot redirect checks away from the approved workspace", ctx do
+    {:ok, workspace} = Workspace.create_for_issue(ctx.issue, nil, ctx.opts[:ownership_ledger])
+    source = Path.join(Path.dirname(ctx.policy_root), "source")
+    git!(workspace, ["config", "core.worktree", source])
+    File.write!(Path.join(workspace, "sample.ex"), "unapproved tracked content\n")
+    assert_original_checkout_checks_pass!(workspace, ctx.grant)
+    before_config = File.read!(Path.join(workspace, ".git/config"))
+    assert_raise RuntimeError, fn -> AgentRunner.run(ctx.issue, self(), ctx.opts) end
+    refute_receive {:synthetic_session, _}, 25
+    assert File.read!(Path.join(workspace, ".git/config")) == before_config
+  end
+
+  @tag :f03
+  test "unexpected Git configuration environment is isolated from a valid checkout", ctx do
+    {:ok, _workspace} = Workspace.create_for_issue(ctx.issue, nil, ctx.opts[:ownership_ledger])
+
+    with_git_environment(%{"GIT_CONFIG_COUNT" => "not-an-integer", "GIT_CONFIG_PARAMETERS" => "invalid config"}, fn ->
+      assert :ok = AgentRunner.run(ctx.issue, self(), ctx.opts)
+      assert_receive :synthetic_turn
+    end)
+  end
+
+  @tag :f03
+  test "an unexpected inherited Git index is isolated from a valid approved checkout", ctx do
+    {:ok, workspace} = Workspace.create_for_issue(ctx.issue, nil, ctx.opts[:ownership_ledger])
+    index = Path.join(ctx.policy_root, "invalid-index")
+    File.write!(index, "not a Git index")
+
+    with_git_environment(%{"GIT_INDEX_FILE" => index}, fn ->
+      assert :ok = AgentRunner.run(ctx.issue, self(), ctx.opts)
+      assert_receive :synthetic_turn
+      assert File.read!(index) == "not a Git index"
+    end)
+  end
+
+  defp with_git_environment(values, fun) do
+    prior = Map.new(values, fn {key, _} -> {key, System.get_env(key)} end)
+    System.put_env(values)
+
+    try do
+      fun.()
+    after
+      Enum.each(prior, fn {key, value} -> restore_env(key, value) end)
+    end
+  end
+
+  defp assert_original_checkout_checks_pass!(workspace, grant) do
+    args = ["--no-optional-locks", "--no-replace-objects", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-C", workspace]
+    assert {output, 0} = System.cmd("/usr/bin/git", args ++ ["rev-parse", "HEAD", "HEAD^{tree}"], stderr_to_stdout: true)
+    assert String.split(output) == [grant.source_commit, grant.source_tree]
+    assert {_, 0} = System.cmd("/usr/bin/git", args ++ ["diff", "--quiet", "HEAD", "--"], stderr_to_stdout: true)
+    assert {"", 0} = System.cmd("/usr/bin/git", args ++ ["ls-files", "--others"], stderr_to_stdout: true)
   end
 
   defp wait_for_removal(orchestrator, item, remaining) when remaining > 0 do
