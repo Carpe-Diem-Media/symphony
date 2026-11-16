@@ -540,7 +540,7 @@ defmodule SymphonyElixir.PilotAgentRunnerTest do
 
   @tag :f03
   test "an unexpected inherited Git index is isolated from a valid approved checkout", ctx do
-    {:ok, workspace} = Workspace.create_for_issue(ctx.issue, nil, ctx.opts[:ownership_ledger])
+    {:ok, _workspace} = Workspace.create_for_issue(ctx.issue, nil, ctx.opts[:ownership_ledger])
     index = Path.join(ctx.policy_root, "invalid-index")
     File.write!(index, "not a Git index")
 
