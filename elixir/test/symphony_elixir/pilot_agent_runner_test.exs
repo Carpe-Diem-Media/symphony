@@ -66,6 +66,10 @@ defmodule SymphonyElixir.PilotAgentRunnerTest do
   end
 
   setup context do
+    prior_plane_key = System.get_env("PLANE_API_KEY")
+    System.put_env("PLANE_API_KEY", "SYNTHETIC-NONLIVE-PLANE-KEY")
+    on_exit(fn -> restore_env("PLANE_API_KEY", prior_plane_key) end)
+
     root = Path.dirname(Workflow.workflow_file_path())
     source = Path.join(root, "source")
     File.mkdir_p!(source)

@@ -73,7 +73,20 @@ defmodule SymphonyElixir.PilotHolderInterfaceTest do
   @item "22222222-2222-4222-8222-222222222222"
   @prompt "Inspect the small tracked file and return a short technical plan."
 
+  setup_all do
+    native = Path.expand("../../../native/pilot_c02", __DIR__)
+    # Rebuild from the tracked C sources, then verify the native lifecycle before
+    # any test can select the holder probe. A stale local binary is insufficient.
+    {output, status} = System.cmd("/usr/bin/make", ["--always-make", "-C", native, "check"], stderr_to_stdout: true)
+    assert status == 0, "Native C02 fixture build/verification failed:\n#{output}"
+    :ok
+  end
+
   setup context do
+    prior_plane_key = System.get_env("PLANE_API_KEY")
+    System.put_env("PLANE_API_KEY", "SYNTHETIC-NONLIVE-PLANE-KEY")
+    on_exit(fn -> restore_env("PLANE_API_KEY", prior_plane_key) end)
+
     root = Path.dirname(Workflow.workflow_file_path())
     source = Path.join(root, "source")
     File.mkdir_p!(source)
@@ -326,7 +339,12 @@ defmodule SymphonyElixir.PilotHolderInterfaceTest do
     assert File.regular?(path)
 
     if System.get_env("PINNED_CODEX_EVIDENCE_ROOT") do
-      observation = %{runtime_attempt_id: ctx.identity.runtime_attempt_id, model_state: result.model_state, stop_disposition: result.stop_disposition}
+      observation = %{
+        runtime_attempt_id: ctx.identity.runtime_attempt_id,
+        model_state: result.model_state,
+        stop_disposition: result.stop_disposition
+      }
+
       File.write!(Path.join(Path.dirname(path), "c04-observation.json"), Jason.encode!(observation))
     end
 
