@@ -83,6 +83,103 @@ defmodule SymphonyElixir.AppServerEdgeTest do
     end
   end
 
+  @tag :absolute_deadline_red
+  test "an expired absolute deadline prevents app-server startup" do
+    with_fixture([], fn workspace, binary, _issue ->
+      assert {:error, :turn_timeout} =
+               AppServer.start_session(workspace,
+                 command: "#{binary} app-server",
+                 absolute_deadline_ms: System.monotonic_time(:millisecond) - 1
+               )
+    end)
+  end
+
+  test "an absolute deadline also bounds a silent startup response" do
+    with_fixture([[]], fn workspace, binary, _issue ->
+      deadline_ms = System.monotonic_time(:millisecond) + 100
+
+      assert {:error, :turn_timeout} =
+               AppServer.start_session(workspace,
+                 command: "#{binary} app-server",
+                 absolute_deadline_ms: deadline_ms
+               )
+    end)
+  end
+
+  test "an absolute turn deadline expires despite continuous stream output" do
+    with_fixture(
+      [
+        [json_line(%{"id" => 1, "result" => %{}})],
+        [],
+        [json_line(%{"id" => 2, "result" => %{"thread" => %{"id" => "thread-deadline"}}})],
+        [
+          json_line(%{"id" => 3, "result" => %{"turn" => %{"id" => "turn-deadline"}}}),
+          "while :; do printf '%s\\n' '{\"method\":\"turn/progress\"}'; done"
+        ]
+      ],
+      fn workspace, binary, issue ->
+        deadline_ms = System.monotonic_time(:millisecond) + 150
+
+        assert {:error, :turn_timeout} =
+                 AppServer.run(workspace, "synthetic prompt", issue,
+                   command: "#{binary} app-server",
+                   absolute_deadline_ms: deadline_ms
+                 )
+      end
+    )
+  end
+
+  test "an absolute turn deadline bounds a silent model turn" do
+    with_fixture(
+      [
+        [json_line(%{"id" => 1, "result" => %{}})],
+        [],
+        [json_line(%{"id" => 2, "result" => %{"thread" => %{"id" => "thread-silent-deadline"}}})],
+        [json_line(%{"id" => 3, "result" => %{"turn" => %{"id" => "turn-silent-deadline"}}})]
+      ],
+      fn workspace, binary, issue ->
+        assert {:error, :turn_timeout} =
+                 AppServer.run(workspace, "synthetic prompt", issue,
+                   command: "#{binary} app-server",
+                   timeout_ms: 5_000,
+                   absolute_deadline_ms: System.monotonic_time(:millisecond) + 100
+                 )
+      end
+    )
+  end
+
+  test "pilot app-server failures and protocol noise do not log provider content" do
+    sentinel = "PILOT_RPC_SENTINEL_9d4f62"
+
+    with_fixture(
+      [
+        [
+          json_line(%{"method" => "diagnostic/noise", "params" => %{"message" => sentinel}}),
+          json_line(%{"id" => 1, "result" => %{}})
+        ],
+        [],
+        [json_line(%{"id" => 2, "result" => %{"thread" => %{"id" => "thread-#{sentinel}"}}})],
+        [
+          json_line(%{"method" => "diagnostic/noise", "params" => %{"message" => sentinel}}),
+          json_line(%{"id" => 3, "error" => %{"message" => sentinel}})
+        ]
+      ],
+      fn workspace, binary, issue ->
+        logs =
+          ExUnit.CaptureLog.capture_log(fn ->
+            assert {:error, {:response_error, %{"message" => ^sentinel}}} =
+                     AppServer.run(workspace, "synthetic prompt", issue,
+                       command: "#{binary} app-server",
+                       absolute_deadline_ms: System.monotonic_time(:millisecond) + 5_000
+                     )
+          end)
+
+        refute logs =~ sentinel
+        assert logs =~ "Codex pilot startup failed" or logs =~ "Codex pilot turn ended with error"
+      end
+    )
+  end
+
   test "startup returns protocol errors and closes the child when initialize fails" do
     with_fixture(
       [

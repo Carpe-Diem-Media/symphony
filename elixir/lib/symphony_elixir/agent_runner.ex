@@ -5,10 +5,11 @@ defmodule SymphonyElixir.AgentRunner do
 
   require Logger
   alias SymphonyElixir.{AgentRuntime, Config, CredentialBoundary, PromptBuilder, SourceControl, Tracker, Workspace}
-  alias SymphonyElixir.AgentRuntime.{Profile, Route, Router, RuntimeIsolation}
+  alias SymphonyElixir.AgentRuntime.{AttemptLedger, Profile, Route, Router, RuntimeIsolation}
   alias SymphonyElixir.AgentRuntime.RuntimeAttempt.Identity, as: RuntimeAttemptIdentity
   alias SymphonyElixir.Codex.IsolationProfile
   alias SymphonyElixir.Dependency.Guard
+  alias SymphonyElixir.PathSafety
   alias SymphonyElixir.Tracker.Issue
   alias SymphonyElixir.WorkControl.{LifecycleAssessment, WorkflowLifecycle, WorkItem}
   alias SymphonyElixir.Workspace.OwnershipLedger
@@ -48,14 +49,16 @@ defmodule SymphonyElixir.AgentRunner do
     build_turn_prompt(issue, [route: route], turn_number, max_turns)
   end
 
+  @type containment_reason :: :termination_timeout | :namespace_observation_unavailable
+
   @spec run(map(), pid() | nil, keyword()) ::
-          :ok | {:error, {:runtime_containment_unconfirmed, :termination_timeout}} | no_return()
+          :ok | {:error, {:runtime_containment_unconfirmed, containment_reason()}} | no_return()
   def run(issue, codex_update_recipient \\ nil, opts \\ []) do
     settings = Config.settings!()
 
     case {Config.validate_attempt_boundary(settings), SymphonyElixir.runtime_start_decision(settings)} do
       {:ok, :legacy} ->
-        run_legacy_attempt(issue, codex_update_recipient, opts, settings)
+        run_scoped_attempt(issue, codex_update_recipient, opts, settings)
 
       {{:error, reason}, _decision} ->
         raise RuntimeError, "Agent attempt boundary validation failed: #{inspect(reason)}"
@@ -65,6 +68,269 @@ defmodule SymphonyElixir.AgentRunner do
 
       {:ok, {:error, reason}} ->
         raise RuntimeError, "Agent runtime start is rejected: #{inspect(reason)}"
+    end
+  end
+
+  defp run_scoped_attempt(issue, recipient, opts, settings) do
+    case Config.pilot_binding(settings) do
+      {:ok, nil} ->
+        if Keyword.get(opts, :pilot_binding), do: raise("Pilot configuration missing")
+        run_legacy_attempt(issue, recipient, opts, settings)
+
+      {:ok, grant} ->
+        run_pilot_attempt(issue, recipient, opts, settings, grant)
+
+      {:error, _} ->
+        raise "Pilot configuration invalid"
+    end
+  end
+
+  defp run_pilot_attempt(issue, recipient, opts, settings, grant) do
+    ledger = Keyword.get(opts, :attempt_ledger)
+    identity = runtime_attempt_identity(opts)
+
+    with true <-
+           Keyword.get(opts, :pilot_binding) == grant and issue.id == grant.work_item_id and
+             issue.project_id == grant.plane_project_id,
+         %AttemptLedger{} <- ledger,
+         :ok <- AttemptLedger.validate_pilot_attempt(ledger, grant, identity),
+         {:ok, authority} <- current_pilot_authority(settings),
+         true <- authority.identity == grant.config_identity,
+         :ok <- AttemptLedger.claim_pilot_launch(ledger, grant, identity) do
+      deadline = pilot_deadline(Keyword.get(opts, :absolute_deadline_ms), grant.deadline_ms)
+      opts = opts |> Keyword.put(:absolute_deadline_ms, deadline) |> Keyword.put(:pilot_authority, authority) |> Keyword.put(:pilot_workflow, authority.workflow)
+
+      Process.put({__MODULE__, :pilot_result}, %{
+        ledger: ledger,
+        grant: grant,
+        authority: authority,
+        identity: identity,
+        answer: nil,
+        item_id: nil,
+        ambiguous: false,
+        completed: false,
+        stop: :quarantined,
+        session_id: nil,
+        thread_id: nil,
+        turn_id: nil
+      })
+
+      try do
+        result = safely_run_pilot(fn -> run_legacy_attempt(issue, recipient, opts, settings) end)
+        persist_final_pilot_result(result)
+        restore_pilot_execution_result(result)
+      after
+        Process.delete({__MODULE__, :pilot_result})
+      end
+    else
+      _ -> raise "Pilot launch refused"
+    end
+  end
+
+  defp pilot_deadline(nil, budget), do: System.monotonic_time(:millisecond) + budget
+
+  defp pilot_deadline(deadline, budget) when is_integer(deadline),
+    do: min(deadline, System.monotonic_time(:millisecond) + budget)
+
+  defp pilot_deadline(_deadline, _budget), do: raise("Pilot deadline invalid")
+
+  defp restore_pilot_execution_result({:raised, _kind, _reason, _stacktrace}),
+    do: raise("Pilot execution failed")
+
+  defp restore_pilot_execution_result(result), do: restore_execution_result(result)
+
+  defp safely_run_pilot(fun) do
+    {:returned, fun.()}
+  catch
+    kind, reason -> {:raised, kind, reason, __STACKTRACE__}
+  end
+
+  defp persist_final_pilot_result(result) do
+    evidence = Process.get({__MODULE__, :pilot_result})
+    completed = pilot_completed?(result, evidence)
+
+    record = %{
+      final_answer: evidence.answer,
+      model_state: if(evidence.completed, do: :completed, else: :failed),
+      outcome: if(completed, do: :completed, else: :failed),
+      stop_disposition: evidence.stop,
+      session_id: evidence.session_id,
+      thread_id: evidence.thread_id,
+      turn_id: evidence.turn_id
+    }
+
+    case AttemptLedger.persist_pilot_result(evidence.ledger, evidence.identity, record) do
+      :ok when completed ->
+        Logger.info("Pilot final result persisted runtime_attempt_id=#{evidence.identity.runtime_attempt_id}")
+        :ok
+
+      :ok ->
+        if result == {:returned, :ok}, do: raise("Pilot final evidence incomplete"), else: :ok
+
+      {:error, _} ->
+        _ = AttemptLedger.quarantine_pilot(evidence.ledger, evidence.identity, :result_persistence_failed)
+        raise "Pilot final evidence persistence failed"
+    end
+  end
+
+  defp pilot_completed?(result, evidence) do
+    Enum.all?([result == {:returned, :ok}, evidence.completed, not evidence.ambiguous, is_binary(evidence.answer), evidence.stop == :verified])
+  end
+
+  defp pilot_result_active?, do: is_map(Process.get({__MODULE__, :pilot_result}))
+
+  defp update_pilot_result(fun) do
+    case Process.get({__MODULE__, :pilot_result}) do
+      nil -> :ok
+      result -> Process.put({__MODULE__, :pilot_result}, fun.(result))
+    end
+  end
+
+  defp capture_pilot_message(message) do
+    update_pilot_result(fn result ->
+      result =
+        Enum.reduce([:session_id, :thread_id, :turn_id], result, &put_pilot_identifier(&2, message, &1))
+
+      capture_pilot_item(result, message)
+    end)
+  end
+
+  defp put_pilot_identifier(result, message, key) do
+    if is_binary(message[key]), do: Map.put(result, key, message[key]), else: result
+  end
+
+  defp capture_pilot_item(result, %{payload: %{"method" => "item/completed", "params" => %{"item" => %{"type" => "agentMessage", "phase" => "final_answer", "id" => id, "text" => text}}}})
+       when is_binary(id) and is_binary(text) do
+    cond do
+      result.item_id == nil -> %{result | item_id: id, answer: text}
+      result.item_id == id and result.answer == text -> result
+      true -> %{result | ambiguous: true}
+    end
+  end
+
+  defp capture_pilot_item(result, _message), do: result
+
+  defp validate_pilot_checkout(workspace) do
+    case Process.get({__MODULE__, :pilot_result}) do
+      nil -> :ok
+      %{grant: grant, authority: %{git: git}} -> validate_pilot_checkout(workspace, grant, git)
+    end
+  end
+
+  # Read-only proof only. Dispatch, ownership and credential admission remain
+  # separate, mandatory boundaries in the normal AgentRunner path.
+  @doc false
+  @spec validate_pilot_checkout(Path.t(), map(), map()) :: :ok | {:error, :pilot_source_mismatch}
+  def validate_pilot_checkout(workspace, grant, git) do
+    with {:ok, workspace} <- PathSafety.canonicalize(workspace),
+         {:ok, %File.Stat{type: :directory}} <- File.lstat(workspace) do
+      args = ["--no-optional-locks", "--no-replace-objects", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-C", workspace]
+
+      with {root, 0} <- pilot_git(git, args ++ ["rev-parse", "--show-toplevel"]),
+           [root, ""] <- String.split(root, "\n"),
+           {:ok, ^workspace} <- PathSafety.canonicalize(root),
+           {output, 0} <- pilot_git(git, args ++ ["rev-parse", "HEAD", "HEAD^{tree}"]),
+           [commit, tree] <- String.split(output),
+           true <- commit == grant.source_commit and tree == grant.source_tree,
+           {_, 0} <- pilot_git(git, args ++ ["diff", "--no-ext-diff", "--no-textconv", "--quiet", "HEAD", "--"]),
+           {"", 0} <- pilot_git(git, args ++ ["ls-files", "--others"]),
+           {entries, 0} <- pilot_git(git, args ++ ["ls-tree", "-rz", "--full-tree", grant.source_tree]),
+           true <- pilot_tree_contents_match?(workspace, entries) do
+        :ok
+      else
+        _ -> {:error, :pilot_source_mismatch}
+      end
+    else
+      _ -> {:error, :pilot_source_mismatch}
+    end
+  rescue
+    _ -> {:error, :pilot_source_mismatch}
+  end
+
+  defp pilot_tree_contents_match?(workspace, entries) do
+    records = :binary.split(entries, <<0>>, [:global])
+
+    List.last(records) == "" and
+      Enum.all?(Enum.drop(records, -1), &pilot_tree_entry_matches?(workspace, &1))
+  end
+
+  defp pilot_tree_entry_matches?(workspace, entry) do
+    with [metadata, relative] <- String.split(entry, "\t", parts: 2),
+         [mode, "blob", oid] <- String.split(metadata, " "),
+         true <- relative != "" and Path.type(relative) == :relative,
+         false <- Enum.any?(Path.split(relative), &(&1 in [".", "..", ".git"])),
+         path <- Path.join(workspace, relative),
+         parent <- Path.dirname(path),
+         {:ok, ^parent} <- PathSafety.canonicalize(parent),
+         {:ok, before_read} <- File.lstat(path),
+         {:ok, bytes} <- pilot_source_bytes(path, mode, before_read),
+         {:ok, after_read} <- File.lstat(path),
+         true <- stable_pilot_source_entry?(before_read, after_read) do
+      blob = :crypto.hash(:sha, ["blob ", Integer.to_string(byte_size(bytes)), <<0>>, bytes])
+      Base.encode16(blob, case: :lower) == oid
+    else
+      _ -> false
+    end
+  end
+
+  defp pilot_source_bytes(path, "120000", %File.Stat{type: :symlink}), do: File.read_link(path)
+
+  defp pilot_source_bytes(path, mode, %File.Stat{type: :regular, mode: permissions})
+       when mode in ["100644", "100755"] do
+    if Bitwise.band(permissions, 0o100) != 0 == (mode == "100755"),
+      do: File.read(path),
+      else: {:error, :pilot_source_mode_mismatch}
+  end
+
+  defp pilot_source_bytes(_path, _mode, _stat), do: {:error, :pilot_source_type_mismatch}
+
+  defp stable_pilot_source_entry?(before_read, after_read) do
+    fields = [:type, :mode, :size, :inode, :major_device, :minor_device, :mtime, :ctime, :uid, :gid]
+    Map.take(before_read, fields) == Map.take(after_read, fields)
+  end
+
+  defp pilot_git(git, args) do
+    case PathSafety.trusted_executable_identity(git.path) do
+      {:ok, ^git} -> System.cmd(git.path, args, env: pilot_git_environment(), stderr_to_stdout: true)
+      _ -> {:error, :pilot_git_untrusted}
+    end
+  end
+
+  defp pilot_git_environment do
+    System.get_env()
+    |> Map.keys()
+    |> Map.new(&{&1, nil})
+    |> Map.merge(%{
+      "PATH" => "/usr/bin:/bin",
+      "LC_ALL" => "C",
+      "GIT_CONFIG_NOSYSTEM" => "1",
+      "GIT_CONFIG_SYSTEM" => "/dev/null",
+      "GIT_CONFIG_GLOBAL" => "/dev/null",
+      "GIT_CONFIG_COUNT" => "0",
+      "GIT_NO_LAZY_FETCH" => "1"
+    })
+    |> Enum.to_list()
+  end
+
+  defp current_pilot_authority(settings) do
+    with {:ok, %{prompt_template: prompt}} <- SymphonyElixir.Workflow.load() do
+      Config.pilot_configuration_snapshot(settings, prompt)
+    end
+  end
+
+  defp role_prompt_for_launch(route, opts) do
+    case Keyword.get(opts, :pilot_authority) do
+      nil ->
+        {:ok, PromptBuilder.role_prompt(route)}
+
+      authority ->
+        with {:ok, ^authority} <- current_pilot_authority(Config.settings!()),
+             true <- authority.role_policy.profile_name == route.profile_name,
+             true <- authority.role_policy.prompt_name == (route.profile.prompt || route.profile_name) do
+          {:ok, authority.role_policy.bytes}
+        else
+          _ -> {:error, :pilot_authority_changed}
+        end
     end
   end
 
@@ -148,8 +414,7 @@ defmodule SymphonyElixir.AgentRunner do
       nil ->
         case runtime_isolation_block_reason(reason) do
           nil ->
-            Logger.error("Agent run failed for #{issue_context(issue)}: #{inspect(reason)}")
-            raise RuntimeError, "Agent run failed for #{issue_context(issue)}: #{inspect(reason)}"
+            raise_worker_failure(issue, reason)
 
           isolation_reason ->
             report_runtime_isolation_block(recipient, issue, opts, isolation_reason)
@@ -161,8 +426,17 @@ defmodule SymphonyElixir.AgentRunner do
   end
 
   defp run_worker_attempt_result(result, issue, _recipient, _opts) do
-    Logger.error("Agent run returned an invalid result for #{issue_context(issue)}: #{inspect(result)}")
-    raise RuntimeError, "Agent run returned an invalid result for #{issue_context(issue)}"
+    raise_worker_failure(issue, result)
+  end
+
+  defp raise_worker_failure(issue, reason) do
+    if pilot_result_active?() do
+      Logger.error("Pilot worker failed for #{issue_context(issue)}")
+      raise "Pilot execution failed"
+    else
+      Logger.error("Agent run failed for #{issue_context(issue)}: #{inspect(reason)}")
+      raise RuntimeError, "Agent run failed for #{issue_context(issue)}: #{inspect(reason)}"
+    end
   end
 
   defp report_runtime_isolation_block(recipient, issue, opts, isolation_reason) do
@@ -191,11 +465,13 @@ defmodule SymphonyElixir.AgentRunner do
     end
   end
 
-  defp runtime_containment_unconfirmed_reason({:runtime_stop_failed, {:containment_unconfirmed, :termination_timeout}}),
-    do: :termination_timeout
+  defp runtime_containment_unconfirmed_reason({:runtime_stop_failed, {:containment_unconfirmed, reason}})
+       when reason in [:termination_timeout, :namespace_observation_unavailable],
+       do: reason
 
-  defp runtime_containment_unconfirmed_reason({:runtime_stop_failed, {:containment_unconfirmed, :termination_timeout}, _context}),
-    do: :termination_timeout
+  defp runtime_containment_unconfirmed_reason({:runtime_stop_failed, {:containment_unconfirmed, reason}, _context})
+       when reason in [:termination_timeout, :namespace_observation_unavailable],
+       do: reason
 
   defp runtime_containment_unconfirmed_reason({wrapper, reason})
        when wrapper in [:runtime_stop_failed, :turn_failed, :start_failed, :error],
@@ -264,7 +540,8 @@ defmodule SymphonyElixir.AgentRunner do
         send_worker_runtime_info(codex_update_recipient, issue, runtime_identity, worker_host, workspace)
 
         try do
-          with :ok <- Workspace.run_before_run_hook(workspace, issue, worker_host) do
+          with :ok <- Workspace.run_before_run_hook(workspace, issue, worker_host),
+               :ok <- validate_pilot_checkout(workspace) do
             case admit_local_routed_runtime(issue, workspace, opts, worker_host) do
               :ok ->
                 run_codex_turns(workspace, issue, codex_update_recipient, opts, worker_host)
@@ -275,7 +552,7 @@ defmodule SymphonyElixir.AgentRunner do
             end
           end
         after
-          Workspace.run_after_run_hook(workspace, issue, worker_host)
+          unless pilot_result_active?(), do: Workspace.run_after_run_hook(workspace, issue, worker_host)
         end
 
       {:error, reason} ->
@@ -293,10 +570,23 @@ defmodule SymphonyElixir.AgentRunner do
   end
 
   defp codex_message_handler(recipient, issue, runtime_identity) do
-    fn message ->
-      send_codex_update(recipient, issue, runtime_identity, message)
+    fn message -> handle_codex_message(recipient, issue, runtime_identity, message) end
+  end
+
+  defp handle_codex_message(recipient, issue, identity, message) do
+    if pilot_result_active?() do
+      capture_pilot_message(message)
+      send_pilot_update(recipient, issue, identity, message)
+    else
+      send_codex_update(recipient, issue, identity, message)
     end
   end
+
+  defp send_pilot_update(_recipient, _issue, _identity, %{event: event})
+       when event in [:turn_completed, :turn_failed, :turn_cancelled], do: :ok
+
+  defp send_pilot_update(recipient, issue, identity, message),
+    do: send_codex_update(recipient, issue, identity, Map.take(message, [:event, :timestamp, :codex_app_server_pid]))
 
   defp send_codex_update(recipient, %Issue{id: issue_id}, %RuntimeAttemptIdentity{} = identity, message)
        when is_binary(issue_id) and is_pid(recipient) do
@@ -362,6 +652,10 @@ defmodule SymphonyElixir.AgentRunner do
 
   defp runtime_attempt_lifecycle_callback(context) do
     fn lifecycle_state ->
+      if lifecycle_state == :containment_proven_dead do
+        update_pilot_result(&%{&1 | stop: :verified})
+      end
+
       notify_runtime_attempt_lifecycle(
         context.codex_update_recipient,
         context.issue,
@@ -389,7 +683,7 @@ defmodule SymphonyElixir.AgentRunner do
         :runtime_started ->
           :runtime_started
 
-        {:containment_unconfirmed, reason} when reason in [:termination_timeout] ->
+        {:containment_unconfirmed, reason} when reason in [:termination_timeout, :namespace_observation_unavailable] ->
           {:containment_unconfirmed, reason}
       end
 
@@ -418,9 +712,8 @@ defmodule SymphonyElixir.AgentRunner do
       |> Keyword.delete(:issue_state_fetcher)
       |> Keyword.delete(:plane_epoch_snapshot_reader)
 
-    role_prompt = PromptBuilder.role_prompt(route)
-
-    with {:ok, session} <- runtime.start_session(workspace, runtime_opts) do
+    with {:ok, role_prompt} <- role_prompt_for_launch(route, opts),
+         {:ok, session} <- runtime.start_session(workspace, runtime_opts) do
       send_runtime_attempt_session_started(codex_update_recipient, issue, runtime_identity)
       notify_runtime_attempt_lifecycle(codex_update_recipient, issue, runtime_identity, :runtime_started)
 
@@ -584,7 +877,8 @@ defmodule SymphonyElixir.AgentRunner do
 
     prompt = build_turn_prompt(context.issue, prompt_opts, turn_number, max_turns)
 
-    with {:ok, _turn_result} <-
+    with :ok <- validate_pilot_prompt_authority(context),
+         {:ok, turn_result} <-
            context.runtime.run_turn(
              context.session,
              prompt,
@@ -599,6 +893,27 @@ defmodule SymphonyElixir.AgentRunner do
                )
              )
            ) do
+      finish_completed_turn(context, turn_result, turn_number, max_turns)
+    end
+  end
+
+  defp validate_pilot_prompt_authority(context) do
+    if pilot_result_active?() do
+      case role_prompt_for_launch(context.route, context.opts) do
+        {:ok, prompt} when prompt == context.role_prompt -> :ok
+        _ -> {:error, :pilot_authority_changed}
+      end
+    else
+      :ok
+    end
+  end
+
+  defp finish_completed_turn(context, turn_result, turn_number, max_turns) do
+    if pilot_result_active?() do
+      capture_pilot_turn_identifiers(turn_result)
+      update_pilot_result(&%{&1 | completed: true})
+      :ok
+    else
       Logger.info(
         "Completed agent run for #{issue_context(context.issue)} " <>
           "workspace=#{context.workspace} turn=#{turn_number}/#{max_turns}"
@@ -607,6 +922,11 @@ defmodule SymphonyElixir.AgentRunner do
       continue_from_completed_turn(context, turn_number, max_turns)
     end
   end
+
+  defp capture_pilot_turn_identifiers(result) when is_map(result),
+    do: capture_pilot_message(Map.take(result, [:session_id, :thread_id, :turn_id]))
+
+  defp capture_pilot_turn_identifiers(_result), do: :ok
 
   defp continue_from_completed_turn(context, turn_number, max_turns) do
     case refreshed_issue_state(context) do
@@ -710,8 +1030,12 @@ defmodule SymphonyElixir.AgentRunner do
         restore_execution_result(execution_result)
 
       {:error, {:session_not_active, :stopped}} ->
-        lifecycle_callback.(:containment_proven_dead)
-        restore_execution_result(execution_result)
+        if pilot_result_active?() do
+          {:error, {:runtime_stop_failed, {:containment_unconfirmed, :termination_timeout}}}
+        else
+          lifecycle_callback.(:containment_proven_dead)
+          restore_execution_result(execution_result)
+        end
 
       {:error, reason} ->
         {:error, {:runtime_stop_failed, reason}}

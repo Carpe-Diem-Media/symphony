@@ -4,7 +4,8 @@ defmodule SymphonyElixir.PromptBuilder do
   """
 
   alias SymphonyElixir.AgentRuntime.{Profile, Route}
-  alias SymphonyElixir.{Config, Workflow}
+  alias SymphonyElixir.{Config, PathSafety, Workflow}
+  alias SymphonyElixir.WorkControl.WorkflowLifecycle
 
   @render_opts [strict_variables: true, strict_filters: true]
   @role_prompt_root Path.expand("../../prompts", __DIR__)
@@ -28,7 +29,7 @@ defmodule SymphonyElixir.PromptBuilder do
   @spec build_prompt(SymphonyElixir.Tracker.Issue.t(), keyword()) :: String.t()
   def build_prompt(issue, opts \\ []) do
     template =
-      Workflow.current()
+      Keyword.get_lazy(opts, :pilot_workflow, &Workflow.current/0)
       |> prompt_template!()
       |> parse_template!()
 
@@ -43,11 +44,14 @@ defmodule SymphonyElixir.PromptBuilder do
       )
       |> IO.iodata_to_binary()
 
-    case Keyword.fetch(opts, :role_prompt) do
-      {:ok, captured_role_prompt} ->
+    case {Keyword.get(opts, :pilot_authority), Keyword.fetch(opts, :role_prompt)} do
+      {%{role_policy: %{bytes: bytes}}, _} ->
+        bytes <> "\n\n--- Workflow task ---\n" <> rendered_prompt
+
+      {nil, {:ok, captured_role_prompt}} ->
         with_role_prompt(rendered_prompt, Keyword.get(opts, :route), captured_role_prompt)
 
-      :error ->
+      {nil, :error} ->
         with_role_prompt(rendered_prompt, Keyword.get(opts, :route))
     end
   end
@@ -77,6 +81,29 @@ defmodule SymphonyElixir.PromptBuilder do
   end
 
   def role_prompt(_route), do: nil
+
+  @doc "Captures the selected file-backed Planner policy for a pilot without fallback."
+  @spec pilot_role_policy(Config.Schema.t()) :: {:ok, map()} | {:error, :pilot_policy_unavailable}
+  def pilot_role_policy(settings) do
+    profile_name =
+      Enum.find_value(settings.agent.routes, "planner", fn {state, name} ->
+        if WorkflowLifecycle.parse(to_string(state)) == {:ok, :planning}, do: Profile.normalize_name(name)
+      end)
+
+    with %Profile{responsibility: "planning"} = profile <- Map.get(settings.agent.profiles, profile_name),
+         {:ok, name} <- normalize_role_prompt_name(profile.prompt || profile_name),
+         root <- Path.expand(role_prompt_root()),
+         {:ok, canonical_root} <- PathSafety.canonicalize(root),
+         path <- role_prompt_path(name, root),
+         {:ok, canonical_path} <- PathSafety.canonicalize(path),
+         {:ok, bytes} when byte_size(bytes) > 0 <- File.read(canonical_path) do
+      {:ok, %{profile_name: profile_name, prompt_name: profile.prompt || profile_name, root: root, canonical_root: canonical_root, path: canonical_path, bytes: bytes}}
+    else
+      _ -> {:error, :pilot_policy_unavailable}
+    end
+  rescue
+    _ -> {:error, :pilot_policy_unavailable}
+  end
 
   defp prompt_template!({:ok, %{prompt_template: prompt}}), do: default_prompt(prompt)
 
@@ -152,14 +179,14 @@ defmodule SymphonyElixir.PromptBuilder do
     end
   end
 
-  defp role_prompt_path(normalized_name) do
+  defp role_prompt_path(normalized_name, root \\ role_prompt_root()) do
     filename =
       case Path.extname(normalized_name) do
         ".md" -> normalized_name
         _ -> normalized_name <> ".md"
       end
 
-    Path.join(role_prompt_root(), filename)
+    Path.join(root, filename)
   end
 
   defp role_prompt_root do

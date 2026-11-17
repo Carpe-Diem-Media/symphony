@@ -208,6 +208,8 @@ defmodule SymphonyElixir.Codex.AppServer do
           :auto_approve_requests => boolean(),
           :thread_sandbox => String.t() | nil,
           :turn_sandbox_policy => map(),
+          optional(:absolute_deadline_ms) => integer() | nil,
+          optional(:runtime_namespace) => map() | nil,
           :thread_id => String.t(),
           :workspace => Path.t(),
           :worker_host => String.t() | nil,
@@ -303,8 +305,12 @@ defmodule SymphonyElixir.Codex.AppServer do
     worker_host = Keyword.get(opts, :worker_host)
     dynamic_tool_binding = DynamicTool.bind(opts)
 
-    with {:ok, expanded_workspace} <- validate_workspace_cwd(workspace, worker_host),
-         {:ok, session_policies} <- session_policies(expanded_workspace, worker_host, opts) do
+    with :ok <- check_deadline(Keyword.get(opts, :absolute_deadline_ms)),
+         {:ok, expanded_workspace} <- validate_workspace_cwd(workspace, worker_host),
+         {:ok, session_policies} <- session_policies(expanded_workspace, worker_host, opts),
+         {:ok, holder} <- RuntimeIsolation.prepare_pilot_holder(expanded_workspace, opts) do
+      opts = Keyword.put(opts, :pilot_holder_context, holder)
+
       start_with_policies(
         expanded_workspace,
         worker_host,
@@ -316,19 +322,35 @@ defmodule SymphonyElixir.Codex.AppServer do
   end
 
   defp start_with_policies(workspace, worker_host, dynamic_tool_binding, opts, session_policies) do
+    case check_deadline(Keyword.get(opts, :absolute_deadline_ms)) do
+      {:error, reason} -> cleanup_launch_after_error(nil, reason, opts)
+      :ok -> prepare_and_start_launch(workspace, worker_host, dynamic_tool_binding, opts, session_policies)
+    end
+  end
+
+  defp prepare_and_start_launch(workspace, worker_host, dynamic_tool_binding, opts, session_policies) do
     case prepare_launch(workspace, worker_host, session_policies, opts) do
       {:ok, launch} ->
-        start_prepared_launch(
-          workspace,
-          worker_host,
-          dynamic_tool_binding,
-          opts,
-          session_policies,
-          launch
-        )
+        case check_deadline(Keyword.get(opts, :absolute_deadline_ms)) do
+          :ok ->
+            start_prepared_launch(
+              workspace,
+              worker_host,
+              dynamic_tool_binding,
+              opts,
+              session_policies,
+              launch
+            )
 
-      {:error, _reason} = error ->
-        error
+          {:error, reason} ->
+            cleanup_launch_after_error(launch, reason, opts)
+        end
+
+      {:error, reason, launch} ->
+        cleanup_launch_after_error(launch, reason, opts)
+
+      {:error, reason} ->
+        cleanup_launch_after_error(nil, reason, opts)
     end
   end
 
@@ -342,37 +364,75 @@ defmodule SymphonyElixir.Codex.AppServer do
        ) do
     case revalidate_routed_workspace(workspace, session_policies, opts) do
       :ok ->
-        case start_port(
-               workspace,
-               worker_host,
-               dynamic_tool_binding,
-               opts,
-               session_policies,
-               launch
-             ) do
-          {:ok, port, ephemeral_home} ->
-            start_session_on_port(
-              port,
-              ephemeral_home,
-              workspace,
-              worker_host,
-              dynamic_tool_binding,
-              opts,
-              session_policies
-            )
-
-          {:error, reason} ->
-            cleanup_launch_after_error(launch, reason)
-        end
+        start_prepared_port(
+          workspace,
+          worker_host,
+          dynamic_tool_binding,
+          opts,
+          session_policies,
+          launch
+        )
 
       {:error, reason} ->
-        cleanup_launch_after_error(launch, reason)
+        cleanup_launch_after_error(launch, reason, opts)
     end
   end
 
-  defp cleanup_launch_after_error(launch, reason) do
-    case cleanup_launch(launch) do
-      :ok -> {:error, reason}
+  defp start_prepared_port(workspace, worker_host, dynamic_tool_binding, opts, session_policies, launch) do
+    case start_port(workspace, worker_host, dynamic_tool_binding, opts, session_policies, launch) do
+      {:ok, port, ephemeral_home} ->
+        start_captured_port(
+          port,
+          ephemeral_home,
+          workspace,
+          worker_host,
+          dynamic_tool_binding,
+          opts,
+          session_policies
+        )
+
+      {:error, reason} ->
+        cleanup_launch_after_error(launch, reason, opts)
+    end
+  end
+
+  defp start_captured_port(port, ephemeral_home, workspace, worker_host, dynamic_tool_binding, opts, session_policies) do
+    namespace_result =
+      if routed_policies?(session_policies) and pilot_execution?(Keyword.get(opts, :absolute_deadline_ms)),
+        do: capture_runtime_namespace(port, Keyword.get(opts, :absolute_deadline_ms)),
+        else: {:ok, nil}
+
+    case namespace_result do
+      {:ok, namespace_identity} ->
+        start_session_on_port(
+          port,
+          ephemeral_home,
+          workspace,
+          worker_host,
+          dynamic_tool_binding,
+          opts,
+          session_policies,
+          namespace_identity
+        )
+
+      {:error, reason} ->
+        cleanup_failed_session_start(
+          port,
+          ephemeral_home,
+          reason,
+          routed_policies?(session_policies),
+          nil,
+          Keyword.get(opts, :absolute_deadline_ms),
+          opts
+        )
+    end
+  end
+
+  defp cleanup_launch_after_error(launch, reason, opts) do
+    with :ok <- RuntimeIsolation.check_pilot_holder(Keyword.get(opts, :pilot_holder_context), :cleanup),
+         :ok <- cleanup_launch(launch) do
+      {:error, reason}
+    else
       {:error, cleanup_reason} -> {:error, cleanup_reason}
     end
   end
@@ -384,30 +444,56 @@ defmodule SymphonyElixir.Codex.AppServer do
          worker_host,
          dynamic_tool_binding,
          opts,
-         session_policies
+         session_policies,
+         namespace_identity
        ) do
-    case do_start_session(port, workspace, session_policies, dynamic_tool_binding) do
-      {:ok, thread_id} ->
-        session =
-          build_session(
-            port,
-            ephemeral_home,
-            workspace,
-            worker_host,
-            dynamic_tool_binding,
-            opts,
-            session_policies,
-            thread_id
-          )
+    deadline_ms = Keyword.get(opts, :absolute_deadline_ms)
 
-        {:ok, session}
+    case do_start_session(
+           port,
+           workspace,
+           session_policies,
+           dynamic_tool_binding,
+           Keyword.get(opts, :absolute_deadline_ms),
+           Keyword.get(opts, :pilot_holder_context)
+         ) do
+      {:ok, thread_id} ->
+        case check_deadline(deadline_ms) do
+          :ok ->
+            session_context = %{opts: opts, policies: session_policies, namespace: namespace_identity}
+
+            {:ok,
+             build_session(
+               port,
+               ephemeral_home,
+               workspace,
+               worker_host,
+               dynamic_tool_binding,
+               session_context,
+               thread_id
+             )}
+
+          {:error, reason} ->
+            cleanup_failed_session_start(
+              port,
+              ephemeral_home,
+              reason,
+              routed_policies?(session_policies),
+              namespace_identity,
+              deadline_ms,
+              opts
+            )
+        end
 
       {:error, reason} ->
         cleanup_failed_session_start(
           port,
           ephemeral_home,
           reason,
-          routed_policies?(session_policies)
+          routed_policies?(session_policies),
+          namespace_identity,
+          deadline_ms,
+          opts
         )
     end
   end
@@ -418,8 +504,7 @@ defmodule SymphonyElixir.Codex.AppServer do
          workspace,
          worker_host,
          dynamic_tool_binding,
-         opts,
-         session_policies,
+         %{opts: opts, policies: session_policies, namespace: namespace_identity},
          thread_id
        ) do
     os_pid = port_os_pid(port)
@@ -437,22 +522,32 @@ defmodule SymphonyElixir.Codex.AppServer do
       worker_host: worker_host,
       dynamic_tool_binding: dynamic_tool_binding,
       ephemeral_home: ephemeral_home,
+      absolute_deadline_ms: Keyword.get(opts, :absolute_deadline_ms),
+      pilot_holder_context: Keyword.get(opts, :pilot_holder_context),
       runtime_policies: session_policies,
       routed: routed_policies?(session_policies),
       runtime_containment: if(routed_policies?(session_policies), do: :linux_pid_namespace, else: nil),
+      runtime_namespace: namespace_identity,
       permission_profile: policy_value(session_policies, :permission_profile),
       runtime_workspace_roots: policy_value(session_policies, :runtime_workspace_roots),
       access: policy_value(session_policies, :access)
     }
   end
 
-  defp cleanup_failed_session_start(port, ephemeral_home, reason, routed?) do
-    stop_result = if routed?, do: stop_routed_port(port), else: stop_port(port)
+  defp cleanup_failed_session_start(port, ephemeral_home, reason, routed?, namespace_identity, deadline_ms, opts) do
+    stop_result =
+      if routed? do
+        stop_routed_port(port, namespace_identity, deadline_ms)
+      else
+        stop_port(port)
+      end
 
     case stop_result do
       :ok ->
-        case cleanup_ephemeral_home(ephemeral_home) do
-          :ok -> {:error, reason}
+        with :ok <- RuntimeIsolation.check_pilot_holder(Keyword.get(opts, :pilot_holder_context), :cleanup),
+             :ok <- cleanup_ephemeral_home(ephemeral_home) do
+          {:error, reason}
+        else
           {:error, cleanup_reason} -> {:error, cleanup_reason}
         end
 
@@ -508,18 +603,33 @@ defmodule SymphonyElixir.Codex.AppServer do
         DynamicTool.execute(tool, arguments, turn_tool_binding, issue: issue)
       end)
 
-    case start_turn(
-           port,
-           thread_id,
-           prompt,
-           issue,
-           workspace,
-           session_policies,
-           Keyword.get(opts, :model)
-         ) do
+    deadline_ms = Map.get(session, :absolute_deadline_ms, Keyword.get(opts, :absolute_deadline_ms))
+
+    turn_start =
+      with :ok <- pilot_holder_turn_options(Map.get(session, :pilot_holder_context), opts),
+           :ok <- RuntimeIsolation.check_pilot_holder(Map.get(session, :pilot_holder_context), :turn),
+           :ok <- check_deadline(deadline_ms) do
+        start_turn(
+          port,
+          thread_id,
+          prompt,
+          issue,
+          workspace,
+          session_policies,
+          Keyword.get(opts, :model),
+          deadline_ms
+        )
+      end
+
+    case turn_start do
       {:ok, turn_id} ->
         session_id = "#{thread_id}-#{turn_id}"
-        Logger.info("Codex session started for #{issue_context(issue)} session_id=#{session_id}")
+
+        if pilot_execution?(deadline_ms) do
+          Logger.info("Codex pilot turn started")
+        else
+          Logger.info("Codex session started for #{issue_context(issue)} session_id=#{session_id}")
+        end
 
         emit_message(
           on_message,
@@ -532,9 +642,9 @@ defmodule SymphonyElixir.Codex.AppServer do
           metadata
         )
 
-        case await_turn_completion(port, on_message, tool_executor, auto_approve_requests) do
+        case await_turn_completion(port, on_message, tool_executor, auto_approve_requests, deadline_ms) do
           {:ok, result} ->
-            Logger.info("Codex session completed for #{issue_context(issue)} session_id=#{session_id}")
+            log_turn_success(deadline_ms, issue, session_id)
 
             {:ok,
              %{
@@ -545,7 +655,7 @@ defmodule SymphonyElixir.Codex.AppServer do
              }}
 
           {:error, reason} ->
-            Logger.warning("Codex session ended with error for #{issue_context(issue)} session_id=#{session_id}: #{inspect(reason)}")
+            log_turn_error(deadline_ms, issue, session_id, reason)
 
             emit_message(
               on_message,
@@ -561,10 +671,35 @@ defmodule SymphonyElixir.Codex.AppServer do
         end
 
       {:error, reason} ->
-        Logger.error("Codex session failed for #{issue_context(issue)}: #{inspect(reason)}")
+        log_turn_start_error(deadline_ms, issue, reason)
+
         result = routed_failure(session, session_policies, reason, opts)
         emit_message(on_message, :startup_failed, %{reason: elem(result, 1)}, metadata)
         result
+    end
+  end
+
+  defp log_turn_success(deadline_ms, issue, session_id) do
+    if pilot_execution?(deadline_ms) do
+      Logger.info("Codex pilot response received; final evidence pending")
+    else
+      Logger.info("Codex session completed for #{issue_context(issue)} session_id=#{session_id}")
+    end
+  end
+
+  defp log_turn_error(deadline_ms, issue, session_id, reason) do
+    if pilot_execution?(deadline_ms) do
+      Logger.warning("Codex pilot turn ended with error")
+    else
+      Logger.warning("Codex session ended with error for #{issue_context(issue)} session_id=#{session_id}: #{inspect(reason)}")
+    end
+  end
+
+  defp log_turn_start_error(deadline_ms, issue, reason) do
+    if pilot_execution?(deadline_ms) do
+      Logger.error("Codex pilot startup failed")
+    else
+      Logger.error("Codex session failed for #{issue_context(issue)}: #{inspect(reason)}")
     end
   end
 
@@ -572,14 +707,20 @@ defmodule SymphonyElixir.Codex.AppServer do
   def stop_session(%{port: port} = session) when is_port(port) do
     stop_result =
       if Map.get(session, :runtime_containment) == :linux_pid_namespace do
-        stop_routed_port(port)
+        stop_routed_port(
+          port,
+          Map.get(session, :runtime_namespace),
+          Map.get(session, :absolute_deadline_ms)
+        )
       else
         stop_port(port, Map.get(session, :os_pid))
       end
 
     case stop_result do
       :ok ->
-        cleanup_ephemeral_home(Map.get(session, :ephemeral_home))
+        with :ok <- RuntimeIsolation.check_pilot_holder(Map.get(session, :pilot_holder_context), :cleanup) do
+          cleanup_ephemeral_home(Map.get(session, :ephemeral_home))
+        end
 
       {:error, _reason} = error ->
         error
@@ -702,6 +843,7 @@ defmodule SymphonyElixir.Codex.AppServer do
       args = [
         "--user",
         "--map-current-user",
+        "--kill-child",
         "--pid",
         "--fork",
         "--mount-proc",
@@ -779,42 +921,7 @@ defmodule SymphonyElixir.Codex.AppServer do
     end
   end
 
-  defp validate_trusted_host_executable(path) do
-    if Enum.all?(trusted_path_ancestors(path), &trusted_path_component?/1),
-      do: :ok,
-      else: {:error, :untrusted_path}
-  rescue
-    _ -> {:error, :untrusted_path}
-  end
-
-  defp trusted_path_component?({candidate, is_executable}) do
-    with {:ok, %File.Stat{} = stat} <- File.stat(candidate),
-         true <- stat.uid == 0,
-         true <- Bitwise.band(stat.mode, 0o022) == 0,
-         true <- Bitwise.band(stat.mode, 0o6000) == 0 do
-      trusted_path_type?(stat, is_executable)
-    else
-      _failure -> false
-    end
-  end
-
-  defp trusted_path_type?(%File.Stat{type: :regular, mode: mode}, true),
-    do: Bitwise.band(mode, 0o111) != 0
-
-  defp trusted_path_type?(%File.Stat{type: :directory}, false), do: true
-  defp trusted_path_type?(_stat, _is_executable), do: false
-
-  defp trusted_path_ancestors(path) do
-    trusted_path_ancestors(Path.dirname(path), [{path, true}])
-  end
-
-  defp trusted_path_ancestors(path, acc) do
-    if path == "/" do
-      [{"/", false} | acc]
-    else
-      trusted_path_ancestors(Path.dirname(path), [{path, false} | acc])
-    end
-  end
+  defp validate_trusted_host_executable(path), do: PathSafety.validate_trusted_executable(path)
 
   defp local_port_env(dynamic_tool_binding, opts) do
     if routed_profile?(opts) do
@@ -876,6 +983,16 @@ defmodule SymphonyElixir.Codex.AppServer do
     |> Enum.join(" && ")
   end
 
+  defp pilot_holder_turn_options(nil, _opts), do: :ok
+
+  defp pilot_holder_turn_options(%{binding: %{profile: profile}}, opts) do
+    if Keyword.get(opts, :model) == profile.model,
+      do: :ok,
+      else: {:error, :pilot_holder_binding_invalid}
+  end
+
+  defp pilot_holder_turn_options(_holder, _opts), do: {:error, :pilot_holder_binding_invalid}
+
   defp runtime_command(opts) do
     case Keyword.get(opts, :command) do
       command when is_binary(command) and byte_size(command) > 0 -> command
@@ -923,7 +1040,7 @@ defmodule SymphonyElixir.Codex.AppServer do
     end
   end
 
-  defp send_initialize(port) do
+  defp send_initialize(port, deadline_ms) do
     payload = %{
       "method" => "initialize",
       "id" => @initialize_id,
@@ -941,7 +1058,7 @@ defmodule SymphonyElixir.Codex.AppServer do
 
     send_message(port, payload)
 
-    with {:ok, _} <- await_response(port, @initialize_id) do
+    with {:ok, _} <- await_response(port, @initialize_id, deadline_ms) do
       send_message(port, %{"method" => "initialized", "params" => %{}})
       :ok
     end
@@ -976,6 +1093,7 @@ defmodule SymphonyElixir.Codex.AppServer do
     with :ok <- validate_routed_policy(session_policies, workspace),
          :ok <- revalidate_routed_workspace(workspace, session_policies, opts),
          {:ok, resolved} <- IsolationProfile.resolve_codex_executable(runtime_command(opts)),
+         :ok <- IsolationProfile.validate_pilot_holder_artifact(pilot_holder_selection(opts), resolved),
          {:ok, launch_identity} <- runtime_file_identity(resolved),
          {:ok, runtime_evidence} <- admit_runtime(resolved.executable, opts),
          :ok <- validate_routed_runtime_identity(resolved, launch_identity, runtime_evidence),
@@ -994,6 +1112,13 @@ defmodule SymphonyElixir.Codex.AppServer do
         launch_identity,
         runtime_evidence
       )
+    end
+  end
+
+  defp pilot_holder_selection(opts) do
+    case Keyword.get(opts, :pilot_holder_context) do
+      %{binding: %{selection: selection}} -> selection
+      _ -> nil
     end
   end
 
@@ -1016,7 +1141,7 @@ defmodule SymphonyElixir.Codex.AppServer do
          }}
 
       {:error, reason} ->
-        cleanup_launch_after_error(%{session_home: session_home}, reason)
+        {:error, reason, %{session_home: session_home}}
     end
   end
 
@@ -1245,22 +1370,24 @@ defmodule SymphonyElixir.Codex.AppServer do
     end
   end
 
-  defp do_start_session(port, workspace, session_policies, dynamic_tool_binding) do
-    case send_initialize(port) do
-      :ok -> start_thread(port, workspace, session_policies, dynamic_tool_binding)
-      {:error, reason} -> {:error, reason}
+  defp do_start_session(port, workspace, session_policies, dynamic_tool_binding, deadline_ms, holder) do
+    with :ok <- check_deadline(deadline_ms),
+         :ok <- send_initialize(port, deadline_ms),
+         :ok <- RuntimeIsolation.check_pilot_holder(holder, :thread),
+         :ok <- check_deadline(deadline_ms) do
+      start_thread(port, workspace, session_policies, dynamic_tool_binding, deadline_ms)
     end
   end
 
-  defp start_thread(port, workspace, session_policies, dynamic_tool_binding) do
+  defp start_thread(port, workspace, session_policies, dynamic_tool_binding, deadline_ms) do
     if routed_policies?(session_policies) do
-      start_routed_thread(port, workspace, session_policies, dynamic_tool_binding)
+      start_routed_thread(port, workspace, session_policies, dynamic_tool_binding, deadline_ms)
     else
-      start_legacy_thread(port, workspace, session_policies, dynamic_tool_binding)
+      start_legacy_thread(port, workspace, session_policies, dynamic_tool_binding, deadline_ms)
     end
   end
 
-  defp start_legacy_thread(port, workspace, session_policies, dynamic_tool_binding) do
+  defp start_legacy_thread(port, workspace, session_policies, dynamic_tool_binding, deadline_ms) do
     send_message(port, %{
       "method" => "thread/start",
       "id" => @thread_start_id,
@@ -1272,7 +1399,7 @@ defmodule SymphonyElixir.Codex.AppServer do
       }
     })
 
-    case await_response(port, @thread_start_id) do
+    case await_response(port, @thread_start_id, deadline_ms) do
       {:ok, %{"thread" => thread_payload}} ->
         case thread_payload do
           %{"id" => thread_id} -> {:ok, thread_id}
@@ -1284,7 +1411,7 @@ defmodule SymphonyElixir.Codex.AppServer do
     end
   end
 
-  defp start_routed_thread(port, workspace, session_policies, dynamic_tool_binding) do
+  defp start_routed_thread(port, workspace, session_policies, dynamic_tool_binding, deadline_ms) do
     send_message(port, %{
       "method" => "thread/start",
       "id" => @thread_start_id,
@@ -1297,7 +1424,7 @@ defmodule SymphonyElixir.Codex.AppServer do
       }
     })
 
-    case await_response(port, @thread_start_id) do
+    case await_response(port, @thread_start_id, deadline_ms) do
       {:ok, %{"thread" => %{"id" => thread_id}} = response} ->
         case validate_runtime_provenance(response, session_policies, workspace, :thread_start) do
           :ok -> {:ok, thread_id}
@@ -1319,52 +1446,59 @@ defmodule SymphonyElixir.Codex.AppServer do
          issue,
          workspace,
          session_policies,
-         model
+         model,
+         deadline_ms
        ) do
-    base_params = %{
-      "threadId" => thread_id,
-      "input" => [
-        %{
-          "type" => "text",
-          "text" => prompt
-        }
-      ],
-      "cwd" => workspace,
-      "title" => "#{issue.identifier}: #{issue.title}",
-      "approvalPolicy" => policy_value(session_policies, :approval_policy)
-    }
+    with :ok <- check_deadline(deadline_ms) do
+      base_params = %{
+        "threadId" => thread_id,
+        "input" => [
+          %{
+            "type" => "text",
+            "text" => prompt
+          }
+        ],
+        "cwd" => workspace,
+        "title" => "#{issue.identifier}: #{issue.title}",
+        "approvalPolicy" => policy_value(session_policies, :approval_policy)
+      }
 
-    params =
-      if routed_policies?(session_policies) do
-        Map.merge(base_params, %{
-          "permissions" => policy_value(session_policies, :permission_profile),
-          "runtimeWorkspaceRoots" => policy_value(session_policies, :runtime_workspace_roots)
-        })
-      else
-        Map.put(
-          base_params,
-          "sandboxPolicy",
-          policy_value(session_policies, :turn_sandbox_policy, %{})
-        )
-      end
-
-    params = maybe_put_model(params, model)
-
-    send_message(port, %{
-      "method" => "turn/start",
-      "id" => @turn_start_id,
-      "params" => params
-    })
-
-    case await_response(port, @turn_start_id) do
-      {:ok, %{"turn" => %{"id" => turn_id}} = response} ->
-        case validate_turn_provenance(response, session_policies, workspace) do
-          :ok -> {:ok, turn_id}
-          {:error, _reason} = error -> error
+      params =
+        if routed_policies?(session_policies) do
+          Map.merge(base_params, %{
+            "permissions" => policy_value(session_policies, :permission_profile),
+            "runtimeWorkspaceRoots" => policy_value(session_policies, :runtime_workspace_roots)
+          })
+        else
+          Map.put(
+            base_params,
+            "sandboxPolicy",
+            policy_value(session_policies, :turn_sandbox_policy, %{})
+          )
         end
 
-      other ->
-        other
+      params = maybe_put_model(params, model)
+
+      send_message(port, %{
+        "method" => "turn/start",
+        "id" => @turn_start_id,
+        "params" => params
+      })
+
+      case await_response(port, @turn_start_id, deadline_ms) do
+        {:ok, %{"turn" => %{"id" => turn_id}} = response} ->
+          validate_turn_start_response(turn_id, response, session_policies, workspace)
+
+        other ->
+          other
+      end
+    end
+  end
+
+  defp validate_turn_start_response(turn_id, response, session_policies, workspace) do
+    case validate_turn_provenance(response, session_policies, workspace) do
+      :ok -> {:ok, turn_id}
+      {:error, _reason} = error -> error
     end
   end
 
@@ -1443,14 +1577,34 @@ defmodule SymphonyElixir.Codex.AppServer do
 
   defp maybe_put_model(params, _model), do: params
 
-  defp await_turn_completion(port, on_message, tool_executor, auto_approve_requests) do
+  defp check_deadline(nil), do: :ok
+
+  defp check_deadline(deadline_ms) when is_integer(deadline_ms) do
+    if deadline_ms > System.monotonic_time(:millisecond), do: :ok, else: {:error, :turn_timeout}
+  end
+
+  defp check_deadline(deadline_ms), do: {:error, {:invalid_absolute_deadline_ms, deadline_ms}}
+
+  defp receive_timeout(timeout_ms, nil), do: timeout_ms
+
+  defp receive_timeout(timeout_ms, deadline_ms) do
+    min(timeout_ms, max(deadline_ms - System.monotonic_time(:millisecond), 0))
+  end
+
+  defp deadline_expired?(deadline_ms) when is_integer(deadline_ms),
+    do: deadline_ms <= System.monotonic_time(:millisecond)
+
+  defp deadline_expired?(_deadline_ms), do: false
+
+  defp await_turn_completion(port, on_message, tool_executor, auto_approve_requests, deadline_ms) do
     receive_loop(
       port,
       on_message,
       Config.settings!().codex.turn_timeout_ms,
       "",
       tool_executor,
-      auto_approve_requests
+      auto_approve_requests,
+      deadline_ms
     )
   end
 
@@ -1460,7 +1614,32 @@ defmodule SymphonyElixir.Codex.AppServer do
          timeout_ms,
          pending_line,
          tool_executor,
-         auto_approve_requests
+         auto_approve_requests,
+         deadline_ms
+       ) do
+    if check_deadline(deadline_ms) == :ok do
+      do_receive_loop(
+        port,
+        on_message,
+        timeout_ms,
+        pending_line,
+        tool_executor,
+        auto_approve_requests,
+        deadline_ms
+      )
+    else
+      {:error, :turn_timeout}
+    end
+  end
+
+  defp do_receive_loop(
+         port,
+         on_message,
+         timeout_ms,
+         pending_line,
+         tool_executor,
+         auto_approve_requests,
+         deadline_ms
        ) do
     receive do
       {^port, {:data, {:eol, chunk}}} ->
@@ -1472,7 +1651,8 @@ defmodule SymphonyElixir.Codex.AppServer do
           complete_line,
           timeout_ms,
           tool_executor,
-          auto_approve_requests
+          auto_approve_requests,
+          deadline_ms
         )
 
       {^port, {:data, {:noeol, chunk}}} ->
@@ -1482,18 +1662,27 @@ defmodule SymphonyElixir.Codex.AppServer do
           timeout_ms,
           pending_line <> to_string(chunk),
           tool_executor,
-          auto_approve_requests
+          auto_approve_requests,
+          deadline_ms
         )
 
       {^port, {:exit_status, status}} ->
         {:error, {:port_exit, status}}
     after
-      timeout_ms ->
+      receive_timeout(timeout_ms, deadline_ms) ->
         {:error, :turn_timeout}
     end
   end
 
-  defp handle_incoming(port, on_message, data, timeout_ms, tool_executor, auto_approve_requests) do
+  defp handle_incoming(port, on_message, data, timeout_ms, tool_executor, auto_approve_requests, deadline_ms) do
+    if check_deadline(deadline_ms) == :ok do
+      handle_incoming_payload(port, on_message, data, timeout_ms, tool_executor, auto_approve_requests, deadline_ms)
+    else
+      {:error, :turn_timeout}
+    end
+  end
+
+  defp handle_incoming_payload(port, on_message, data, timeout_ms, tool_executor, auto_approve_requests, deadline_ms) do
     payload_string = to_string(data)
 
     case Jason.decode(payload_string) do
@@ -1533,7 +1722,12 @@ defmodule SymphonyElixir.Codex.AppServer do
           payload,
           payload_string,
           method,
-          timeout_ms,
+          %{
+            timeout_ms: timeout_ms,
+            deadline_ms: deadline_ms,
+            tool_executor: tool_executor,
+            auto_approve_requests: auto_approve_requests
+          },
           tool_executor,
           auto_approve_requests
         )
@@ -1549,10 +1743,10 @@ defmodule SymphonyElixir.Codex.AppServer do
           metadata_from_message(port, payload)
         )
 
-        receive_loop(port, on_message, timeout_ms, "", tool_executor, auto_approve_requests)
+        receive_loop(port, on_message, timeout_ms, "", tool_executor, auto_approve_requests, deadline_ms)
 
       {:error, _reason} ->
-        log_non_json_stream_line(payload_string, "turn stream")
+        log_non_json_stream_line(payload_string, "turn stream", deadline_ms)
 
         if protocol_message_candidate?(payload_string) do
           emit_message(
@@ -1566,7 +1760,7 @@ defmodule SymphonyElixir.Codex.AppServer do
           )
         end
 
-        receive_loop(port, on_message, timeout_ms, "", tool_executor, auto_approve_requests)
+        receive_loop(port, on_message, timeout_ms, "", tool_executor, auto_approve_requests, deadline_ms)
     end
   end
 
@@ -1589,7 +1783,7 @@ defmodule SymphonyElixir.Codex.AppServer do
          payload,
          payload_string,
          method,
-         timeout_ms,
+         %{timeout_ms: timeout_ms, deadline_ms: deadline_ms} = wait_context,
          tool_executor,
          auto_approve_requests
        ) do
@@ -1616,7 +1810,7 @@ defmodule SymphonyElixir.Codex.AppServer do
         {:error, {:turn_input_required, payload}}
 
       :approved ->
-        receive_loop(port, on_message, timeout_ms, "", tool_executor, auto_approve_requests)
+        receive_loop(port, on_message, timeout_ms, "", tool_executor, auto_approve_requests, deadline_ms)
 
       :approval_required ->
         emit_message(
@@ -1629,29 +1823,39 @@ defmodule SymphonyElixir.Codex.AppServer do
         {:error, {:approval_required, payload}}
 
       :unhandled ->
-        if needs_input?(method, payload) do
-          emit_message(
-            on_message,
-            :turn_input_required,
-            %{payload: payload, raw: payload_string},
-            metadata
-          )
+        handle_unhandled_turn_method(port, on_message, payload, payload_string, method, wait_context, metadata)
+    end
+  end
 
-          {:error, {:turn_input_required, payload}}
-        else
-          emit_message(
-            on_message,
-            :notification,
-            %{
-              payload: payload,
-              raw: payload_string
-            },
-            metadata
-          )
+  defp handle_unhandled_turn_method(port, on_message, payload, payload_string, method, wait_context, metadata) do
+    if needs_input?(method, payload) do
+      emit_message(
+        on_message,
+        :turn_input_required,
+        %{payload: payload, raw: payload_string},
+        metadata
+      )
 
-          Logger.debug("Codex notification: #{inspect(method)}")
-          receive_loop(port, on_message, timeout_ms, "", tool_executor, auto_approve_requests)
-        end
+      {:error, {:turn_input_required, payload}}
+    else
+      emit_message(
+        on_message,
+        :notification,
+        %{payload: payload, raw: payload_string},
+        metadata
+      )
+
+      unless pilot_execution?(wait_context.deadline_ms), do: Logger.debug("Codex notification: #{inspect(method)}")
+
+      receive_loop(
+        port,
+        on_message,
+        wait_context.timeout_ms,
+        "",
+        wait_context.tool_executor,
+        wait_context.auto_approve_requests,
+        wait_context.deadline_ms
+      )
     end
   end
 
@@ -1989,28 +2193,44 @@ defmodule SymphonyElixir.Codex.AppServer do
       String.starts_with?(normalized_label, "allow")
   end
 
-  defp await_response(port, request_id) do
-    with_timeout_response(port, request_id, Config.settings!().codex.read_timeout_ms, "")
+  defp await_response(port, request_id, deadline_ms) do
+    with_timeout_response(port, request_id, Config.settings!().codex.read_timeout_ms, "", deadline_ms)
   end
 
-  defp with_timeout_response(port, request_id, timeout_ms, pending_line) do
+  defp with_timeout_response(port, request_id, timeout_ms, pending_line, deadline_ms) do
+    if check_deadline(deadline_ms) == :ok do
+      do_with_timeout_response(port, request_id, timeout_ms, pending_line, deadline_ms)
+    else
+      {:error, :turn_timeout}
+    end
+  end
+
+  defp do_with_timeout_response(port, request_id, timeout_ms, pending_line, deadline_ms) do
     receive do
       {^port, {:data, {:eol, chunk}}} ->
         complete_line = pending_line <> to_string(chunk)
-        handle_response(port, request_id, complete_line, timeout_ms)
+        handle_response(port, request_id, complete_line, timeout_ms, deadline_ms)
 
       {^port, {:data, {:noeol, chunk}}} ->
-        with_timeout_response(port, request_id, timeout_ms, pending_line <> to_string(chunk))
+        with_timeout_response(port, request_id, timeout_ms, pending_line <> to_string(chunk), deadline_ms)
 
       {^port, {:exit_status, status}} ->
         {:error, {:port_exit, status}}
     after
-      timeout_ms ->
-        {:error, :response_timeout}
+      receive_timeout(timeout_ms, deadline_ms) ->
+        if deadline_expired?(deadline_ms), do: {:error, :turn_timeout}, else: {:error, :response_timeout}
     end
   end
 
-  defp handle_response(port, request_id, data, timeout_ms) do
+  defp handle_response(port, request_id, data, timeout_ms, deadline_ms) do
+    if check_deadline(deadline_ms) == :ok do
+      handle_response_payload(port, request_id, data, timeout_ms, deadline_ms)
+    else
+      {:error, :turn_timeout}
+    end
+  end
+
+  defp handle_response_payload(port, request_id, data, timeout_ms, deadline_ms) do
     payload = to_string(data)
 
     case Jason.decode(payload) do
@@ -2024,16 +2244,20 @@ defmodule SymphonyElixir.Codex.AppServer do
         {:error, {:response_error, response_payload}}
 
       {:ok, %{} = other} ->
-        Logger.debug("Ignoring message while waiting for response: #{inspect(other)}")
-        with_timeout_response(port, request_id, timeout_ms, "")
+        unless pilot_execution?(deadline_ms),
+          do: Logger.debug("Ignoring message while waiting for response: #{inspect(other)}")
+
+        with_timeout_response(port, request_id, timeout_ms, "", deadline_ms)
 
       {:error, _} ->
-        log_non_json_stream_line(payload, "response stream")
-        with_timeout_response(port, request_id, timeout_ms, "")
+        log_non_json_stream_line(payload, "response stream", deadline_ms)
+        with_timeout_response(port, request_id, timeout_ms, "", deadline_ms)
     end
   end
 
-  defp log_non_json_stream_line(data, stream_label) do
+  defp log_non_json_stream_line(_data, _stream_label, deadline_ms) when is_integer(deadline_ms), do: :ok
+
+  defp log_non_json_stream_line(data, stream_label, _deadline_ms) do
     text =
       data
       |> to_string()
@@ -2048,6 +2272,8 @@ defmodule SymphonyElixir.Codex.AppServer do
       end
     end
   end
+
+  defp pilot_execution?(deadline_ms), do: is_integer(deadline_ms)
 
   defp protocol_message_candidate?(data) do
     data
@@ -2064,7 +2290,7 @@ defmodule SymphonyElixir.Codex.AppServer do
     stop_port(port, port_os_pid(port))
   end
 
-  defp stop_routed_port(port) when is_port(port) do
+  defp stop_routed_port(port, namespace_identity, deadline_ms) when is_port(port) do
     ref = :erlang.monitor(:port, port)
 
     try do
@@ -2074,9 +2300,10 @@ defmodule SymphonyElixir.Codex.AppServer do
     end
 
     receive do
-      {:DOWN, ^ref, :port, ^port, _reason} -> :ok
+      {:DOWN, ^ref, :port, ^port, _reason} ->
+        if pilot_execution?(deadline_ms), do: verify_namespace_stopped(namespace_identity, deadline_ms), else: :ok
     after
-      @linux_guard_stop_timeout_ms ->
+      receive_timeout(@linux_guard_stop_timeout_ms, deadline_ms) ->
         Process.demonitor(ref, [:flush])
         {:error, {:containment_unconfirmed, :termination_timeout}}
     end
@@ -2122,6 +2349,141 @@ defmodule SymphonyElixir.Codex.AppServer do
     end
   rescue
     ArgumentError -> nil
+  end
+
+  defp capture_runtime_namespace(port, deadline_ms, attempts \\ 50)
+
+  defp capture_runtime_namespace(_port, _deadline_ms, 0),
+    do: {:error, {:containment_unconfirmed, :namespace_observation_unavailable}}
+
+  defp capture_runtime_namespace(port, deadline_ms, attempts) do
+    with host_pid when is_integer(host_pid) <- port_os_pid(port),
+         {:ok, children} <- File.read("/proc/#{host_pid}/task/#{host_pid}/children"),
+         {:ok, host_namespace} <- namespace_inode("/proc/self/ns/pid"),
+         {:ok, [identity]} <- namespace_pid1_candidates(String.split(children), host_pid, host_namespace) do
+      {:ok, identity}
+    else
+      _failure ->
+        cond do
+          deadline_expired?(deadline_ms) ->
+            {:error, :turn_timeout}
+
+          not is_port(port) ->
+            {:error, {:containment_unconfirmed, :namespace_observation_unavailable}}
+
+          true ->
+            Process.sleep(receive_timeout(10, deadline_ms))
+            capture_runtime_namespace(port, deadline_ms, attempts - 1)
+        end
+    end
+  end
+
+  defp namespace_pid1_candidates(children, expected_parent, host_namespace) do
+    Enum.reduce_while(children, {:ok, []}, fn child, {:ok, candidates} ->
+      with {pid, ""} <- Integer.parse(child),
+           {:ok, status} <- File.read("/proc/#{pid}/status"),
+           true <- process_parent(status) == expected_parent,
+           [_, 1] <- process_namespace_pids(status),
+           {:ok, inode} <- namespace_inode("/proc/#{pid}/ns/pid"),
+           true <- inode != host_namespace,
+           {:ok, {start_ticks, _state}} <- process_identity(pid) do
+        identity = %{pid: pid, start_ticks: start_ticks, namespace_inode: inode, parent_pid: expected_parent}
+        {:cont, {:ok, [identity | candidates]}}
+      else
+        _ -> {:halt, {:error, :namespace_observation_incomplete}}
+      end
+    end)
+    |> case do
+      {:ok, [identity]} -> {:ok, [identity]}
+      {:ok, _} -> {:error, :namespace_observation_incomplete}
+      error -> error
+    end
+  end
+
+  defp process_parent(status) do
+    case Regex.run(~r/^PPid:\s+(\d+)$/m, status) do
+      [_, value] -> String.to_integer(value)
+      _ -> nil
+    end
+  end
+
+  defp process_namespace_pids(status) do
+    case Regex.run(~r/^NSpid:\s+(.+)$/m, status) do
+      [_, values] -> Enum.map(String.split(values), &String.to_integer/1)
+      _ -> []
+    end
+  end
+
+  defp process_identity(pid) do
+    case File.read("/proc/#{pid}/stat") do
+      {:ok, stat} ->
+        with [_comm, fields] <- Regex.run(~r/^\d+ \(.*\) (.+)$/, stat),
+             [state | after_state] <- String.split(fields),
+             value when is_binary(value) <- Enum.at(after_state, 18),
+             {ticks, ""} <- Integer.parse(value) do
+          {:ok, {ticks, state}}
+        else
+          _ -> {:error, :process_state_unavailable}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp namespace_inode(path) do
+    case File.read_link(path) do
+      {:ok, "pid:[" <> rest} ->
+        case Integer.parse(String.trim_trailing(rest, "]")) do
+          {inode, ""} -> {:ok, inode}
+          _ -> {:error, :namespace_state_unavailable}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+
+      _other ->
+        {:error, :namespace_state_unavailable}
+    end
+  end
+
+  defp verify_namespace_stopped(%{pid: pid, start_ticks: start_ticks, namespace_inode: inode}, deadline_ms) do
+    with :ok <- check_deadline(deadline_ms),
+         :ok <- verify_pid1_stopped(pid, start_ticks, inode),
+         :ok <- check_deadline(deadline_ms) do
+      :ok
+    else
+      _reason -> {:error, {:containment_unconfirmed, :termination_timeout}}
+    end
+  end
+
+  defp verify_namespace_stopped(_identity, _deadline_ms),
+    do: {:error, {:containment_unconfirmed, :termination_timeout}}
+
+  # Linux guarantees that terminating PID namespace init sends SIGKILL to every
+  # process in that namespace (pid_namespaces(7), "The namespace init process").
+  # The outer port monitor is required as well; launcher death alone proves nothing.
+  defp verify_pid1_stopped(pid, start_ticks, captured_inode) do
+    case process_identity(pid) do
+      {:ok, {^start_ticks, state}} when state in ["Z", "X"] ->
+        :ok
+
+      {:ok, {^start_ticks, _state}} ->
+        case namespace_inode("/proc/#{pid}/ns/pid") do
+          {:ok, ^captured_inode} -> {:error, :process_still_running}
+          {:ok, _other_inode} -> {:error, :process_identity_mismatch}
+          {:error, reason} -> {:error, {:process_state_unavailable, reason}}
+        end
+
+      {:ok, {_other_ticks, _state}} ->
+        :ok
+
+      {:error, :enoent} ->
+        :ok
+
+      {:error, reason} ->
+        {:error, {:process_state_unavailable, reason}}
+    end
   end
 
   defp terminate_os_process(nil), do: :ok

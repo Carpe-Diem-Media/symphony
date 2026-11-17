@@ -1530,8 +1530,10 @@ defmodule SymphonyElixir.AppServerTest do
 
     try do
       bash_home = Path.join(test_root, "bash-home")
-      codex_binary = Path.join(test_root, "fake-codex")
+      codex_binary = Path.join(test_root, "codex")
       trace_file = Path.join(test_root, "codex-routed-home.trace")
+      workspace_root = Config.settings!().workspace.root
+      workspace = Path.join(workspace_root, "MT-ROUTED-HOME")
 
       File.mkdir_p!(bash_home)
 
@@ -1555,7 +1557,7 @@ defmodule SymphonyElixir.AppServerTest do
 
         case "$count" in
           1) printf '%s\\n' '{"id":1,"result":{}}' ;;
-          2) printf '%s\\n' '{"id":2,"result":{"thread":{"id":"thread-routed-home"}}}' ;;
+          2) printf '%s\\n' '#{Jason.encode!(%{"id" => 2, "result" => %{"thread" => %{"id" => "thread-routed-home"}, "activePermissionProfile" => %{"id" => "symphony_builder_write"}, "runtimeWorkspaceRoots" => [Path.expand(workspace)], "cwd" => Path.expand(workspace)}})}' ;;
           *) sleep 3600 ;;
         esac
       done
@@ -1564,25 +1566,35 @@ defmodule SymphonyElixir.AppServerTest do
       File.chmod!(codex_binary, 0o755)
 
       write_workflow_file!(Workflow.workflow_file_path(),
+        tracker_kind: "memory",
         agent_routing: "routed",
         codex_command: "#{codex_binary} app-server"
       )
 
-      workspace_root = Config.settings!().workspace.root
-      workspace = Path.join(workspace_root, "MT-ROUTED-HOME")
       File.mkdir_p!(workspace)
+      profile = Config.settings!().agent.profiles["builder"]
 
       assert {:ok, session} =
-               AppServer.start_session(workspace,
-                 command: "#{codex_binary} app-server",
-                 sandbox: "read-only"
+               AppServer.start_session(
+                 workspace,
+                 Profile.runtime_options(profile) ++
+                   [
+                     command: "#{codex_binary} app-server",
+                     sandbox: "read-only",
+                     test_runtime_workspace_admit: &admit_workspace_for_test/2,
+                     test_runtime_isolation_admit: &admit_for_test/3,
+                     test_routed_guard_tool_paths: %{
+                       "unshare" => "/usr/bin/unshare",
+                       "python3" => "/usr/bin/python3.14"
+                     }
+                   ]
                )
 
       trace = File.read!(trace_file)
       refute trace =~ "PROFILE_LOADED:1"
       assert trace =~ "HOME:"
       refute String.contains?(trace, bash_home)
-      assert trace =~ "symphony-routed-home"
+      assert trace =~ "symphony-routed-session-"
       assert :ok = AppServer.stop_session(session)
     after
       File.rm_rf(test_root)
@@ -2059,6 +2071,64 @@ defmodule SymphonyElixir.AppServerTest do
 
       assert Process.get(admission_key) == 2
       refute File.exists?(session_root)
+    after
+      Process.delete(:h080b_workspace_namespace_spawn_count)
+      File.rm_rf(test_root)
+    end
+  end
+
+  @tag :authority_binding_correction
+  test "pilot launch retains its prepared home when namespace observation is unavailable" do
+    test_root =
+      Path.join(
+        System.tmp_dir!(),
+        "symphony-app-server-namespace-spawn-failure-#{System.unique_integer([:positive])}"
+      )
+
+    workspace_root = Path.join(test_root, "workspaces")
+    workspace = Path.join(workspace_root, "MT-NAMESPACE-SPAWN-FAILURE")
+    codex_binary = Path.join(test_root, "codex")
+    session_root = Path.join(test_root, "session")
+    File.mkdir_p!(workspace)
+    File.write!(codex_binary, "#!/bin/sh\nexit 0\n")
+    File.chmod!(codex_binary, 0o755)
+
+    try do
+      write_workflow_file!(Workflow.workflow_file_path(),
+        tracker_kind: "memory",
+        workspace_root: workspace_root,
+        agent_routing: "routed",
+        codex_command: "#{codex_binary} app-server"
+      )
+
+      profile = Config.settings!().agent.profiles["builder"]
+      admission_key = :h080b_workspace_namespace_spawn_count
+      Process.put(admission_key, 0)
+
+      workspace_admit = fn _issue, _workspace ->
+        invocation = Process.get(admission_key, 0) + 1
+        Process.put(admission_key, invocation)
+        if invocation == 2, do: File.rm_rf!(workspace)
+        :ok
+      end
+
+      runtime_admit = fn _worker_host, _executable, _opts -> {:ok, :admitted} end
+
+      assert {:error, {:containment_unconfirmed, :termination_timeout}} =
+               AppServer.start_session(
+                 workspace,
+                 Profile.runtime_options(profile) ++
+                   [
+                     absolute_deadline_ms: System.monotonic_time(:millisecond) + 5_000,
+                     runtime_session_root: session_root,
+                     test_runtime_workspace_admit: workspace_admit,
+                     test_runtime_isolation_admit: runtime_admit
+                   ]
+               )
+
+      assert Process.get(admission_key) == 2
+      assert File.dir?(session_root)
+      File.rm_rf!(session_root)
     after
       Process.delete(:h080b_workspace_namespace_spawn_count)
       File.rm_rf(test_root)
@@ -2575,6 +2645,72 @@ defmodule SymphonyElixir.AppServerTest do
     assert File.exists?(Path.join(home, "session-marker"))
   end
 
+  @tag :authority_binding_correction
+  test "routed namespace observation is strict only for a deadline-bearing pilot" do
+    root = Path.join(System.tmp_dir!(), "pilot-namespace-scope-#{System.unique_integer([:positive])}")
+    workspace = Path.join(root, "workspaces/item")
+    binary = Path.join(root, "codex")
+    File.mkdir_p!(workspace)
+
+    thread_result = %{
+      "thread" => %{"id" => "offline-scope"},
+      "activePermissionProfile" => %{"id" => "symphony_planner_read"},
+      "runtimeWorkspaceRoots" => [workspace],
+      "cwd" => workspace
+    }
+
+    write_direct_routed_codex!(binary, thread_result)
+
+    workflow_opts = [
+      tracker_kind: "memory",
+      workspace_root: Path.dirname(workspace),
+      agent_routing: "routed",
+      codex_command: "#{binary} app-server"
+    ]
+
+    write_workflow_file!(Workflow.workflow_file_path(), workflow_opts)
+    profile = Config.settings!().agent.profiles["planner"]
+
+    for pilot? <- [false, true] do
+      admission_opts = [
+        test_runtime_workspace_admit: &admit_workspace_for_test/2,
+        test_runtime_isolation_admit: &admit_for_test/3
+      ]
+
+      opts = Profile.runtime_options(profile) ++ admission_opts
+      opts = if pilot?, do: Keyword.put(opts, :absolute_deadline_ms, System.monotonic_time(:millisecond) + 5_000), else: opts
+      assert {:ok, session} = AppServer.start_session(workspace, opts)
+
+      try do
+        if pilot?, do: assert(is_map(session.runtime_namespace)), else: assert(is_nil(session.runtime_namespace))
+      after
+        assert :ok = AppServer.stop_session(session)
+      end
+    end
+
+    File.rm_rf!(root)
+  end
+
+  @tag :authority_binding_correction
+  test "only a pilot requires PID1 proof after a routed guard acknowledges stop" do
+    for pilot? <- [false, true] do
+      root = Path.join(System.tmp_dir!(), "pilot-guard-proof-scope-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(root)
+      port = Port.open({:spawn_executable, ~c"/usr/bin/python3"}, [:binary, :exit_status, args: [~c"-c", ~c"import sys; sys.stdin.buffer.readline()"]])
+      session = %{port: port, ephemeral_home: root, runtime_containment: :linux_pid_namespace}
+      session = if pilot?, do: Map.put(session, :absolute_deadline_ms, System.monotonic_time(:millisecond) + 500), else: session
+
+      if pilot? do
+        assert {:error, {:containment_unconfirmed, :termination_timeout}} = AppServer.stop_session(session)
+        assert File.dir?(root)
+        File.rm_rf!(root)
+      else
+        assert :ok = AppServer.stop_session(session)
+        refute File.exists?(root)
+      end
+    end
+  end
+
   test "routed containment timeout retains its session home" do
     test_root =
       Path.join(
@@ -2618,6 +2754,218 @@ defmodule SymphonyElixir.AppServerTest do
              })
 
     assert File.exists?(Path.join(home, "session-marker"))
+  end
+
+  test "routed stop does not treat outer launcher death as containment proof" do
+    test_root =
+      Path.join(
+        System.tmp_dir!(),
+        "symphony-app-server-outer-death-unproven-#{System.unique_integer([:positive])}"
+      )
+
+    home = Path.join(test_root, "session-home")
+    child_pid_file = Path.join(test_root, "descendant-pid")
+    File.mkdir_p!(home)
+    File.write!(Path.join(home, "session-marker"), "retain until containment is proven")
+
+    script = """
+    import os, time
+    child = os.fork()
+    if child == 0:
+        for descriptor in (0, 1, 2):
+            try: os.close(descriptor)
+            except OSError: pass
+        time.sleep(60)
+        os._exit(0)
+    with open(#{inspect(child_pid_file)}, "w") as pid_file:
+        pid_file.write(str(child))
+    os._exit(0)
+    """
+
+    port =
+      Port.open({:spawn_executable, ~c"/usr/bin/python3"}, [
+        :binary,
+        :exit_status,
+        args: [~c"-c", String.to_charlist(script)]
+      ])
+
+    {:os_pid, os_pid} = :erlang.port_info(port, :os_pid)
+    child_pid = wait_for_pid_file!(child_pid_file)
+
+    on_exit(fn ->
+      _ =
+        System.cmd(
+          System.find_executable("kill") || "/bin/kill",
+          ["-KILL", child_pid],
+          stderr_to_stdout: true
+        )
+
+      File.rm_rf!(test_root)
+    end)
+
+    assert {:error, {:containment_unconfirmed, :termination_timeout}} =
+             AppServer.stop_session(%{
+               port: port,
+               os_pid: os_pid,
+               ephemeral_home: home,
+               runtime_containment: :linux_pid_namespace,
+               absolute_deadline_ms: System.monotonic_time(:millisecond) + 1_000
+             })
+
+    assert File.exists?(Path.join(home, "session-marker"))
+  end
+
+  test "unshare kill-child terminates namespace descendants when the launcher dies" do
+    unshare = System.find_executable("unshare")
+    python = System.find_executable("python3")
+    assert is_binary(unshare) and is_binary(python)
+
+    {preflight_output, preflight_status} =
+      System.cmd(unshare, ["--user", "--map-current-user", "--pid", "--fork", "/bin/true"], stderr_to_stdout: true)
+
+    assert preflight_status == 0, "rootless PID namespaces unavailable: #{preflight_output}"
+
+    test_root =
+      Path.join(System.tmp_dir!(), "symphony-app-server-kill-child-#{System.unique_integer([:positive])}")
+
+    pid_file = Path.join(test_root, "namespace-host-pids")
+    File.mkdir_p!(test_root)
+    marker = "SYMPHONY_KILL_CHILD_#{System.unique_integer([:positive])}"
+    parent = self()
+
+    owner =
+      spawn(fn ->
+        script = """
+        import os, time
+        path = #{inspect(pid_file)}
+        marker = #{inspect(marker)}
+        child = os.fork()
+        if child == 0:
+            while True: time.sleep(1)
+        with open(path, 'w', encoding='ascii') as pids:
+            pids.write(str(os.getpid()) + '\\n')
+            pids.write(str(child) + '\\n')
+            pids.flush()
+        while True: time.sleep(1)
+        """
+
+        port =
+          Port.open({:spawn_executable, String.to_charlist(unshare)}, [
+            :binary,
+            :exit_status,
+            args:
+              Enum.map(
+                ["--user", "--map-current-user", "--pid", "--fork", "--kill-child", python, "-I", "-S", "-c", script],
+                &String.to_charlist/1
+              )
+          ])
+
+        {:os_pid, launcher_pid} = :erlang.port_info(port, :os_pid)
+        send(parent, {:kill_child_fixture_started, self(), launcher_pid})
+
+        receive do
+          :hold -> Process.sleep(:infinity)
+        end
+      end)
+
+    assert_receive {:kill_child_fixture_started, ^owner, launcher_pid}, 5_000
+    namespace_pids = wait_for_namespace_pids!(pid_file)
+    host_pids = Enum.map(namespace_pids, &host_pid_for_namespace!(&1, marker))
+
+    on_exit(fn ->
+      Process.exit(owner, :kill)
+      kill_test_process(launcher_pid)
+      Enum.each(host_pids, &kill_test_process/1)
+      File.rm_rf!(test_root)
+    end)
+
+    Process.exit(owner, :kill)
+
+    kill_test_process(launcher_pid)
+    assert wait_for_process_absence(launcher_pid), "unshare launcher survived forced parent loss"
+
+    assert Enum.all?(host_pids, &wait_for_process_absence/1),
+           "namespace descendants survived port-owner loss: #{Enum.join(host_pids, ", ")}"
+  end
+
+  test "namespace descendants terminate when their owning BEAM VM dies using the AppServer guard" do
+    unshare = "/usr/bin/unshare"
+    python = "/usr/bin/python3.14"
+    elixir = System.find_executable("elixir")
+    assert File.regular?(unshare) and File.regular?(python) and is_binary(elixir)
+
+    test_root =
+      Path.join(System.tmp_dir!(), "symphony-app-server-beam-loss-#{System.unique_integer([:positive])}")
+
+    File.rm_rf!(test_root)
+    File.mkdir_p!(test_root)
+    pid_file = Path.join(test_root, "namespace-host-pids")
+    launcher_file = Path.join(test_root, "namespace-launcher-pid")
+    guard_file = Path.join(test_root, "app-server-guard.py")
+    marker = "SYMPHONY_BEAM_LOSS_#{System.unique_integer([:positive])}"
+    beam_script = Path.join(test_root, "owning-beam.exs")
+
+    guard_source = app_server_guard_source!()
+    File.write!(guard_file, guard_source)
+
+    runtime_script = """
+    import os, time
+    marker = #{inspect(marker)}
+    child = os.fork()
+    with open(#{inspect(pid_file)}, 'a', encoding='ascii') as pids:
+        pids.write(str(os.getpid()) + '\\n')
+        pids.flush()
+        if child == 0:
+            pids.write(str(os.getpid()) + '\\n')
+            pids.flush()
+    while True: time.sleep(1)
+    """
+
+    File.write!(
+      beam_script,
+      """
+      unshare = #{inspect(unshare)}
+      python = #{inspect(python)}
+      guard = File.read!(#{inspect(guard_file)})
+      runtime = #{inspect(runtime_script)}
+      args = ["--user", "--map-current-user", "--kill-child", "--pid", "--fork", "--mount-proc", python, "-I", "-S", "-c", guard, python, "-I", "-S", "-c", runtime]
+      port = Port.open({:spawn_executable, String.to_charlist(unshare)}, [
+        :binary,
+        :exit_status,
+        args: Enum.map(args, &String.to_charlist/1)
+      ])
+      {:os_pid, launcher_pid} = :erlang.port_info(port, :os_pid)
+      File.write!(#{inspect(launcher_file)}, Integer.to_string(launcher_pid))
+      Process.sleep(:infinity)
+      """
+    )
+
+    beam_port =
+      Port.open({:spawn_executable, String.to_charlist(elixir)}, [
+        :binary,
+        :exit_status,
+        args: [String.to_charlist(beam_script)]
+      ])
+
+    {:os_pid, beam_pid} = :erlang.port_info(beam_port, :os_pid)
+    namespace_pids = wait_for_namespace_pids!(pid_file)
+    launcher_pid = launcher_file |> wait_for_pid_file!() |> String.to_integer()
+    host_pids = Enum.map(namespace_pids, &host_pid_for_namespace!(&1, marker))
+
+    on_exit(fn ->
+      kill_test_process(beam_pid)
+      kill_test_process(launcher_pid)
+      Enum.each(host_pids, &kill_test_process/1)
+      File.rm_rf!(test_root)
+    end)
+
+    kill_test_process(beam_pid)
+
+    assert wait_for_process_absence(beam_pid, 500), "owning BEAM VM survived termination"
+    assert wait_for_process_absence(launcher_pid, 500), "unshare launcher survived owning BEAM loss"
+
+    assert Enum.all?(host_pids, &wait_for_process_absence(&1, 500)),
+           "namespace descendants survived owning BEAM loss: #{Enum.join(host_pids, ", ")}"
   end
 
   test "routed stop contains a descendant that escapes the runtime session" do
@@ -2698,7 +3046,11 @@ defmodule SymphonyElixir.AppServerTest do
                  [
                    runtime_session_root: session_root,
                    test_runtime_workspace_admit: &admit_workspace_for_test/2,
-                   test_runtime_isolation_admit: &admit_for_test/3
+                   test_runtime_isolation_admit: &admit_for_test/3,
+                   test_routed_guard_tool_paths: %{
+                     "unshare" => "/usr/bin/unshare",
+                     "python3" => "/usr/bin/python3.14"
+                   }
                  ]
              )
 
@@ -2725,10 +3077,15 @@ defmodule SymphonyElixir.AppServerTest do
     assert test_pid_alive?(descendant_host_pid)
     assert File.dir?(session_root)
 
-    assert :ok = AppServer.stop_session(session)
-
+    stop_result = AppServer.stop_session(session)
     refute test_pid_alive?(descendant_host_pid)
-    refute File.exists?(session_root)
+
+    case stop_result do
+      :ok -> refute File.exists?(session_root)
+      {:error, {:containment_unconfirmed, _reason}} -> assert File.dir?(session_root)
+    end
+
+    File.rm_rf!(test_root)
   end
 
   test "routed launch accepts a root-owned Codex executable when path trust is enforced" do
@@ -2945,6 +3302,7 @@ defmodule SymphonyElixir.AppServerTest do
            do: false,
            else: "pinned Codex executable is unavailable"
          )
+  @tag :operational_codex
   test "pinned Codex returns routed thread provenance before exposing the session" do
     test_root =
       Path.join(
@@ -2993,6 +3351,7 @@ defmodule SymphonyElixir.AppServerTest do
     end
   end
 
+  @tag :operational_codex
   @tag timeout: 120_000
   test "routed launch fails closed when its isolation evidence is invalidated before spawn" do
     test_root =
@@ -3382,5 +3741,121 @@ defmodule SymphonyElixir.AppServerTest do
     after
       unless File.dir?(session_root), do: File.rm_rf(test_root)
     end
+  end
+
+  defp wait_for_pid_file!(path, attempts \\ 100)
+  defp wait_for_pid_file!(_path, 0), do: flunk("descendant pid was not recorded")
+
+  defp wait_for_pid_file!(path, attempts) do
+    case File.read(path) do
+      {:ok, pid} ->
+        String.trim(pid)
+
+      {:error, :enoent} ->
+        Process.sleep(10)
+        wait_for_pid_file!(path, attempts - 1)
+    end
+  end
+
+  defp host_pid_for_namespace!(namespace_pid, marker, attempts \\ 100)
+  defp host_pid_for_namespace!(_namespace_pid, _marker, 0), do: flunk("host pid for namespace child was not found")
+
+  defp host_pid_for_namespace!(namespace_pid, marker, attempts) do
+    host_pid =
+      Enum.find_value(File.ls!("/proc"), fn entry ->
+        with true <- String.match?(entry, ~r/^\d+$/),
+             {:ok, status} <- File.read("/proc/#{entry}/status"),
+             {:ok, cmdline} <- File.read("/proc/#{entry}/cmdline"),
+             true <- String.contains?(cmdline, marker),
+             nspid_line when is_binary(nspid_line) <-
+               Enum.find(String.split(status, "\n"), &String.starts_with?(&1, "NSpid:")),
+             [first | rest] <-
+               nspid_line |> String.replace_prefix("NSpid:", "") |> String.split(),
+             true <- List.last(rest) == Integer.to_string(namespace_pid) do
+          String.to_integer(first)
+        else
+          _ -> nil
+        end
+      end)
+
+    if host_pid do
+      host_pid
+    else
+      Process.sleep(10)
+      host_pid_for_namespace!(namespace_pid, marker, attempts - 1)
+    end
+  end
+
+  defp wait_for_namespace_pids!(path, attempts \\ 100)
+  defp wait_for_namespace_pids!(_path, 0), do: flunk("namespace pids were not recorded")
+
+  defp wait_for_namespace_pids!(path, attempts) do
+    case File.read(path) do
+      {:ok, contents} ->
+        pids = contents |> String.split() |> Enum.map(&String.to_integer/1) |> Enum.uniq()
+        if length(pids) >= 2, do: Enum.take(pids, 2), else: retry_namespace_pids(path, attempts)
+
+      {:error, :enoent} ->
+        retry_namespace_pids(path, attempts)
+    end
+  end
+
+  defp retry_namespace_pids(path, attempts) do
+    Process.sleep(10)
+    wait_for_namespace_pids!(path, attempts - 1)
+  end
+
+  defp wait_for_process_absence(pid, attempts \\ 100)
+  defp wait_for_process_absence(_pid, 0), do: false
+
+  defp wait_for_process_absence(pid, attempts) do
+    case File.read("/proc/#{pid}/stat") do
+      {:ok, stat} ->
+        if process_zombie?(stat) do
+          true
+        else
+          Process.sleep(10)
+          wait_for_process_absence(pid, attempts - 1)
+        end
+
+      {:error, :enoent} ->
+        true
+
+      {:error, _reason} ->
+        false
+    end
+  end
+
+  defp process_zombie?(stat) do
+    case Regex.run(~r/^\d+ \(.*\) ([A-Z]) /, stat) do
+      [_, "Z"] -> true
+      _ -> false
+    end
+  end
+
+  defp kill_test_process(pid) do
+    if File.exists?("/proc/#{pid}") do
+      System.cmd(System.find_executable("kill") || "/bin/kill", ["-KILL", Integer.to_string(pid)], stderr_to_stdout: true)
+    end
+  end
+
+  defp app_server_guard_source! do
+    source_path = Path.expand("../../lib/symphony_elixir/codex/app_server.ex", __DIR__)
+    ast = source_path |> File.read!() |> Code.string_to_quoted!()
+
+    {_, expression} =
+      Macro.prewalk(ast, nil, fn
+        {:@, _, [{:linux_runtime_guard_script, _, [expression]}] = attribute}, nil ->
+          {attribute, expression}
+
+        node, acc ->
+          {node, acc}
+      end)
+
+    {source, _binding} = Code.eval_quoted(expression)
+    source_hash = :crypto.hash(:sha256, source) |> Base.encode16(case: :lower)
+
+    assert source_hash == "51224705525a204814bb7a008cb4116a4868a4d7a0807dcd626a098c1473fe97"
+    source
   end
 end

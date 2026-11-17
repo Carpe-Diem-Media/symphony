@@ -8,6 +8,7 @@ defmodule SymphonyElixir.Config do
   alias SymphonyElixir.AgentRuntime.Profile
   alias SymphonyElixir.Codex.IsolationProfile
   alias SymphonyElixir.Config.Schema
+  alias SymphonyElixir.{PathSafety, PromptBuilder}
   alias SymphonyElixir.Tracker
   alias SymphonyElixir.Workflow
   alias SymphonyElixir.WorkflowStore
@@ -36,6 +37,122 @@ defmodule SymphonyElixir.Config do
           runtime_workspace_roots: [Path.t()],
           access: :read | :write | nil
         }
+
+  @doc "Returns the explicit nonsecret C02 pilot selector; it grants no native or credential authority."
+  @spec pilot_holder_selection(Schema.t()) :: {:ok, map() | nil} | {:error, :pilot_holder_selection_invalid}
+  def pilot_holder_selection(settings) do
+    selection = Map.get(settings.agent, :pilot_holder)
+
+    case IsolationProfile.validate_pilot_holder_selection(selection) do
+      :ok -> {:ok, selection}
+      {:error, _} -> {:error, :pilot_holder_selection_invalid}
+    end
+  end
+
+  @pilot_keys ~w(project_id plane_project_id work_item_id responsibility source_commit source_tree config_identity runtime_lineage deadline_ms)a
+
+  @doc """
+  Hashes the effective pilot configuration, workflow prompt, selected Planner
+  policy bytes/root and trusted Git identity without credential values. The
+  separately retained grant is excluded to avoid a self-reference. This identifies
+  configuration bytes; it does not authorize execution.
+  """
+  @spec pilot_configuration_identity(Schema.t(), String.t()) :: String.t()
+  def pilot_configuration_identity(settings, prompt) when is_binary(prompt) do
+    case pilot_configuration_snapshot(settings, prompt) do
+      {:ok, snapshot} -> snapshot.identity
+      {:error, _} -> raise ArgumentError, "Pilot authority inputs unavailable"
+    end
+  end
+
+  @doc "Captures immutable pilot authority inputs. Unavailable policy or trusted Git refuses admission."
+  @spec pilot_configuration_snapshot(Schema.t(), String.t()) :: {:ok, map()} | {:error, :pilot_configuration_invalid}
+  def pilot_configuration_snapshot(settings, prompt) do
+    with {:ok, policy} <- PromptBuilder.pilot_role_policy(settings),
+         {:ok, git} <- PathSafety.trusted_executable_identity("/usr/bin/git") do
+      # Provider credentials are custody data, not part of the execution identity.
+      tracker = %{settings.tracker | api_key: nil, provider: Map.drop(settings.tracker.provider, [:api_key, "api_key"])}
+      effective = %{settings | tracker: tracker, agent: %{settings.agent | pilot: nil}}
+
+      identity =
+        {effective, prompt, policy, git}
+        |> :erlang.term_to_binary([:deterministic])
+        |> then(&:crypto.hash(:sha256, &1))
+        |> Base.encode16(case: :lower)
+
+      {:ok, %{identity: identity, role_policy: policy, git: git, workflow: {:ok, %{prompt_template: prompt}}}}
+    else
+      _ -> {:error, :pilot_configuration_invalid}
+    end
+  rescue
+    _ -> {:error, :pilot_configuration_invalid}
+  end
+
+  @doc "Returns a strictly bound, separately issued pilot grant, or nil when absent."
+  @spec pilot_binding(Schema.t(), String.t()) :: {:ok, map() | nil} | {:error, :pilot_configuration_invalid}
+  def pilot_binding(settings, prompt) do
+    case settings.agent.pilot do
+      nil -> {:ok, nil}
+      grant when is_map(grant) -> validate_pilot_binding(settings, grant, prompt)
+      _ -> {:error, :pilot_configuration_invalid}
+    end
+  end
+
+  @spec pilot_binding(Schema.t()) :: {:ok, map() | nil} | {:error, :pilot_configuration_invalid}
+  def pilot_binding(%{agent: %{pilot: nil}}), do: {:ok, nil}
+
+  def pilot_binding(settings) do
+    # Validation also runs inside WorkflowStore. Read the file directly instead
+    # of calling the cache from its own GenServer callback.
+    case Workflow.load() do
+      {:ok, %{prompt_template: prompt}} -> pilot_binding(settings, prompt)
+      _ -> {:error, :pilot_configuration_invalid}
+    end
+  end
+
+  defp validate_pilot_binding(settings, grant, prompt) do
+    keys = Enum.map(@pilot_keys, &Atom.to_string/1)
+    normalized = Map.new(@pilot_keys, &{&1, Map.get(grant, Atom.to_string(&1), Map.get(grant, &1))})
+
+    valid =
+      Enum.sort(Enum.map(Map.keys(grant), &to_string/1)) == Enum.sort(keys) and
+        pilot_runtime_scope?(settings, normalized) and pilot_grant_values?(normalized) and
+        normalized.config_identity == pilot_configuration_identity(settings, prompt)
+
+    if valid, do: {:ok, normalized}, else: {:error, :pilot_configuration_invalid}
+  rescue
+    _ -> {:error, :pilot_configuration_invalid}
+  end
+
+  defp pilot_runtime_scope?(settings, grant) do
+    Enum.all?([
+      settings.agent.routing == "routed",
+      settings.agent.attempt_boundary.mode == "legacy",
+      settings.tracker.kind == "plane",
+      settings.agent.max_concurrent_agents == 1,
+      settings.worker.ssh_hosts == [],
+      grant.project_id == settings.symphony.project_id,
+      grant.plane_project_id == settings.tracker.project_id,
+      grant.responsibility == "planning"
+    ])
+  end
+
+  defp pilot_grant_values?(grant) do
+    Enum.all?([
+      match?({:ok, _}, Ecto.UUID.cast(grant.plane_project_id)),
+      match?({:ok, _}, Ecto.UUID.cast(grant.work_item_id)),
+      pilot_hex?(grant.source_commit, 40),
+      pilot_hex?(grant.source_tree, 40),
+      pilot_hex?(grant.config_identity, 64),
+      pilot_lineage?(grant.runtime_lineage),
+      is_integer(grant.deadline_ms) and grant.deadline_ms > 0
+    ])
+  end
+
+  defp pilot_lineage?(value), do: is_binary(value) and byte_size(value) in 1..128
+
+  defp pilot_hex?(value, length),
+    do: is_binary(value) and byte_size(value) == length and String.match?(value, ~r/\A[0-9a-f]+\z/)
 
   @spec settings() :: {:ok, Schema.t()} | {:error, term()}
   def settings do
@@ -239,8 +356,14 @@ defmodule SymphonyElixir.Config do
   end
 
   @doc false
-  @spec validate_attempt_boundary(Schema.t(), keyword()) :: :ok | {:error, AttemptBoundary.error()}
+  @spec validate_attempt_boundary(Schema.t(), keyword()) :: :ok | {:error, AttemptBoundary.error() | :pilot_configuration_invalid}
   def validate_attempt_boundary(settings, opts \\ []) do
+    with {:ok, pilot} <- pilot_binding(settings) do
+      validate_attempt_boundary_mode(settings, Keyword.put(opts, :pilot_runtime, is_map(pilot)))
+    end
+  end
+
+  defp validate_attempt_boundary_mode(settings, opts) do
     mode = settings.agent.attempt_boundary.mode
 
     cond do
@@ -295,7 +418,7 @@ defmodule SymphonyElixir.Config do
 
   defp attempt_ledger_options(opts) do
     opts
-    |> Keyword.take([:root, :path])
+    |> Keyword.take([:root, :path, :pilot_runtime])
   end
 
   defp validate_plane_runtime_mode(%{tracker: %{kind: "plane"}, agent: %{routing: "legacy"}}),

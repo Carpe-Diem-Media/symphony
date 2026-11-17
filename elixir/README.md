@@ -5,6 +5,126 @@ This directory contains the Elixir/OTP implementation of the `JCSchoeman96/symph
 > [!WARNING]
 > This fork contains the hardened V1 implementation described by its V4.1 authority documents. The legacy Linear sample below remains for compatibility and is not the default hardened routed configuration.
 
+## Single Planner pilot
+
+`agent.pilot` is an optional exact grant for one Plane project UUID, item UUID and
+planning responsibility. It requires routed local execution, one concurrent agent
+and the existing legacy attempt boundary with no Gate 2 binding. Its strict fields
+are `project_id`, `plane_project_id`, `work_item_id`, `responsibility`,
+`source_commit`, `source_tree`, `config_identity`, `runtime_lineage` and
+`deadline_ms`. No grant or deadline is enabled by default. The proposed 120-second
+budget needs separate owner approval.
+
+The Symphony project namespace is `project_id`. `plane_project_id` identifies the
+disposable provider project. Calculate `config_identity` with
+`Config.pilot_configuration_identity(settings, workflow_prompt)` after finalizing
+the effective configuration and effective role-prompt root. The identity includes
+configuration, workflow prompt, the selected Planner policy's exact file bytes and
+resolved paths, and the trusted `/usr/bin/git` path and SHA-256. Credential values
+and the separately retained grant are excluded. Pilot policies require a readable,
+nonempty selected file. Embedded and inline policy fallbacks remain available only
+outside the pilot. A policy/root or Git identity change invalidates the grant.
+Existing grants computed without these inputs cannot authorize this candidate.
+
+AgentRunner captures these inputs before its one-use launch claim, revalidates
+before session launch and the model turn, and renders the captured policy bytes
+without trimming or reloading them. Checkout verification revalidates the trusted
+Git identity before each command and executes its absolute path. The executable
+and its ancestry must be root-owned without group/other write or set-ID bits.
+The checkout must match both source identities and have no tracked changes or
+untracked files before the model starts. Each verification Git child receives an
+isolated environment with global/system configuration and lazy fetching disabled.
+Its effective canonical worktree must equal the approved workspace. The admission
+check also hashes actual tracked file or symlink bytes and checks type/mode against
+the pinned tree, independently of index stat caches, assume-unchanged or skip-worktree.
+It changes no index flags, configuration or checkout contents. Content-transforming
+checkouts and unsupported tree entry types fail closed when they do not match the
+pinned raw tree. Linked Git worktrees are supported by this read-only proof; the
+normal runtime still requires its existing ownership and credential admission,
+including its Git-metadata containment rule.
+
+The separately selected `agent.pilot_holder` profile is `siwc_planner_pilot_v1`
+under `SIWC_CHATGPT_PLAN_OAUTH_RESPONSES`. Its strict nonsecret selection binds
+holder artifact/profile identities, host permission and registration references,
+credential generation, host/boot identities and the five accepted lifetime budgets.
+The existing effective configuration digest includes that selection. A changed
+selection requires a fresh matching grant; the digest algorithm is unchanged.
+
+C02 implements consumer-side binding and production refusal. Production always
+refuses this profile because the native P01/P02/P03/P04/P05/P08 permission, storage,
+credential owner, patched Codex holder/tool and disposal controls are not qualified.
+The [native development slice](../native/pilot_c02/README.md) executes a compiled
+host, credential-free guard, post-fork bootstrap and restricted synthetic ELF probe.
+Only test builds can invoke it through `RuntimeIsolation` and `NativePilot`, after
+existing C01/source/holder binding checks. The harness pins every executable and
+driver hash, and correlates native evidence with the existing RuntimeAttempt.
+It always returns refusal, never a model-ready session or authenticated receipt.
+A safe probe result requires independent pidfd death observation and synchronized
+correlation evidence. Uncertainty retains C01 quarantine. No operational credential
+input, enrollment, token file or login RPC is added. The ordinary CLI is not the
+required patched standalone holder. A separate [pinned upstream patch](../native/pinned_codex/README.md)
+now adds that early entry to the real standalone app-server for local synthetic
+verification. `PINNED_CODEX_BINARY` selects its exact bytes only in the test harness.
+It refuses thread/turn/provider use while operational host controls are absent.
+Test builds alone can exercise a pinned synthetic Ed25519 peer that journals and
+synchronizes nonsecret receipts before signing them. Its assurance is always
+`synthetic_test_only`, never operational qualification.
+
+Admission checks the exact running C01 grant, RuntimeAttempt, pinned checkout,
+policy/configuration identity and absolute deadline before launch, thread and
+turn execution. Each synthetic receipt signs a fresh challenge and the complete
+binding. Replayed, malformed, expired, mismatched or unavailable receipts refuse.
+Holder/generation/lifetime rollover is refused. Verified process termination is
+followed by the separate disposal check before session-home deletion; uncertain
+disposal retains the home and C01's consumed entitlement. Fresh homes, environment
+clearing, Planner permissions, namespace stop proof and C04 persistence remain in
+force. Ordinary profiles without this opt-in selection keep their prior path.
+The test peer and public key must match the test-harness pin; runtime options
+cannot select a replacement signer. Forward admission also checks the full
+configured Planner profile and effective command/model, including turn options.
+
+The nonsecret interface progresses through `selected`, `launch_ready`,
+`thread_ready`, `turn_ready` and `disposed`. Every forward guard rechecks current
+C01 and source authority. A single turn consumes the fixture's turn permission;
+completion never grants continuation. Any refusal blocks the next operation.
+Disposal uses the captured original binding after independent process stop,
+including when forward authority has been revoked. Missing or uncertain disposal
+retains the session home and yields the existing quarantined final disposition.
+The cleanup budget reserves credential lifetime within the original absolute
+attempt deadline. It does not extend that deadline. An expired deadline refuses
+receipt processing and cannot produce a verified-stop claim.
+
+The existing attempt ledger retains the exact grant. Its normal states are
+`configured`, `consumed`, `running`, `stopverified`. Dispatch synchronizes consumption
+before creating the worker. AgentRunner synchronizes a separate one-use launch claim
+before workspace execution. No ordinary rearm, counter reset, configuration removal,
+retry, continuation, route change or other role can reopen that grant. Ambiguous
+execution enters `quarantined` and retains the allowance and authority fence.
+Startup also quarantines a consumed or running prior attempt without stop proof.
+Ordinary configuration reload does not apply this startup recovery.
+
+The absolute monotonic deadline covers launch, protocol startup, the one model turn
+and stopping. Incoming data cannot extend it. The routed PID namespace remains in
+use. A stop requires independently captured namespace PID1 identity and observed
+PID1 death, plus outer-port death. Linux terminates every process in a PID namespace
+when its PID1 dies. Outer-port death alone is insufficient. Missing process evidence
+retains the workspace and ephemeral home. Independent PID1 capture and stop proof
+apply to deadline-bearing pilot sessions. Routed sessions without a pilot deadline
+retain the existing namespace guard and guarded port-stop behavior.
+
+Only a final `agentMessage` with phase `final_answer` is eligible for persistence.
+The ledger binds its complete permitted text, model completion state, attempt outcome, stop disposition and
+session/thread/turn IDs to the grant and RuntimeAttempt. Raw protocol events are
+excluded. Ambiguous, oversized or known credential-bearing results cannot become completed
+records. Quarantine retains safe final output when available. Success requires
+synchronized final evidence after verified termination.
+Pilot execution skips the ordinary continuation and after-run cleanup hooks.
+
+Host workspace creation and the approved checkout hook remain host effects. The
+model retains its Planner read-only sandbox and existing controlled Plane tools.
+Authentication, trusted Codex qualification, item adoption, any Planning-to-Ready
+transition and live execution each need their applicable separate authorization.
+
 ## Screenshot
 
 ![Symphony Elixir screenshot](../.github/media/elixir-screenshot.png)

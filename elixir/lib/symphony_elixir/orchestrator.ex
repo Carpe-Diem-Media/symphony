@@ -167,6 +167,7 @@ defmodule SymphonyElixir.Orchestrator do
       retry_attempts: %{},
       attempt_counters: %{},
       attempt_lineages: %{},
+      pilot_binding: nil,
       attempt_ledger: nil,
       attempt_ledger_status: :disabled,
       attempt_ledger_opts: [],
@@ -260,6 +261,8 @@ defmodule SymphonyElixir.Orchestrator do
     state = initialize_attempt_ledger(state, config, opts)
     state = initialize_recovery_ledger(state, config, opts)
     state = initialize_workspace_ownership_ledger(state, config, opts)
+    state = synchronize_pilot_config(state, config)
+    state = quarantine_unfinished_pilot_on_startup(state)
 
     state =
       if Keyword.get(opts, :start_quiesced, false) do
@@ -270,6 +273,54 @@ defmodule SymphonyElixir.Orchestrator do
 
     {:ok, state}
   end
+
+  # A retained pilot grant remains authoritative even if a workflow removes it.
+  defp synchronize_pilot_config(%State{attempt_ledger: %AttemptLedger{} = ledger} = state, config) do
+    case {Config.pilot_binding(config), AttemptLedger.pilot_status(ledger)} do
+      {{:ok, nil}, :not_found} ->
+        state
+
+      {{:ok, nil}, {:error, reason}} ->
+        case state.attempt_ledger_status do
+          {:blocked, _existing_reason} -> state
+          _ -> block_ledger(state, reason)
+        end
+
+      {{:ok, grant}, _} when is_map(grant) ->
+        case AttemptLedger.configure_pilot(ledger, grant) do
+          :ok -> %{state | pilot_binding: grant}
+          {:error, reason} -> block_ledger(state, reason)
+        end
+
+      _ ->
+        block_ledger(state, :pilot_configuration_invalid)
+    end
+  end
+
+  defp synchronize_pilot_config(state, config) do
+    case Config.pilot_binding(config) do
+      {:ok, nil} -> state
+      _ -> block_ledger(state, :pilot_ledger_required)
+    end
+  end
+
+  # Startup has no independent stop proof for an earlier worker. Retain its
+  # one-use grant and current fence; config reload must never run this recovery.
+  defp quarantine_unfinished_pilot_on_startup(%State{pilot_binding: grant, attempt_ledger: ledger} = state)
+       when is_map(grant) do
+    case AttemptLedger.pilot_status(ledger) do
+      {:ok, %{state: prior, runtime_identity: identity}} when prior in [:consumed, :running] ->
+        case AttemptLedger.quarantine_pilot(ledger, identity, :termination_unconfirmed) do
+          :ok -> state
+          {:error, reason} -> block_ledger(state, reason)
+        end
+
+      _ ->
+        state
+    end
+  end
+
+  defp quarantine_unfinished_pilot_on_startup(state), do: state
 
   defp startup_reconciliation_initial_state(_routing), do: :pending
 
@@ -1428,6 +1479,16 @@ defmodule SymphonyElixir.Orchestrator do
 
   def handle_info({:codex_worker_update, _issue_id, _update}, state), do: {:noreply, state}
 
+  def handle_info({:pilot_attempt_deadline, issue_id, %RuntimeAttemptIdentity{} = identity}, state) do
+    case validate_current_runtime_event(state, issue_id, identity, require_running: false) do
+      {:ok, _, %{pid: pid} = entry} when is_pid(pid) ->
+        expire_pilot_attempt(state, issue_id, identity, entry, pid)
+
+      _ ->
+        {:noreply, state}
+    end
+  end
+
   def handle_info({:retry_issue, issue_id, retry_token}, state) do
     result =
       if autonomous_dispatch_allowed?(state) do
@@ -1451,6 +1512,19 @@ defmodule SymphonyElixir.Orchestrator do
     {:noreply, state}
   end
 
+  defp expire_pilot_attempt(state, issue_id, identity, entry, pid) do
+    case AttemptLedger.pilot_status(state.attempt_ledger) do
+      {:ok, %{state: :stopverified, runtime_identity: ^identity, result: %{stop_disposition: :verified}}} ->
+        {:noreply, state}
+
+      _ ->
+        Process.exit(pid, :kill)
+        updated = mark_runtime_containment_unconfirmed(entry, :pilot_absolute_deadline)
+        _ = persist_pilot_terminal_failure(state, identity, :timeout)
+        {:noreply, %{state | running: Map.put(state.running, issue_id, updated)}}
+    end
+  end
+
   defp handle_running_task_down(ref, reason, %{running: running} = state) do
     case find_issue_id_for_ref(running, ref) do
       nil ->
@@ -1459,7 +1533,7 @@ defmodule SymphonyElixir.Orchestrator do
       issue_id ->
         running_entry = Map.fetch!(running, issue_id)
 
-        if containment_unproven_runtime_attempt?(running_entry) do
+        if containment_unproven_runtime_attempt?(running_entry) or not pilot_final_evidence_verified?(state) do
           retained_state = retain_runtime_containment_after_task_down(state, issue_id, running_entry)
           notify_dashboard()
           {:noreply, retained_state}
@@ -1467,6 +1541,12 @@ defmodule SymphonyElixir.Orchestrator do
           handle_releasable_running_task_down(state, issue_id, running_entry, reason)
         end
     end
+  end
+
+  defp pilot_final_evidence_verified?(%State{pilot_binding: nil}), do: true
+
+  defp pilot_final_evidence_verified?(%State{attempt_ledger: ledger}) do
+    match?({:ok, %{state: :stopverified, result: %{stop_disposition: :verified}}}, AttemptLedger.pilot_status(ledger))
   end
 
   defp handle_releasable_running_task_down(state, issue_id, running_entry, reason) do
@@ -1499,9 +1579,18 @@ defmodule SymphonyElixir.Orchestrator do
       |> Map.put(:pid, nil)
       |> Map.put(:ref, nil)
 
+    _ = persist_pilot_terminal_failure(state, runtime_attempt_identity_from(Map.get(running_entry, :runtime_attempt)), :failed)
     Logger.warning("Retaining runtime authority for issue_id=#{issue_id} because containment is unconfirmed")
     %{state | running: Map.put(state.running, issue_id, updated_entry)}
   end
+
+  defp persist_pilot_terminal_failure(%State{attempt_ledger: ledger, pilot_binding: grant}, identity, outcome)
+       when is_map(grant) do
+    reason = if outcome == :timeout, do: :absolute_deadline, else: :worker_lost
+    AttemptLedger.quarantine_pilot(ledger, identity, reason)
+  end
+
+  defp persist_pilot_terminal_failure(_state, _identity, _outcome), do: :ok
 
   defp release_runtime_fence_after_task_down(
          %State{} = state,
@@ -1581,6 +1670,11 @@ defmodule SymphonyElixir.Orchestrator do
       _other ->
         state
     end
+  end
+
+  defp handle_agent_down(_reason, %State{pilot_binding: grant} = state, issue_id, entry, _session_id)
+       when is_map(grant) do
+    block_issue_from_entry(state, issue_id, entry, :pilot_allowance_consumed)
   end
 
   defp handle_agent_down(:normal, state, issue_id, running_entry, session_id) do
@@ -7421,7 +7515,7 @@ defmodule SymphonyElixir.Orchestrator do
          issue,
          route
        ) do
-    case AttemptLedger.begin_attempt(ledger, issue.id, route_fingerprint: route.fingerprint) do
+    case begin_scoped_attempt(ledger, state.pilot_binding, issue, route) do
       {:ok, record} ->
         {:ok, mark_durable_in_flight(state, issue.id, true), record}
 
@@ -7443,6 +7537,25 @@ defmodule SymphonyElixir.Orchestrator do
   defp begin_checked_durable_attempt(%State{} = state, _issue, _route) do
     reason = :invalid_ledger_status
     {:error, block_ledger(state, reason), reason}
+  end
+
+  defp begin_scoped_attempt(ledger, nil, issue, route),
+    do: AttemptLedger.begin_attempt(ledger, issue.id, route_fingerprint: route.fingerprint)
+
+  defp begin_scoped_attempt(ledger, grant, issue, route) do
+    with :ok <- pilot_route_scope(grant, issue, route),
+         {:ok, current} when current == grant <- Config.pilot_binding(Config.settings!()) do
+      AttemptLedger.begin_attempt(ledger, issue.id, route_fingerprint: route.fingerprint, pilot_binding: grant)
+    else
+      _ -> {:error, :pilot_configuration_invalid}
+    end
+  end
+
+  defp pilot_route_scope(grant, issue, route) do
+    if issue.id == grant.work_item_id and issue.project_id == grant.plane_project_id and
+         route.responsibility == "planning" and route.runtime_name == "codex" and route_sandbox(route) == "read-only",
+       do: :ok,
+       else: {:error, :pilot_scope_mismatch}
   end
 
   defp allocate_runtime_attempt(%State{attempt_ledger_status: :ready}, issue, route, record)
@@ -7486,16 +7599,23 @@ defmodule SymphonyElixir.Orchestrator do
          worker_host,
          runtime_attempt
        ) do
-    case attempt_boundary_dispatch_decision(state, issue.id) do
-      :ok -> spawn_after_boundary_mode_check(state, issue, route, attempt, recipient, worker_host, runtime_attempt)
-      {:error, reason} -> block_issue_from_entry(state, issue.id, dispatch_entry(issue, route, attempt, worker_host), reason)
+    if Map.has_key?(state.running, issue.id) do
+      state
+    else
+      case attempt_boundary_dispatch_decision(state, issue.id) do
+        :ok -> spawn_after_boundary_mode_check(state, issue, route, attempt, recipient, worker_host, runtime_attempt)
+        {:error, reason} -> block_issue_from_entry(state, issue.id, dispatch_entry(issue, route, attempt, worker_host), reason)
+      end
     end
   end
 
   defp spawn_after_boundary_mode_check(state, issue, route, attempt, recipient, worker_host, runtime_attempt) do
-    case bind_runtime_attempt_before_spawn(state, issue.id, runtime_attempt) do
-      {:ok, state} ->
-        do_spawn_prepared_issue_on_worker_host(state, issue, route, attempt, recipient, worker_host, runtime_attempt)
+    with {:ok, state} <- bind_runtime_attempt_before_spawn(state, issue.id, runtime_attempt),
+         :ok <- consume_pilot_before_spawn(state, issue, route, runtime_attempt, worker_host) do
+      do_spawn_prepared_issue_on_worker_host(state, issue, route, attempt, recipient, worker_host, runtime_attempt)
+    else
+      {:error, reason} ->
+        block_issue_from_entry(block_ledger(state, reason), issue.id, dispatch_entry(issue, route, attempt, worker_host), :pilot_dispatch_refused)
 
       {:error, state, reason} ->
         block_issue_from_entry(
@@ -7506,6 +7626,25 @@ defmodule SymphonyElixir.Orchestrator do
         )
     end
   end
+
+  defp consume_pilot_before_spawn(%State{pilot_binding: nil, attempt_ledger: %AttemptLedger{} = ledger}, _issue, _route, _attempt, _host) do
+    case AttemptLedger.pilot_status(ledger) do
+      :not_found -> :ok
+      _ -> {:error, :pilot_binding_required}
+    end
+  end
+
+  defp consume_pilot_before_spawn(%State{pilot_binding: nil}, _issue, _route, _attempt, _host), do: :ok
+
+  defp consume_pilot_before_spawn(%State{pilot_binding: grant, attempt_ledger: ledger}, issue, route, %RuntimeAttempt{identity: identity}, nil) do
+    with :ok <- pilot_route_scope(grant, issue, route),
+         {:ok, _} <- AttemptLedger.consume_pilot(ledger, grant, identity) do
+      :ok
+    end
+  end
+
+  defp consume_pilot_before_spawn(_state, _issue, _route, _attempt, _host),
+    do: {:error, :pilot_scope_mismatch}
 
   @doc false
   @spec spawn_prepared_issue_for_test(
@@ -7561,9 +7700,15 @@ defmodule SymphonyElixir.Orchestrator do
     plane_epoch_snapshot_reader =
       plane_epoch_snapshot_reader_for(state, recipient, issue.id, runtime_attempt_identity)
 
+    absolute_deadline_ms =
+      if state.pilot_binding, do: System.monotonic_time(:millisecond) + state.pilot_binding.deadline_ms
+
     case Task.Supervisor.start_child(state.task_supervisor, fn ->
            state.agent_runner.run(issue, recipient,
              attempt: attempt,
+             pilot_binding: state.pilot_binding,
+             attempt_ledger: state.attempt_ledger,
+             absolute_deadline_ms: absolute_deadline_ms,
              worker_host: worker_host,
              route: route,
              work_item: work_item,
@@ -7576,6 +7721,11 @@ defmodule SymphonyElixir.Orchestrator do
          end) do
       {:ok, pid} ->
         ref = Process.monitor(pid)
+
+        if state.pilot_binding do
+          Process.send_after(self(), {:pilot_attempt_deadline, issue.id, runtime_attempt_identity}, max(0, absolute_deadline_ms - System.monotonic_time(:millisecond)))
+        end
+
         state = put_active_work_item(state, issue.id, work_item)
 
         Logger.info("Dispatching issue to agent: #{issue_context(issue)} pid=#{inspect(pid)} attempt=#{inspect(attempt)} worker_host=#{worker_host || "local"}")
@@ -7651,6 +7801,19 @@ defmodule SymphonyElixir.Orchestrator do
             )
         end
     end
+  end
+
+  defp schedule_spawn_failure_retry(%State{pilot_binding: grant} = state, issue, _attempt, metadata)
+       when is_map(grant) do
+    case AttemptLedger.pilot_status(state.attempt_ledger) do
+      {:ok, %{runtime_identity: identity}} ->
+        _ = AttemptLedger.quarantine_pilot(state.attempt_ledger, identity, :launch_failed)
+
+      _ ->
+        :ok
+    end
+
+    block_issue_from_entry(state, issue.id, Map.put(metadata, :issue, issue), :pilot_allowance_consumed)
   end
 
   defp schedule_spawn_failure_retry(state, issue, attempt, retry_metadata) do
@@ -7732,7 +7895,7 @@ defmodule SymphonyElixir.Orchestrator do
          running_entry,
          {:containment_unconfirmed, reason}
        )
-       when reason in [:termination_timeout] do
+       when reason in [:termination_timeout, :namespace_observation_unavailable] do
     updated_entry = mark_runtime_containment_unconfirmed(running_entry, reason)
 
     if match?(%RuntimeAttempt{state: :containment_unconfirmed}, Map.get(updated_entry, :runtime_attempt)) do
@@ -11734,6 +11897,7 @@ defmodule SymphonyElixir.Orchestrator do
     state
     |> synchronize_project_contract_config(config.provider_project_contract)
     |> synchronize_attempt_ledger_config(config)
+    |> synchronize_pilot_config(config)
     |> synchronize_workspace_ownership_ledger_config(config)
     |> cancel_obsolete_plane_epoch_task(config)
     |> cancel_obsolete_plane_webhook_tasks(config)

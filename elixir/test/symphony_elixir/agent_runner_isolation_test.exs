@@ -97,8 +97,9 @@ end
 
 defmodule SymphonyElixir.AgentRunnerRaisedNestedContainmentTimeoutRuntime do
   @spec start_session(Path.t(), keyword()) :: no_return()
-  def start_session(_workspace, _opts) do
-    throw({:turn_failed, {:runtime_stop_failed, {:containment_unconfirmed, :termination_timeout}, :app_server_stop}})
+  def start_session(_workspace, opts) do
+    reason = Keyword.get(opts, :containment_reason, :termination_timeout)
+    throw({:turn_failed, {:runtime_stop_failed, {:containment_unconfirmed, reason}, :app_server_stop}})
   end
 
   @spec run_turn(term(), String.t(), map(), keyword()) :: {:ok, term()}
@@ -526,6 +527,29 @@ defmodule SymphonyElixir.AgentRunnerIsolationTest do
       ^identity,
       {:containment_unconfirmed, :termination_timeout}
     }
+  end
+
+  test "missing independent namespace observation retains the typed attempt lifecycle" do
+    issue = %Issue{id: "runner-unobserved", identifier: "SYM-UNOBSERVED", title: "Unobserved", state: "In Progress"}
+
+    identity = %Identity{
+      runtime_attempt_id: "attempt-unobserved",
+      work_item_id: issue.id,
+      lineage_generation: "lineage-unobserved",
+      responsibility: "implementation",
+      runtime_profile: "builder"
+    }
+
+    assert {:error, {:runtime_containment_unconfirmed, :namespace_observation_unavailable}} =
+             AgentRunner.run(issue, self(),
+               runtime: SymphonyElixir.AgentRunnerRaisedNestedContainmentTimeoutRuntime,
+               containment_reason: :namespace_observation_unavailable,
+               runtime_attempt_identity: identity,
+               ownership_ledger: workspace_ownership_ledger()
+             )
+
+    reason = :namespace_observation_unavailable
+    assert_receive {:runtime_attempt_lifecycle, "runner-unobserved", ^identity, {:containment_unconfirmed, ^reason}}
   end
 
   test "unconfirmed teardown without a RuntimeAttempt identity raises a typed safe error" do

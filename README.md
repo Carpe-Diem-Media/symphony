@@ -3,6 +3,17 @@
 Symphony turns project work into isolated, autonomous implementation runs, allowing teams to manage
 work instead of supervising coding agents.
 
+An optional, separately authorized [single Planner pilot](elixir/README.md#single-planner-pilot)
+uses a durable one-use dispatch grant, an absolute attempt deadline and retained final evidence.
+The grant also binds the selected Planner policy and trusted checkout-verification Git identity.
+Checkout admission verifies actual tracked bytes in the approved workspace.
+The opt-in C02 holder interface refuses production launch until its native custody dependencies are qualified.
+A [native synthetic development slice](native/pilot_c02/README.md) now executes the
+bootstrap, one-use materialization channel and restricted ELF probe. It does not
+authorize authenticated execution. The separately built [pinned Codex holder](native/pinned_codex/README.md)
+adds an early protected app-server entry with synthetic-only execution and refusal.
+These controls do not authorize a live run or change H-100 acceptance requirements.
+
 [![Symphony demo video preview](.github/media/symphony-demo-poster.jpg)](https://player.vimeo.com/video/1186371009?h=5626e4b899)
 
 The demo video shows upstream prototype behavior with a Linear board and autonomous PR landing. It is historical material, not the current operating contract for this hardened fork.
