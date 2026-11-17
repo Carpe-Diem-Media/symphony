@@ -56,8 +56,33 @@ remain the attempt authority. No second RuntimeAttempt is allocated.
 Use the task's retained outbound-denial wrapper for compilation and tests. Source
 acquisition and locked dependency retrieval are separate owner-authorized build
 inputs. No installation script or package installation is part of this recipe.
-`build.py` requires a clean local checkout at the exact upstream identity, applies
-only `codex-0.162.1.patch`, then builds offline. It refuses a dirty source tree.
+`build.py` requires the exact upstream commit/tree and canonical worktree. Its
+Git subprocesses use `/usr/bin/git` and a fixed environment without inherited Git
+selectors or global/system configuration. A redirected local `core.worktree`
+refuses admission. Ordinary linked worktrees remain supported.
+
+Admission reads filesystem bytes, symlink targets, entry types and executable
+modes against tree objects independently of index flags. It rejects missing,
+changed, unsupported and unexpected files, including ignored untracked files.
+The patch digest and resulting tree are pinned in `upstream.json`. A disposable
+index reconstructs the patch tree before application; the source index and its
+flags remain untouched. This adds Git objects but makes no index repairs.
+The exact validated patch bytes are then applied to the same verified checkout.
+Actual patched files must match the pinned patched tree before compilation.
+
+The build progresses through `UPSTREAM_VERIFIED`, `PATCH_RECONSTRUCTED` and
+`PATCHED_SOURCE_VERIFIED`. Any refusal exits without compilation or repair. Failed
+application/build bytes remain available for inspection; the recipe never resets,
+cleans or retries a checkout. Use an exclusively controlled source directory for
+the duration of verification and compilation. This procedure does not freeze a
+worktree against concurrent writes by its owner.
+
+Run the admission regressions with the same outbound-denial wrapper:
+
+```sh
+python3 /absolute/review-packet/deny-provider-sockets.py \
+  /usr/bin/python3 -I native/pinned_codex/tests/test_build_source.py
+```
 
 ```sh
 python3 /absolute/review-packet/deny-provider-sockets.py \
