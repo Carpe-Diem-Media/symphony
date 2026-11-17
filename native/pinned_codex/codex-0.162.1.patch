@@ -1,0 +1,1932 @@
+diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
+index 1cee1174c2e937758713df47683521233a36b4f7..b30500b71c169e4bd1805f57a59aa47944cc372d 100644
+--- a/codex-rs/Cargo.lock
++++ b/codex-rs/Cargo.lock
+@@ -276,7 +276,7 @@ checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
+ 
+ [[package]]
+ name = "app_test_support"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -1895,7 +1895,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-agent-extension"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "codex-core",
+@@ -1907,7 +1907,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-agent-graph-store"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-protocol",
+  "codex-state",
+@@ -1922,7 +1922,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-agent-identity"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -1942,7 +1942,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-agent-message-board-client"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -1965,7 +1965,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-agent-message-board-extension"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "base64 0.22.1",
+  "caseless",
+@@ -1988,7 +1988,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-agent-roles"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-config",
+  "codex-file-system",
+@@ -2001,7 +2001,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-analytics"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-app-server-protocol",
+  "codex-git-utils",
+@@ -2024,7 +2024,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-ansi-escape"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "ansi-to-tui",
+  "pretty_assertions",
+@@ -2035,7 +2035,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-api"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "assert_matches",
+@@ -2073,7 +2073,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "app_test_support",
+@@ -2187,7 +2187,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server-client"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-app-server",
+  "codex-app-server-protocol",
+@@ -2214,7 +2214,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server-daemon"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "blake3",
+@@ -2240,7 +2240,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server-protocol"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "codex-app-server-protocol-noop-macros",
+@@ -2274,11 +2274,11 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server-protocol-noop-macros"
+-version = "0.0.0"
++version = "0.162.1"
+ 
+ [[package]]
+ name = "codex-app-server-test-client"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -2300,7 +2300,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server-transport"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "axum",
+  "base64 0.22.1",
+@@ -2342,7 +2342,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-apply-patch"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "assert_cmd",
+@@ -2362,7 +2362,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-arg0"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "codex-apply-patch",
+@@ -2386,7 +2386,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-async-utils"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "pretty_assertions",
+  "rand 0.9.3",
+@@ -2396,7 +2396,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-attachment-store"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "pretty_assertions",
+  "serde",
+@@ -2406,7 +2406,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-aws-auth"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "aws-config",
+  "aws-credential-types",
+@@ -2432,7 +2432,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-backend-client"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "codex-api",
+@@ -2452,7 +2452,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-backend-openapi-models"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "serde",
+  "serde_json",
+@@ -2461,7 +2461,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-build-info"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-install-context",
+  "pretty_assertions",
+@@ -2474,7 +2474,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-bwrap"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "cc",
+  "libc",
+@@ -2483,7 +2483,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-chatgpt"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -2505,7 +2505,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-cli"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "app_test_support",
+@@ -2607,7 +2607,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-client"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-http-client",
+  "eventsource-stream",
+@@ -2621,7 +2621,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-cloud-client"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "async-stream",
+@@ -2645,7 +2645,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-cloud-config"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "base64 0.22.1",
+  "chrono",
+@@ -2671,7 +2671,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-cloud-tasks"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -2704,7 +2704,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-cloud-tasks-client"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -2719,7 +2719,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-cloud-tasks-mock-client"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "chrono",
+  "codex-cloud-tasks-client",
+@@ -2728,7 +2728,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-code-mode"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-code-mode-protocol",
+  "codex-http-client",
+@@ -2751,7 +2751,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-code-mode-host"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "axum",
+@@ -2780,7 +2780,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-code-mode-protocol"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-protocol",
+  "glob",
+@@ -2798,7 +2798,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-code-mode-runtime"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-code-mode-protocol",
+@@ -2816,11 +2816,11 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-collaboration-mode-templates"
+-version = "0.0.0"
++version = "0.162.1"
+ 
+ [[package]]
+ name = "codex-config"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -2870,7 +2870,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-config-schema"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -2879,7 +2879,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-connectors"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "arc-swap",
+@@ -2901,7 +2901,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-connectors-extension"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-connectors",
+  "codex-core-plugins",
+@@ -2915,7 +2915,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-context-fragments"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-protocol",
+  "codex-utils-string",
+@@ -2925,7 +2925,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-core"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "arc-swap",
+@@ -3067,7 +3067,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-core-api"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-analytics",
+  "codex-app-server-protocol",
+@@ -3090,7 +3090,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-core-plugin-common"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-utils-absolute-path",
+  "semver",
+@@ -3101,7 +3101,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-core-plugins"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -3158,7 +3158,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-diagnostics"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "libc",
+  "pretty_assertions",
+@@ -3166,7 +3166,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-exec"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "assert_cmd",
+@@ -3218,7 +3218,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-exec-server"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "arc-swap",
+@@ -3287,7 +3287,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-exec-server-protocol"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-file-system",
+@@ -3304,7 +3304,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-exec-server-test-support"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "codex-exec-server",
+@@ -3319,7 +3319,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-execpolicy"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -3337,7 +3337,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-experimental-api-macros"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "proc-macro2",
+  "quote",
+@@ -3346,7 +3346,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-extension-api"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-api",
+  "codex-config",
+@@ -3368,7 +3368,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-extension-items"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-utils-absolute-path",
+  "pretty_assertions",
+@@ -3380,7 +3380,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-external-agent-migration"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "chrono",
+  "codex-analytics",
+@@ -3410,7 +3410,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-features"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-network-proxy",
+  "codex-protocol",
+@@ -3424,7 +3424,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-feedback"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "bytes",
+@@ -3451,7 +3451,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-file-search"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -3467,7 +3467,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-file-system"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "bytes",
+  "codex-protocol",
+@@ -3479,7 +3479,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-file-watcher"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "notify",
+  "pretty_assertions",
+@@ -3490,7 +3490,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-git-attribution"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-backend-client",
+  "codex-extension-api",
+@@ -3503,7 +3503,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-git-utils"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -3531,7 +3531,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-goal-extension"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -3556,7 +3556,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-guardian-context"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-context-fragments",
+  "codex-history",
+@@ -3568,7 +3568,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-guardian-reviewer"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "codex-analytics",
+@@ -3593,7 +3593,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-guardian-v2"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "codex-analytics",
+@@ -3630,7 +3630,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-history"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "codex-protocol",
+@@ -3642,7 +3642,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-history-notes-extension"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-analytics",
+  "codex-client",
+@@ -3667,7 +3667,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-home"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-extension-api",
+  "codex-utils-absolute-path",
+@@ -3679,7 +3679,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-hooks"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "async-channel",
+@@ -3707,7 +3707,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-http-client"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "bytes",
+  "codex-utils-cargo-bin",
+@@ -3743,7 +3743,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-image-generation-extension"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-api",
+@@ -3771,7 +3771,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-install-context"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-utils-absolute-path",
+  "codex-utils-home-dir",
+@@ -3784,7 +3784,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-keyring-store"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "keyring",
+  "pretty_assertions",
+@@ -3795,7 +3795,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-linux-sandbox"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "clap",
+  "codex-core",
+@@ -3824,7 +3824,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-lmstudio"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-core",
+  "codex-http-client",
+@@ -3838,7 +3838,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-login"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -3884,7 +3884,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-mcp"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "arc-swap",
+@@ -3924,7 +3924,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-mcp-extension"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "axum",
+@@ -3957,7 +3957,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-memories-extension"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-core",
+  "codex-extension-api",
+@@ -3979,7 +3979,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-memories-read"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-protocol",
+  "codex-shell-command",
+@@ -3989,7 +3989,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-memories-write"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -4026,7 +4026,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-mermaid"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "insta",
+  "pretty_assertions",
+@@ -4035,7 +4035,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-message-history"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-config",
+  "memchr",
+@@ -4049,7 +4049,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-model-provider"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "base64 0.22.1",
+  "chrono",
+@@ -4083,7 +4083,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-model-provider-info"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-client",
+  "codex-protocol",
+@@ -4101,7 +4101,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-models-manager"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "chrono",
+  "codex-http-client",
+@@ -4120,7 +4120,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-mxc-sandbox"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "appcontainer_common",
+@@ -4142,7 +4142,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-network-proxy"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -4191,7 +4191,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-ollama"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "assert_matches",
+  "async-stream",
+@@ -4211,7 +4211,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-otel"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "bytes",
+  "chrono",
+@@ -4248,7 +4248,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-otel-trace-websocket"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "axum",
+@@ -4259,7 +4259,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-plugin"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-config",
+  "codex-core-plugin-common",
+@@ -4274,7 +4274,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-process-hardening"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "libc",
+  "pretty_assertions",
+@@ -4282,7 +4282,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-prompts"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "codex-collaboration-mode-templates",
+@@ -4299,7 +4299,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-protocol"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "chardetng",
+@@ -4344,7 +4344,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-queue-extension"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "codex-core",
+@@ -4365,7 +4365,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-realtime-webrtc"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "codex-build-info",
+@@ -4384,7 +4384,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-response-debug-context"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-api",
+@@ -4395,7 +4395,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-responses-api-proxy"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -4412,7 +4412,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-rmcp-client"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "axum",
+@@ -4463,7 +4463,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-rollout"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -4494,7 +4494,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-rollout-trace"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "codex-code-mode",
+@@ -4510,7 +4510,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-sandboxing"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "codex-mxc-sandbox",
+@@ -4538,7 +4538,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-secrets"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "age",
+  "anyhow",
+@@ -4559,7 +4559,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-shell-command"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -4582,7 +4582,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-shell-escalation"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -4602,7 +4602,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-skills"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-protocol",
+  "codex-shell-command",
+@@ -4619,7 +4619,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-skills-extension"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "assert_matches",
+  "blake3",
+@@ -4657,7 +4657,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-state"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -4684,7 +4684,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-stdio-to-uds"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "codex-uds",
+@@ -4696,7 +4696,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-tcp-tunnel"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "bytes",
+@@ -4717,7 +4717,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-terminal-detection"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "pretty_assertions",
+  "tracing",
+@@ -4725,7 +4725,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-test-binary-support"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-arg0",
+  "tempfile",
+@@ -4733,7 +4733,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-thread-manager-sample"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -4744,7 +4744,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-thread-store"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "chrono",
+  "codex-app-server-protocol",
+@@ -4775,7 +4775,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-tools"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "bitflags 2.13.1",
+  "codex-code-mode",
+@@ -4801,7 +4801,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-tui"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "app_test_support",
+@@ -4927,7 +4927,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-uds"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "async-io",
+  "libc",
+@@ -4941,7 +4941,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-user-verification"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "base64 0.22.1",
+  "core-foundation 0.10.1",
+@@ -4961,7 +4961,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-absolute-path"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "dirs",
+  "dunce",
+@@ -4975,14 +4975,14 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-approval-presets"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-protocol",
+ ]
+ 
+ [[package]]
+ name = "codex-utils-audio"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-protocol",
+@@ -4996,7 +4996,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-cache"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "lru",
+  "sha1 0.10.6",
+@@ -5005,7 +5005,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-cargo-bin"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "assert_cmd",
+  "runfiles",
+@@ -5014,7 +5014,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-cli"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "clap",
+  "codex-protocol",
+@@ -5026,15 +5026,15 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-elapsed"
+-version = "0.0.0"
++version = "0.162.1"
+ 
+ [[package]]
+ name = "codex-utils-fuzzy-match"
+-version = "0.0.0"
++version = "0.162.1"
+ 
+ [[package]]
+ name = "codex-utils-git-discovery"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-git-utils",
+  "codex-utils-absolute-path",
+@@ -5047,7 +5047,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-home-dir"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-utils-absolute-path",
+  "dirs",
+@@ -5057,7 +5057,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-image"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-utils-cache",
+@@ -5071,7 +5071,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-json-to-toml"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "pretty_assertions",
+  "serde_json",
+@@ -5080,7 +5080,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-oss"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-core",
+  "codex-lmstudio",
+@@ -5090,7 +5090,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-output-truncation"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-protocol",
+  "codex-utils-string",
+@@ -5100,7 +5100,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-path"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-utils-absolute-path",
+  "dunce",
+@@ -5111,7 +5111,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-path-uri"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-utils-absolute-path",
+@@ -5127,7 +5127,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-plugins"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-exec-server",
+  "codex-exec-server-protocol",
+@@ -5141,7 +5141,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-process"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "pretty_assertions",
+  "tokio",
+@@ -5149,7 +5149,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-pty"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "codex-utils-cargo-bin",
+@@ -5168,7 +5168,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-readiness"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "assert_matches",
+  "thiserror 2.0.18",
+@@ -5178,7 +5178,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-redacted-string"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "schemars 0.8.22",
+  "serde",
+@@ -5186,14 +5186,14 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-rustls-provider"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "rustls",
+ ]
+ 
+ [[package]]
+ name = "codex-utils-sandbox-summary"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-protocol",
+  "codex-utils-absolute-path",
+@@ -5203,7 +5203,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-sleep-inhibitor"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "core-foundation 0.9.4",
+  "libc",
+@@ -5213,14 +5213,14 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-stream-parser"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "pretty_assertions",
+ ]
+ 
+ [[package]]
+ name = "codex-utils-string"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "pretty_assertions",
+  "regex-lite",
+@@ -5230,14 +5230,14 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-template"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "pretty_assertions",
+ ]
+ 
+ [[package]]
+ name = "codex-v8-poc"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "pretty_assertions",
+  "v8",
+@@ -5245,7 +5245,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-voice-host"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "codex-install-context",
+@@ -5272,7 +5272,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-web-search-extension"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-api",
+  "codex-core",
+@@ -5294,7 +5294,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-websocket-auth"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -5313,7 +5313,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-websocket-client"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-http-client",
+  "codex-utils-rustls-provider",
+@@ -5329,7 +5329,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-windows-sandbox"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -5359,7 +5359,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-windows-sandbox-service"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "codex-cloud-config",
+@@ -5376,14 +5376,14 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-windows-sandbox-test-support"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "dirs",
+ ]
+ 
+ [[package]]
+ name = "codex-workload-identity"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "codex-http-client",
+  "pretty_assertions",
+@@ -5398,7 +5398,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-worktree"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "codex-git-utils",
+@@ -5639,7 +5639,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "core_test_support"
+-version = "0.0.0"
++version = "0.162.1"
+ dependencies = [
+  "anyhow",
+  "assert_cmd",
+diff --git a/codex-rs/app-server/src/main.rs b/codex-rs/app-server/src/main.rs
+index 4119cedfe413005e165ca8b00b86699dabe4458a..abf947d2aeb0383a7512bee82b6587cab513205d 100644
+--- a/codex-rs/app-server/src/main.rs
++++ b/codex-rs/app-server/src/main.rs
+@@ -76,7 +76,12 @@ struct AppServerArgs {
+     managed_daemon: bool,
+ }
+ 
++mod symphony_gate2;
++
+ fn main() -> anyhow::Result<()> {
++    if let Some(code) = symphony_gate2::try_run() {
++        std::process::exit(code);
++    }
+     let remote_control_disabled = codex_app_server::take_remote_control_disabled_env();
+     arg0_dispatch_or_else(move |arg0_paths: Arg0DispatchPaths| async move {
+         let AppServerArgs {
+diff --git a/codex-rs/app-server/src/symphony_gate2.rs b/codex-rs/app-server/src/symphony_gate2.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..5b95fc15a62e4644bde704239dc4a5649f692dc7
+--- /dev/null
++++ b/codex-rs/app-server/src/symphony_gate2.rs
+@@ -0,0 +1,477 @@
++//! Early, synthetic-only H-100 holder entry. Never invokes generic startup.
++//!
++//! This is a partial J3/J4 implementation in the actual standalone app-server.
++//! Host custody, broker and provider qualification are absent: thread/turn use
++//! always refuses. Neither initialization nor native readiness proves inference.
++
++pub(crate) fn try_run() -> Option<i32> {
++    let args: Vec<_> = std::env::args_os().skip(1).collect();
++    let selected = args
++        .iter()
++        .any(|arg| arg.to_string_lossy().starts_with("--symphony-"));
++    if !selected {
++        return None;
++    }
++    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
++    let result = linux::run(&args);
++    #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
++    let result: Result<(), &'static str> = Err("SYMPHONY_PLATFORM_REFUSED");
++    Some(match result {
++        Ok(()) => 0,
++        Err(code) => {
++            // Never print arguments, material, requests or provider metadata.
++            eprintln!("{code}");
++            78
++        }
++    })
++}
++
++#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
++mod linux {
++    use codex_app_server_protocol::InitializeParams;
++    use codex_app_server_protocol::InitializeResponse;
++    use codex_utils_absolute_path::AbsolutePathBuf;
++    use serde::Deserialize;
++    use serde_json::json;
++    use sha2::Digest;
++    use std::fs::File;
++    use std::io::Read;
++    use std::io::Write;
++    use std::os::fd::FromRawFd;
++    use std::os::unix::fs::MetadataExt;
++
++    type Result<T> = std::result::Result<T, &'static str>;
++    const REFUSED: &str = "SYMPHONY_HOST_UNQUALIFIED";
++    const THREAD_FLAGS: u32 = (libc::CLONE_VM
++        | libc::CLONE_FS
++        | libc::CLONE_FILES
++        | libc::CLONE_SIGHAND
++        | libc::CLONE_THREAD
++        | libc::CLONE_SYSVSEM
++        | libc::CLONE_SETTLS
++        | libc::CLONE_PARENT_SETTID
++        | libc::CLONE_CHILD_CLEARTID) as u32;
++
++    #[derive(Deserialize)]
++    #[serde(deny_unknown_fields)]
++    struct Manifest {
++        schema: u32,
++        profile: String,
++        binding: String,
++        attempt: String,
++        holder_sha256: String,
++        deadline_ms: u64,
++        fault: String,
++    }
++
++    fn now() -> Result<u64> {
++        let mut ts = libc::timespec {
++            tv_sec: 0,
++            tv_nsec: 0,
++        };
++        if unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) } != 0 {
++            return Err("SYMPHONY_CLOCK_REFUSED");
++        }
++        Ok(ts.tv_sec as u64 * 1000 + ts.tv_nsec as u64 / 1_000_000)
++    }
++
++    fn instruction(code: u16, jt: u8, jf: u8, k: u32) -> libc::sock_filter {
++        libc::sock_filter { code, jt, jf, k }
++    }
++
++    fn protect() -> Result<()> {
++        // Install before manifest, material, configuration or runtime access.
++        let zero = libc::rlimit {
++            rlim_cur: 0,
++            rlim_max: 0,
++        };
++        if unsafe { libc::setrlimit(libc::RLIMIT_CORE, &zero) } != 0
++            || unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0) } != 0
++            || unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) } != 0
++        {
++            return Err("SYMPHONY_HARDENING_REFUSED");
++        }
++        // seccomp_data: nr=0, arch=4, args[0]=16, args[1]=24,
++        // args[2]=32. Gate both the native architecture and x32 syscall bit.
++        let mut code = vec![
++            instruction(0x20, 0, 0, 4),
++            instruction(0x15, 1, 0, 0xc000003e),
++            instruction(0x06, 0, 0, 0x80000000),
++            instruction(0x20, 0, 0, 0),
++            instruction(0x35, 0, 1, 0x40000000),
++            instruction(0x06, 0, 0, 0x80000000),
++            // Only the exact qualified pthread flags may create a thread.
++            instruction(0x15, 0, 6, libc::SYS_clone as u32),
++            instruction(0x20, 0, 0, 16),
++            instruction(0x15, 0, 3, THREAD_FLAGS),
++            instruction(0x20, 0, 0, 20), // high word of args[0], not child_stack
++            instruction(0x15, 0, 1, 0),
++            instruction(0x06, 0, 0, 0x7fff0000),
++            instruction(0x06, 0, 0, 0x00050000 | libc::EPERM as u32),
++            instruction(0x20, 0, 0, 0),
++            // glibc falls back from ENOSYS clone3 to the guarded clone path.
++            instruction(0x15, 0, 1, libc::SYS_clone3 as u32),
++            instruction(0x06, 0, 0, 0x00050000 | libc::ENOSYS as u32),
++            // Core limits cannot be raised after installation. Read-only
++            // prlimit queries remain available to the thread/runtime library.
++            instruction(0x15, 0, 6, libc::SYS_prlimit64 as u32),
++            instruction(0x20, 0, 0, 32),
++            instruction(0x15, 0, 3, 0),
++            instruction(0x20, 0, 0, 36),
++            instruction(0x15, 0, 1, 0),
++            instruction(0x06, 0, 0, 0x7fff0000),
++            instruction(0x06, 0, 0, 0x00050000 | libc::EPERM as u32),
++            instruction(0x20, 0, 0, 0),
++            instruction(0x15, 0, 4, libc::SYS_prctl as u32),
++            instruction(0x20, 0, 0, 16),
++            instruction(0x15, 0, 1, libc::PR_SET_DUMPABLE as u32),
++            instruction(0x06, 0, 0, 0x00050000 | libc::EPERM as u32),
++            instruction(0x06, 0, 0, 0x7fff0000),
++            instruction(0x20, 0, 0, 0),
++        ];
++        for syscall in [
++            libc::SYS_fork,
++            libc::SYS_vfork,
++            libc::SYS_execve,
++            libc::SYS_execveat,
++            libc::SYS_ptrace,
++            libc::SYS_process_vm_readv,
++            libc::SYS_process_vm_writev,
++            libc::SYS_pidfd_getfd,
++            libc::SYS_kcmp,
++            libc::SYS_bpf,
++            libc::SYS_perf_event_open,
++            libc::SYS_unshare,
++            libc::SYS_setns,
++            libc::SYS_mount,
++            libc::SYS_umount2,
++            libc::SYS_setuid,
++            libc::SYS_setgid,
++            libc::SYS_setresuid,
++            libc::SYS_setresgid,
++            libc::SYS_setreuid,
++            libc::SYS_setregid,
++            libc::SYS_setgroups,
++            libc::SYS_capset,
++            libc::SYS_setfsuid,
++            libc::SYS_setfsgid,
++            libc::SYS_chroot,
++            libc::SYS_pivot_root,
++            libc::SYS_personality,
++            libc::SYS_open_tree,
++            libc::SYS_move_mount,
++            libc::SYS_fsopen,
++            libc::SYS_fsmount,
++            libc::SYS_mount_setattr,
++            libc::SYS_setrlimit,
++            libc::SYS_socket,
++            libc::SYS_socketpair,
++        ] {
++            code.push(instruction(0x15, 0, 1, syscall as u32));
++            code.push(instruction(0x06, 0, 0, 0x00050000 | libc::EPERM as u32));
++        }
++        code.push(instruction(0x06, 0, 0, 0x7fff0000));
++        let program = libc::sock_fprog {
++            len: code.len() as u16,
++            filter: code.as_mut_ptr(),
++        };
++        if unsafe { libc::prctl(libc::PR_SET_SECCOMP, libc::SECCOMP_MODE_FILTER, &program) } != 0 {
++            return Err("SYMPHONY_SECCOMP_REFUSED");
++        }
++        Ok(())
++    }
++
++    fn hexadecimal(text: &str) -> bool {
++        text.len() == 64
++            && text
++                .bytes()
++                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
++    }
++
++    fn manifest(binding: &str, attempt: &str) -> Result<Manifest> {
++        // FD4 is the sole approved non-stdio descriptor. It contains no access.
++        let seals = unsafe { libc::fcntl(4, libc::F_GET_SEALS) };
++        let required =
++            libc::F_SEAL_WRITE | libc::F_SEAL_GROW | libc::F_SEAL_SHRINK | libc::F_SEAL_SEAL;
++        if seals < 0 || seals & required != required {
++            return Err("SYMPHONY_MANIFEST_UNSEALED");
++        }
++        let mut file = unsafe { File::from_raw_fd(4) };
++        let size = file
++            .metadata()
++            .map_err(|_| "SYMPHONY_MANIFEST_REFUSED")?
++            .len();
++        if size == 0 || size > 2048 {
++            return Err("SYMPHONY_MANIFEST_REFUSED");
++        }
++        let mut bytes = Vec::new();
++        file.read_to_end(&mut bytes)
++            .map_err(|_| "SYMPHONY_MANIFEST_REFUSED")?;
++        drop(file); // Close before any runtime thread or protocol processing.
++        for fd in 0..3 {
++            let mut status: libc::stat = unsafe { std::mem::zeroed() };
++            if unsafe { libc::fstat(fd, &mut status) } != 0
++                || status.st_mode & libc::S_IFMT != libc::S_IFIFO
++            {
++                return Err("SYMPHONY_CONTROL_PIPE_REFUSED");
++            }
++        }
++        for fd in 3..1024 {
++            if unsafe { libc::fcntl(fd, libc::F_GETFD) } >= 0 {
++                return Err("SYMPHONY_DESCRIPTOR_REFUSED");
++            }
++        }
++        // The bootstrap is responsible for its exact FD allowlist. A /proc/self
++        // census below covers the whole actual descriptor set without repairing it.
++        let count = std::fs::read_dir("/proc/self/fd")
++            .map_err(|_| "SYMPHONY_DESCRIPTOR_REFUSED")?
++            .count();
++        if count != 4 {
++            // stdio plus read_dir's own descriptor.
++            return Err("SYMPHONY_DESCRIPTOR_REFUSED");
++        }
++        let manifest: Manifest =
++            serde_json::from_slice(&bytes).map_err(|_| "SYMPHONY_MANIFEST_REFUSED")?;
++        if manifest.binding != binding
++            || manifest.attempt != attempt
++            || manifest.schema != 1
++            || manifest.profile != "C02_PINNED_CODEX_SYNTHETIC_V1"
++            || !hexadecimal(&manifest.binding)
++            || !hexadecimal(&manifest.holder_sha256)
++            || manifest.attempt.is_empty()
++            || manifest.attempt.len() > 128
++            || !manifest
++                .attempt
++                .bytes()
++                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
++            || !matches!(
++                manifest.fault.as_str(),
++                "none" | "continuous" | "ambiguous_provider" | "controls_unavailable"
++            )
++            || manifest.deadline_ms <= now()?
++            || manifest.deadline_ms > now()? + 5000
++        {
++            return Err("SYMPHONY_MANIFEST_REFUSED");
++        }
++        let mut executable =
++            File::open("/proc/self/exe").map_err(|_| "SYMPHONY_IDENTITY_REFUSED")?;
++        let mut hash = sha2::Sha256::new();
++        let mut buf = [0_u8; 8192];
++        loop {
++            if manifest.deadline_ms <= now()? {
++                return Err("SYMPHONY_DEADLINE");
++            }
++            let n = executable
++                .read(&mut buf)
++                .map_err(|_| "SYMPHONY_IDENTITY_REFUSED")?;
++            if n == 0 {
++                break;
++            }
++            hash.update(&buf[..n]);
++        }
++        if format!("{:x}", hash.finalize()) != manifest.holder_sha256 {
++            return Err("SYMPHONY_IDENTITY_REFUSED");
++        }
++        Ok(manifest)
++    }
++
++    fn fresh_home(name: &str) -> Result<String> {
++        let path = std::env::var(name).map_err(|_| "SYMPHONY_HOME_REFUSED")?;
++        let meta = std::fs::symlink_metadata(&path).map_err(|_| "SYMPHONY_HOME_REFUSED")?;
++        if !std::path::Path::new(&path).is_absolute()
++            || !meta.is_dir()
++            || meta.mode() & 0o7777 != 0o700
++            || meta.uid() != unsafe { libc::geteuid() }
++            || std::fs::read_dir(&path)
++                .map_err(|_| "SYMPHONY_HOME_REFUSED")?
++                .next()
++                .is_some()
++        {
++            return Err("SYMPHONY_HOME_REFUSED");
++        }
++        Ok(path)
++    }
++
++    fn line(deadline: u64) -> Result<Option<Vec<u8>>> {
++        let mut bytes = Vec::new();
++        loop {
++            let remaining = deadline.saturating_sub(now()?);
++            if remaining == 0 {
++                return Err("SYMPHONY_DEADLINE");
++            }
++            let mut fd = libc::pollfd {
++                fd: 0,
++                events: libc::POLLIN,
++                revents: 0,
++            };
++            if unsafe { libc::poll(&mut fd, 1, remaining.min(i32::MAX as u64) as i32) } <= 0 {
++                return Err("SYMPHONY_DEADLINE");
++            }
++            let mut byte = [0_u8; 1];
++            let n = unsafe { libc::read(0, byte.as_mut_ptr().cast(), 1) };
++            if n < 0 {
++                return Err("SYMPHONY_PROTOCOL_REFUSED");
++            }
++            if n == 0 {
++                return Ok(None);
++            }
++            if byte[0] == b'\n' {
++                return Ok(Some(bytes));
++            }
++            if bytes.len() >= 8192 {
++                return Err("SYMPHONY_PROTOCOL_REFUSED");
++            }
++            bytes.push(byte[0]);
++        }
++    }
++
++    fn emit(value: &serde_json::Value) -> Result<()> {
++        let mut stdout = std::io::stdout().lock();
++        serde_json::to_writer(&mut stdout, value).map_err(|_| "SYMPHONY_OUTPUT_REFUSED")?;
++        writeln!(stdout).map_err(|_| "SYMPHONY_OUTPUT_REFUSED")?;
++        stdout.flush().map_err(|_| "SYMPHONY_OUTPUT_REFUSED")
++    }
++
++    pub(super) fn run(args: &[std::ffi::OsString]) -> Result<()> {
++        protect()?;
++        if args.len() != 3 || args[0] != "--symphony-pilot-holder" {
++            return Err("SYMPHONY_LAUNCH_FORM_REFUSED");
++        }
++        let binding = args[1].to_str().ok_or("SYMPHONY_LAUNCH_FORM_REFUSED")?;
++        let attempt = args[2].to_str().ok_or("SYMPHONY_LAUNCH_FORM_REFUSED")?;
++        let manifest = manifest(binding, attempt)?;
++        if manifest.fault == "controls_unavailable" {
++            return Err("SYMPHONY_HARDENING_REFUSED");
++        }
++        if manifest.deadline_ms <= now()? {
++            return Err("SYMPHONY_DEADLINE");
++        }
++        let _home = fresh_home("HOME")?;
++        let codex_home = fresh_home("CODEX_HOME")?;
++        let mut synthetic = std::env::var("ACCESS_TOKEN")
++            .map_err(|_| "SYMPHONY_SYNTHETIC_MATERIAL_REFUSED")?
++            .into_bytes();
++        let material_ok = synthetic.len() == 50
++            && synthetic.starts_with(b"SYNTHETIC-NONLIVE-")
++            && synthetic[18..].iter().all(u8::is_ascii_hexdigit);
++        synthetic.fill(0);
++        if !material_ok {
++            return Err("SYMPHONY_SYNTHETIC_MATERIAL_REFUSED");
++        }
++        let errno = || std::io::Error::last_os_error().raw_os_error();
++        let fork_result = unsafe { libc::syscall(libc::SYS_fork) };
++        if fork_result == 0 {
++            unsafe { libc::_exit(79) };
++        }
++        let fork_denied = fork_result == -1 && errno() == Some(libc::EPERM);
++        if fork_result > 0 {
++            unsafe { libc::waitpid(fork_result as i32, std::ptr::null_mut(), 0) };
++        }
++        let exec_denied =
++            unsafe { libc::syscall(libc::SYS_execve, c"/nonexistent".as_ptr(), 0_usize, 0_usize) }
++                == -1
++                && errno() == Some(libc::EPERM);
++        let ptrace_denied = unsafe {
++            libc::syscall(
++                libc::SYS_ptrace,
++                libc::PTRACE_PEEKDATA,
++                0_usize,
++                0_usize,
++                0_usize,
++            )
++        } == -1
++            && errno() == Some(libc::EPERM);
++        let socket_result = unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0) };
++        let socket_denied = socket_result == -1 && errno() == Some(libc::EPERM);
++        if socket_result >= 0 {
++            unsafe { libc::close(socket_result) };
++        }
++        let clone_result = unsafe {
++            libc::syscall(
++                libc::SYS_clone,
++                libc::SIGCHLD,
++                0_usize,
++                0_usize,
++                0_usize,
++                0_usize,
++            )
++        };
++        if clone_result == 0 {
++            unsafe { libc::_exit(79) };
++        }
++        let clone_denied = clone_result == -1 && errno() == Some(libc::EPERM);
++        if clone_result > 0 {
++            unsafe { libc::waitpid(clone_result as i32, std::ptr::null_mut(), 0) };
++        }
++        if !(fork_denied && exec_denied && ptrace_denied && socket_denied && clone_denied) {
++            return Err("SYMPHONY_KERNEL_PROOF_REFUSED");
++        }
++        // A real Tokio worker must start using only qualified pthread clone flags.
++        let runtime = tokio::runtime::Builder::new_multi_thread()
++            .worker_threads(1)
++            .enable_time()
++            .build()
++            .map_err(|_| "SYMPHONY_THREAD_REFUSED")?;
++        let thread_ok = runtime
++            .block_on(async { tokio::spawn(async { 1621_u32 }).await })
++            .map_err(|_| "SYMPHONY_THREAD_REFUSED")?
++            == 1621;
++        if !thread_ok {
++            return Err("SYMPHONY_THREAD_REFUSED");
++        }
++        if manifest.deadline_ms <= now()? {
++            return Err("SYMPHONY_DEADLINE");
++        }
++        // Native readiness is process-restriction proof only, never host or auth readiness.
++        let mut out = std::io::stdout().lock();
++        writeln!(out, "{{\"ready\":true,\"binding\":\"{}\",\"controls\":{{\"protected_codex_entry\":true,\"tokio_thread\":true,\"fork_denied\":true,\"exec_denied\":true,\"ptrace_denied\":true,\"inet_socket_denied\":true,\"process_clone_denied\":true,\"credential_fds_absent\":true,\"fresh_home\":true}},\"qualified_host\":false,\"version\":\"{}\"}}", manifest.binding, env!("CARGO_PKG_VERSION")).map_err(|_| "SYMPHONY_OUTPUT_REFUSED")?;
++        out.flush().map_err(|_| "SYMPHONY_OUTPUT_REFUSED")?;
++        drop(out);
++        let mut initialized = false;
++        while let Some(bytes) = line(manifest.deadline_ms)? {
++            let request: serde_json::Value =
++                serde_json::from_slice(&bytes).map_err(|_| "SYMPHONY_PROTOCOL_REFUSED")?;
++            let id = request
++                .get("id")
++                .and_then(serde_json::Value::as_i64)
++                .ok_or("SYMPHONY_PROTOCOL_REFUSED")?;
++            if request.get("method").and_then(serde_json::Value::as_str) == Some("initialize")
++                && !initialized
++            {
++                let _: InitializeParams = serde_json::from_value(
++                    request
++                        .get("params")
++                        .cloned()
++                        .ok_or("SYMPHONY_PROTOCOL_REFUSED")?,
++                )
++                .map_err(|_| "SYMPHONY_PROTOCOL_REFUSED")?;
++                let response = InitializeResponse {
++                    user_agent: format!(
++                        "codex-app-server/{} symphony-protected-synthetic",
++                        env!("CARGO_PKG_VERSION")
++                    ),
++                    codex_home: AbsolutePathBuf::try_from(codex_home.clone())
++                        .map_err(|_| "SYMPHONY_HOME_REFUSED")?,
++                    platform_family: "unix".into(),
++                    platform_os: "linux".into(),
++                };
++                emit(&json!({"id":id,"result":response}))?;
++                initialized = true;
++            } else {
++                if manifest.fault == "ambiguous_provider" {
++                    return Err("SYMPHONY_SYNTHETIC_EFFECT_AMBIGUOUS");
++                }
++                if manifest.fault == "continuous" {
++                    while now()? < manifest.deadline_ms {
++                        emit(&json!({"method":"symphony/progress"}))?;
++                        std::thread::sleep(std::time::Duration::from_millis(1));
++                    }
++                    return Err("SYMPHONY_DEADLINE");
++                }
++                emit(&json!({"id":id,"error":{"code":-32091,"message":REFUSED}}))?;
++                return Ok(());
++            }
++        }
++        Ok(())
++    }
++}

@@ -2,10 +2,10 @@
 #include "common.h"
 extern char **environ;
 
-static int sealed_holder(const char *path, const char *expected) {
+static int sealed_holder(const char *path, const char *expected, bool pinned) {
     int input = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
     struct stat st;
-    if (input < 0 || fstat(input, &st) || !S_ISREG(st.st_mode) || st.st_size < 4 || st.st_size > 16 * 1024 * 1024) { if (input >= 0) close(input); return -1; }
+    if (input < 0 || fstat(input, &st) || !S_ISREG(st.st_mode) || st.st_size < 4 || st.st_size > (pinned ? 1024LL * 1024 * 1024 : 16 * 1024 * 1024)) { if (input >= 0) close(input); return -1; }
     int sealed = (int)syscall(SYS_memfd_create, "symphony-c02-holder-probe", MFD_CLOEXEC | MFD_ALLOW_SEALING);
     if (sealed < 0) { close(input); return -1; }
     char buf[8192]; ssize_t n;
@@ -17,10 +17,28 @@ static int sealed_holder(const char *path, const char *expected) {
         F_SEAL_WRITE | F_SEAL_GROW | F_SEAL_SHRINK | F_SEAL_SEAL)) { close(sealed); return -1; }
     return sealed;
 }
-static void bootstrap(const char *root, const char *fault, int image, int input, int output, pid_t guard_pid) {
+static int sealed_manifest(const char *fault) {
+    int fd = (int)syscall(SYS_memfd_create, "symphony-pinned-codex-manifest", MFD_CLOEXEC | MFD_ALLOW_SEALING);
+    if (fd < 0) return -1;
+    char bytes[1024];
+    const char *binding = !strcmp(fault, "manifest_wrong_binding") ? "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" : authority.binding;
+    const char *holder = !strcmp(fault, "manifest_wrong_identity") ? "0000000000000000000000000000000000000000000000000000000000000000" : authority.holder;
+    const char *selected_fault = (!strcmp(fault, "continuous") || !strcmp(fault, "ambiguous_provider") || !strcmp(fault, "controls_unavailable")) ? fault : "none";
+    int size = snprintf(bytes, sizeof(bytes), "{\"schema\":1,\"profile\":\"C02_PINNED_CODEX_SYNTHETIC_V1\",\"binding\":\"%s\",\"attempt\":\"%s\",\"holder_sha256\":\"%s\",\"deadline_ms\":%llu,\"fault\":\"%s\"}",
+        binding, authority.attempt, holder, authority.deadline, selected_fault);
+    if (size < 1 || (size_t)size >= sizeof(bytes) || write(fd, bytes, (size_t)size) != size || lseek(fd, 0, SEEK_SET) < 0 ||
+        (strcmp(fault, "manifest_unsealed") && fcntl(fd, F_ADD_SEALS, F_SEAL_WRITE | F_SEAL_GROW | F_SEAL_SHRINK | F_SEAL_SEAL))) {
+        close(fd); return -1;
+    }
+    return fd;
+}
+static void bootstrap(const char *root, const char *fault, int image, int manifest, int input, int output, pid_t guard_pid) {
     if (prctl(PR_SET_PDEATHSIG, SIGKILL) || getppid() != guard_pid) _exit(82);
     if (!strcmp(fault, "bootstrap_failure") || !strcmp(fault, "before_materialization")) _exit(83);
-    if (dup2(input, 0) < 0 || dup2(output, 1) < 0 || dup3(image, 3, O_CLOEXEC) < 0 || syscall(SYS_close_range, 4U, UINT_MAX, 0)) _exit(84);
+    if (dup2(input, 0) < 0 || dup2(output, 1) < 0 || dup3(image, 3, O_CLOEXEC) < 0) _exit(84);
+    bool pinned = manifest >= 0;
+    if (pinned && ((manifest == 4 ? fcntl(4, F_SETFD, 0) : dup3(manifest, 4, 0)) < 0)) _exit(84);
+    if (syscall(SYS_close_range, pinned ? 5U : 4U, UINT_MAX, 0)) _exit(84);
     struct sockaddr_un address;
     int channel = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
     struct request request;
@@ -55,8 +73,9 @@ static void bootstrap(const char *root, const char *fault, int image, int input,
     if (snprintf(home, sizeof(home), "HOME=%s/home", root) >= (int)sizeof(home) ||
         snprintf(codex, sizeof(codex), "CODEX_HOME=%s/codex-home", root) >= (int)sizeof(codex)) _exit(90);
     char *env[] = {home, codex, "LANG=C.UTF-8", access, NULL};
-    char *args[] = {"symphony-c02-holder-probe", authority.binding, (char *)fault, NULL};
-    syscall(SYS_execveat, 3, "", args, env, AT_EMPTY_PATH);
+    char *probe_args[] = {"symphony-c02-holder-probe", authority.binding, (char *)fault, NULL};
+    char *codex_args[] = {"codex-app-server", "--symphony-pilot-holder", authority.binding, authority.attempt, NULL};
+    syscall(SYS_execveat, 3, "", pinned ? codex_args : probe_args, env, AT_EMPTY_PATH);
     explicit_bzero(access, sizeof(access)); _exit(91);
 }
 static int read_line(int fd, char *line, size_t capacity, unsigned long long deadline) {
@@ -70,7 +89,8 @@ static int read_line(int fd, char *line, size_t capacity, unsigned long long dea
     return -1;
 }
 int main(int argc, char **argv) {
-    if (argc != 7) return 70;
+    bool pinned = argc == 8 && !strcmp(argv[7], "--pinned-codex");
+    if (argc != 7 && !pinned) return 70;
     const char *root = argv[1], *fault = argv[6];
     if (!hex64(argv[4]) || !reference(argv[5])) return 70;
     strcpy(authority.binding, argv[4]); strcpy(authority.attempt, argv[5]);
@@ -86,14 +106,16 @@ int main(int argc, char **argv) {
     if (proc_identity(getpid(), &ignored, &start) || getpid() != authority.guard_pid || start != authority.guard_start ||
         digest_path("/proc/self/exe", self_digest) || strcmp(self_digest, authority.guard) ||
         event("HOST_PERMISSION_VALIDATED", getpid())) return 73;
-    int image = sealed_holder(argv[2], argv[3]);
+    int image = sealed_holder(argv[2], argv[3], pinned);
     if (image < 0 || strcmp(argv[3], authority.holder)) { event("HOLDER_IDENTITY_REFUSED", 0); return 0; }
+    int manifest = pinned ? sealed_manifest(fault) : -1;
+    if (pinned && manifest < 0) { close(image); event("MANIFEST_REFUSED", 0); return 0; }
     int input[2], output[2];
     if (pipe2(input, O_CLOEXEC) || pipe2(output, O_CLOEXEC)) return 74;
     pid_t guard_pid = getpid();
     pid_t child = fork();
-    if (child == 0) bootstrap(root, fault, image, input[0], output[1], guard_pid);
-    close(image); close(input[0]); close(output[1]);
+    if (child == 0) bootstrap(root, fault, image, manifest, input[0], output[1], guard_pid);
+    close(image); if (manifest >= 0) close(manifest); close(input[0]); close(output[1]);
     if (child < 0) { event("QUARANTINED", 0); return 0; }
     if (event("BOOTSTRAP_CREATED", child)) goto stopping;
 
@@ -106,11 +128,20 @@ int main(int argc, char **argv) {
             puts(line); fflush(stdout);
             if (!strcmp(fault, "launcher_loss") || !strcmp(fault, "parent_loss")) {
                 while (monotonic_ms() < execution_deadline) usleep(1000);
-            } else if (!event("INFERENCE_INTENT", child) && write(input[1], "infer\n", 6) == 6) {
+            } else {
+                const char *request = "infer\n";
+                if (pinned) {
+                    const char *initialize = "{\"id\":1,\"method\":\"initialize\",\"params\":{\"clientInfo\":{\"name\":\"symphony-native-test\",\"version\":\"1\"}}}\n";
+                    if (write(input[1], initialize, strlen(initialize)) != (ssize_t)strlen(initialize) ||
+                        read_line(output[0], line, sizeof(line), execution_deadline) || strncmp(line, "{\"id\":1,\"result\":", 17) ||
+                        event("CODEX_INITIALIZED_NOT_AUTHENTICATED", child)) goto stopping;
+                    request = "{\"id\":2,\"method\":\"thread/start\",\"params\":{}}\n";
+                }
+                if (event("INFERENCE_INTENT", child) || write(input[1], request, strlen(request)) != (ssize_t)strlen(request)) goto stopping;
                 int response;
                 do { response = read_line(output[0], line, sizeof(line), execution_deadline); }
-                while (response == 0 && !strcmp(line, "NONSECRET_PROGRESS"));
-                if (!response && !strcmp(line, "INFERENCE_REFUSED")) {
+                while (response == 0 && (!strcmp(line, "NONSECRET_PROGRESS") || (pinned && !strcmp(line, "{\"method\":\"symphony/progress\"}"))));
+                if (!response && (!strcmp(line, "INFERENCE_REFUSED") || (pinned && !strcmp(line, "{\"error\":{\"code\":-32091,\"message\":\"SYMPHONY_HOST_UNQUALIFIED\"},\"id\":2}")))) {
                     if (!event("INFERENCE_REFUSED", child)) marker("controlled-refusal");
                 } else event("INFERENCE_AMBIGUOUS", child);
             }

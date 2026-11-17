@@ -96,7 +96,11 @@ Ordinary non-pilot routed execution retains its previous launcher.
 
 ## Remaining operational dependencies
 
-The pinned Codex 0.162.1 source patch and standalone app-server build are absent.
+A separate [pinned Codex patch](../pinned_codex/README.md) now adds an early protected
+entry to the actual standalone app-server. This directory supports it through
+explicit `--pinned-codex` mode with a sealed nonsecret manifest at FD4. The manifest
+closes before runtime/protocol use. Default probe behavior remains unchanged.
+The full operational holder, broker and qualified host integration remain absent.
 The installed trusted CLI is a different artifact. No readiness or login response
 can substitute for actual authenticated inference proof.
 P01/P02/P03/P04/P05/P08 qualification remains required: host permission/registration,

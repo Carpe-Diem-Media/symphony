@@ -3,7 +3,8 @@ defmodule SymphonyElixir.AgentRuntime.NativePilot do
   Runs the native C02 development slice under an already consumed pilot attempt.
 
   The native binaries enforce synthetic materialization and process controls.
-  They do not implement the patched Codex holder or qualify host custody. This
+  The selected executable can be the probe or patched standalone app-server.
+  Neither path qualifies host custody or enables authenticated inference. This
   entry point always refuses model execution. Test builds can retain native
   observations bound to the existing RuntimeAttempt; other builds refuse.
   Existing C01/C03/C04 remain the only attempt authority and terminal owner.
@@ -87,6 +88,8 @@ defmodule SymphonyElixir.AgentRuntime.NativePilot do
           "--duration-ms",
           to_string(min(remaining - 1_000, 2_500))
         ]
+
+        args = if Map.get(pin, :pinned_codex, false), do: args ++ ["--pinned-codex"], else: args
 
         env = CredentialBoundary.routed_port_env([], Path.join(directory, "home"), Path.join(directory, "codex-home"))
         port = Port.open({:spawn_executable, ~c"/usr/bin/python3"}, [:binary, :exit_status, :use_stdio, :stderr_to_stdout, args: args, env: env])

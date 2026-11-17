@@ -62,7 +62,10 @@ It always returns refusal, never a model-ready session or authenticated receipt.
 A safe probe result requires independent pidfd death observation and synchronized
 correlation evidence. Uncertainty retains C01 quarantine. No operational credential
 input, enrollment, token file or login RPC is added. The ordinary CLI is not the
-required patched standalone holder.
+required patched standalone holder. A separate [pinned upstream patch](../native/pinned_codex/README.md)
+now adds that early entry to the real standalone app-server for local synthetic
+verification. `PINNED_CODEX_BINARY` selects its exact bytes only in the test harness.
+It refuses thread/turn/provider use while operational host controls are absent.
 Test builds alone can exercise a pinned synthetic Ed25519 peer that journals and
 synchronizes nonsecret receipts before signing them. Its assurance is always
 `synthetic_test_only`, never operational qualification.

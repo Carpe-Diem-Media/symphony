@@ -88,7 +88,7 @@ defmodule SymphonyElixir.PilotHolderInterfaceTest do
     File.chmod!(codex, 0o700)
 
     if context[:native_boundary] do
-      File.cp!(Path.expand("../native/pilot_c02/build/holder-probe"), codex)
+      File.cp!(System.get_env("PINNED_CODEX_BINARY") || Path.expand("../native/pilot_c02/build/holder-probe"), codex)
     end
 
     policy_root = Path.join(root, "policies")
@@ -274,12 +274,19 @@ defmodule SymphonyElixir.PilotHolderInterfaceTest do
         files = Enum.map(~w(host guard holder-probe), &Path.join([native, "build", &1]))
         driver = Path.join(native, "tests/run_attempt.py")
 
+        evidence_root =
+          case System.get_env("PINNED_CODEX_EVIDENCE_ROOT") do
+            nil -> Path.join(root, "native-evidence")
+            path -> Path.join(path, identity.runtime_attempt_id)
+          end
+
         pin = %{
           driver: driver,
           files: Map.new([driver, codex | files], &{&1, Base.encode16(:crypto.hash(:sha256, File.read!(&1)), case: :lower)}),
           holder: codex,
-          evidence_root: Path.join(root, "native-evidence"),
-          fault: "none"
+          evidence_root: evidence_root,
+          fault: "none",
+          pinned_codex: is_binary(System.get_env("PINNED_CODEX_BINARY"))
         }
 
         Application.put_env(:symphony_elixir, :test_native_pilot, pin)
@@ -317,6 +324,12 @@ defmodule SymphonyElixir.PilotHolderInterfaceTest do
     refute result.model_state == :completed
     path = Path.join([ctx.opts[:test_native_pilot].evidence_root, ctx.identity.runtime_attempt_id, "correlation.json"])
     assert File.regular?(path)
+
+    if System.get_env("PINNED_CODEX_EVIDENCE_ROOT") do
+      observation = %{runtime_attempt_id: ctx.identity.runtime_attempt_id, model_state: result.model_state, stop_disposition: result.stop_disposition}
+      File.write!(Path.join(Path.dirname(path), "c04-observation.json"), Jason.encode!(observation))
+    end
+
     refute_received {:holder_phase, _}
     assert {:error, _} = AttemptLedger.begin_attempt(ctx.ledger, ctx.issue.id, pilot_binding: ctx.grant)
   end

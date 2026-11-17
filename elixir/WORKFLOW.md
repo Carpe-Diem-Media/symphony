@@ -38,7 +38,7 @@ agent:
   # Its identity binds Planner policy bytes/root and trusted Git, in addition to configuration.
   # Pilot checkout admission compares actual bytes with the pinned tree without changing Git flags.
   # C02 pilot_holder is a separate opt-in nonsecret profile; production is blocked on native custody controls.
-  # The native synthetic development slice has no operational authentication authority.
+  # Native probe and pinned app-server synthetic tests have no operational authentication authority.
   # This legacy sample has no pilot grant and does not authorize a pilot run.
   max_concurrent_agents: 10
   max_turns: 20

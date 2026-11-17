@@ -20,7 +20,7 @@ NATIVE = Path(__file__).resolve().parents[1]
 FAULTS = {"none", "missing_permit", "wrong_attempt", "wrong_holder", "wrong_peer", "substituted_holder",
           "bootstrap_failure", "before_materialization", "partial_materialization", "after_materialization",
           "continuous", "launcher_loss", "parent_loss", "ambiguous_provider", "cleanup_failure",
-          "observe_failure", "journal_failure", "post_materialization_journal_failure", "ancillary_fd"}
+          "observe_failure", "journal_failure", "post_materialization_journal_failure", "ancillary_fd", "manifest_unsealed", "manifest_wrong_identity", "manifest_wrong_binding", "controls_unavailable"}
 
 
 def read_line(stream, deadline):
@@ -48,7 +48,7 @@ def proc_start(pid):
     return int(text[text.rindex(")") + 2:].split()[19])
 
 
-def run(root, binding, attempt, fault, duration, selected_holder=None):
+def run(root, binding, attempt, fault, duration, selected_holder=None, pinned_codex=False):
     if len(binding) != 64 or any(c not in "0123456789abcdef" for c in binding):
         raise ValueError("Invalid binding")
     if not attempt or len(attempt) > 128 or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in attempt):
@@ -68,6 +68,8 @@ def run(root, binding, attempt, fault, duration, selected_holder=None):
         with binding_file.open("rb") as stream:
             os.fsync(stream.fileno())
     host_path, guard_path, holder = [NATIVE / "build" / name for name in ["host", "guard", "holder-probe"]]
+    if pinned_codex and selected_holder is None:
+        raise ValueError("Pinned Codex requires the exact explicit executable")
     if selected_holder is not None:
         holder = selected_holder.resolve()
     env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
@@ -85,6 +87,8 @@ def run(root, binding, attempt, fault, duration, selected_holder=None):
         if read_line(host.stdout, start + 2) != "HOST_LISTENING":
             raise RuntimeError("Native synthetic owner unavailable")
         guard_args = [str(guard_path), str(root), str(holder), digest(holder), binding, attempt, fault]
+        if pinned_codex:
+            guard_args.append("--pinned-codex")
         if fault == "parent_loss":
             guard_args = [sys.executable, "-I", str(Path(__file__).resolve()), "--parent-proxy", *guard_args]
         guard = subprocess.Popen(guard_args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
@@ -163,7 +167,7 @@ def run(root, binding, attempt, fault, duration, selected_holder=None):
             "stop_verified": stop, "inference_succeeded": False, "controls": controls, "consumed": consumed,
             "materialization_count": states.count("SYNTHETIC_MATERIALIZED"), "replay_refused": replay_refused,
             "elapsed_ms": int((time.monotonic() - start) * 1000), "evidence_root": str(root),
-            "parent_loss_verified": parent_loss_verified, "qualified_host": False,
+            "parent_loss_verified": parent_loss_verified, "pinned_codex": pinned_codex, "qualified_host": False,
             "disposal_scope": "synthetic_process_and_channel_only"}
 
 
@@ -176,10 +180,11 @@ def main():
     parser.add_argument("--binding", required=True)
     parser.add_argument("--attempt", required=True)
     parser.add_argument("--holder", type=Path)
+    parser.add_argument("--pinned-codex", action="store_true")
     parser.add_argument("--fault", choices=sorted(FAULTS), default="none")
     parser.add_argument("--duration-ms", type=int, default=2500)
     args = parser.parse_args()
-    native = run(args.root, args.binding, args.attempt, args.fault, args.duration_ms, args.holder)
+    native = run(args.root, args.binding, args.attempt, args.fault, args.duration_ms, args.holder, args.pinned_codex)
     binding_file = args.root / "binding.json"
     binding = json.loads(binding_file.read_text()) if binding_file.exists() else None
     if binding_file.exists():
