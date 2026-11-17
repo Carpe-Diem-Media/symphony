@@ -399,7 +399,13 @@ defmodule SymphonyElixir.PilotAgentRunnerTest do
   @tag :authority_binding_correction
   test "pilot grant refuses policy bytes changed after grant validation", ctx do
     File.write!(ctx.policy_path, "Role policy: substituted Planner\n")
-    assert_raise ArgumentError, ~r/pilot_configuration_invalid/, fn -> AgentRunner.run(ctx.issue, self(), ctx.opts) end
+
+    assert_raise RuntimeError,
+                 ~r/Agent attempt boundary validation failed: :pilot_configuration_invalid/,
+                 fn ->
+                   AgentRunner.run(ctx.issue, self(), ctx.opts)
+                 end
+
     refute_receive {:synthetic_session, _}, 25
   end
 
@@ -409,7 +415,13 @@ defmodule SymphonyElixir.PilotAgentRunnerTest do
     File.mkdir_p!(alternate)
     File.cp!(ctx.policy_path, Path.join(alternate, "planner.md"))
     Application.put_env(:symphony_elixir, :role_prompt_root, alternate)
-    assert_raise ArgumentError, ~r/pilot_configuration_invalid/, fn -> AgentRunner.run(ctx.issue, self(), ctx.opts) end
+
+    assert_raise RuntimeError,
+                 ~r/Agent attempt boundary validation failed: :pilot_configuration_invalid/,
+                 fn ->
+                   AgentRunner.run(ctx.issue, self(), ctx.opts)
+                 end
+
     refute_receive {:synthetic_session, _}, 25
   end
 
