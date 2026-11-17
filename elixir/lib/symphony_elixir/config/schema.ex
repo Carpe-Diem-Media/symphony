@@ -234,6 +234,7 @@ defmodule SymphonyElixir.Config.Schema do
       # operator opts in explicitly with `routing: routed`.
       field(:routing, :string, default: "legacy")
       field(:pilot, :map)
+      field(:pilot_holder, :map)
       embeds_one(:attempt_boundary, AttemptBoundary, on_replace: :update, defaults_to_struct: true)
       field(:profiles, :map)
       field(:routes, :map, default: %{})
@@ -251,11 +252,18 @@ defmodule SymphonyElixir.Config.Schema do
           :max_concurrent_agents_by_state,
           :routing,
           :pilot,
+          :pilot_holder,
           :profiles,
           :routes
         ],
         empty_values: []
       )
+      |> validate_change(:pilot_holder, fn :pilot_holder, value ->
+        case IsolationProfile.validate_pilot_holder_selection(value) do
+          :ok -> []
+          {:error, _} -> [pilot_holder: "must be an exact nonsecret SIWC pilot holder selection"]
+        end
+      end)
       |> validate_number(:max_concurrent_agents, greater_than: 0)
       |> validate_number(:max_turns, greater_than: 0)
       |> validate_number(:max_retry_backoff_ms, greater_than: 0)

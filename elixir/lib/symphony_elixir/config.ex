@@ -38,6 +38,17 @@ defmodule SymphonyElixir.Config do
           access: :read | :write | nil
         }
 
+  @doc "Returns the explicit nonsecret C02 pilot selector; it grants no native or credential authority."
+  @spec pilot_holder_selection(Schema.t()) :: {:ok, map() | nil} | {:error, :pilot_holder_selection_invalid}
+  def pilot_holder_selection(settings) do
+    selection = Map.get(settings.agent, :pilot_holder)
+
+    case IsolationProfile.validate_pilot_holder_selection(selection) do
+      :ok -> {:ok, selection}
+      {:error, _} -> {:error, :pilot_holder_selection_invalid}
+    end
+  end
+
   @pilot_keys ~w(project_id plane_project_id work_item_id responsibility source_commit source_tree config_identity runtime_lineage deadline_ms)a
 
   @doc """

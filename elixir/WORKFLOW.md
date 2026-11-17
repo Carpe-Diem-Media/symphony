@@ -37,6 +37,7 @@ agent:
   # A separately approved agent.pilot grant is documented in README.md.
   # Its identity binds Planner policy bytes/root and trusted Git, in addition to configuration.
   # Pilot checkout admission compares actual bytes with the pinned tree without changing Git flags.
+  # C02 pilot_holder is a separate opt-in nonsecret profile; production is blocked on native custody controls.
   # This legacy sample has no pilot grant and does not authorize a pilot run.
   max_concurrent_agents: 10
   max_turns: 20

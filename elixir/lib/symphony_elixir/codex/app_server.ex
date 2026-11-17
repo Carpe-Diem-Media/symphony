@@ -307,7 +307,10 @@ defmodule SymphonyElixir.Codex.AppServer do
 
     with :ok <- check_deadline(Keyword.get(opts, :absolute_deadline_ms)),
          {:ok, expanded_workspace} <- validate_workspace_cwd(workspace, worker_host),
-         {:ok, session_policies} <- session_policies(expanded_workspace, worker_host, opts) do
+         {:ok, session_policies} <- session_policies(expanded_workspace, worker_host, opts),
+         {:ok, holder} <- RuntimeIsolation.prepare_pilot_holder(expanded_workspace, opts) do
+      opts = Keyword.put(opts, :pilot_holder_context, holder)
+
       start_with_policies(
         expanded_workspace,
         worker_host,
@@ -320,7 +323,7 @@ defmodule SymphonyElixir.Codex.AppServer do
 
   defp start_with_policies(workspace, worker_host, dynamic_tool_binding, opts, session_policies) do
     case check_deadline(Keyword.get(opts, :absolute_deadline_ms)) do
-      {:error, _reason} = error -> error
+      {:error, reason} -> cleanup_launch_after_error(nil, reason, opts)
       :ok -> prepare_and_start_launch(workspace, worker_host, dynamic_tool_binding, opts, session_policies)
     end
   end
@@ -340,11 +343,14 @@ defmodule SymphonyElixir.Codex.AppServer do
             )
 
           {:error, reason} ->
-            cleanup_launch_after_error(launch, reason)
+            cleanup_launch_after_error(launch, reason, opts)
         end
 
-      {:error, _reason} = error ->
-        error
+      {:error, reason, launch} ->
+        cleanup_launch_after_error(launch, reason, opts)
+
+      {:error, reason} ->
+        cleanup_launch_after_error(nil, reason, opts)
     end
   end
 
@@ -368,7 +374,7 @@ defmodule SymphonyElixir.Codex.AppServer do
         )
 
       {:error, reason} ->
-        cleanup_launch_after_error(launch, reason)
+        cleanup_launch_after_error(launch, reason, opts)
     end
   end
 
@@ -386,7 +392,7 @@ defmodule SymphonyElixir.Codex.AppServer do
         )
 
       {:error, reason} ->
-        cleanup_launch_after_error(launch, reason)
+        cleanup_launch_after_error(launch, reason, opts)
     end
   end
 
@@ -416,14 +422,17 @@ defmodule SymphonyElixir.Codex.AppServer do
           reason,
           routed_policies?(session_policies),
           nil,
-          Keyword.get(opts, :absolute_deadline_ms)
+          Keyword.get(opts, :absolute_deadline_ms),
+          opts
         )
     end
   end
 
-  defp cleanup_launch_after_error(launch, reason) do
-    case cleanup_launch(launch) do
-      :ok -> {:error, reason}
+  defp cleanup_launch_after_error(launch, reason, opts) do
+    with :ok <- RuntimeIsolation.check_pilot_holder(Keyword.get(opts, :pilot_holder_context), :cleanup),
+         :ok <- cleanup_launch(launch) do
+      {:error, reason}
+    else
       {:error, cleanup_reason} -> {:error, cleanup_reason}
     end
   end
@@ -445,7 +454,8 @@ defmodule SymphonyElixir.Codex.AppServer do
            workspace,
            session_policies,
            dynamic_tool_binding,
-           Keyword.get(opts, :absolute_deadline_ms)
+           Keyword.get(opts, :absolute_deadline_ms),
+           Keyword.get(opts, :pilot_holder_context)
          ) do
       {:ok, thread_id} ->
         case check_deadline(deadline_ms) do
@@ -470,7 +480,8 @@ defmodule SymphonyElixir.Codex.AppServer do
               reason,
               routed_policies?(session_policies),
               namespace_identity,
-              deadline_ms
+              deadline_ms,
+              opts
             )
         end
 
@@ -481,7 +492,8 @@ defmodule SymphonyElixir.Codex.AppServer do
           reason,
           routed_policies?(session_policies),
           namespace_identity,
-          deadline_ms
+          deadline_ms,
+          opts
         )
     end
   end
@@ -511,6 +523,7 @@ defmodule SymphonyElixir.Codex.AppServer do
       dynamic_tool_binding: dynamic_tool_binding,
       ephemeral_home: ephemeral_home,
       absolute_deadline_ms: Keyword.get(opts, :absolute_deadline_ms),
+      pilot_holder_context: Keyword.get(opts, :pilot_holder_context),
       runtime_policies: session_policies,
       routed: routed_policies?(session_policies),
       runtime_containment: if(routed_policies?(session_policies), do: :linux_pid_namespace, else: nil),
@@ -521,7 +534,7 @@ defmodule SymphonyElixir.Codex.AppServer do
     }
   end
 
-  defp cleanup_failed_session_start(port, ephemeral_home, reason, routed?, namespace_identity, deadline_ms) do
+  defp cleanup_failed_session_start(port, ephemeral_home, reason, routed?, namespace_identity, deadline_ms, opts) do
     stop_result =
       if routed? do
         stop_routed_port(port, namespace_identity, deadline_ms)
@@ -531,8 +544,10 @@ defmodule SymphonyElixir.Codex.AppServer do
 
     case stop_result do
       :ok ->
-        case cleanup_ephemeral_home(ephemeral_home) do
-          :ok -> {:error, reason}
+        with :ok <- RuntimeIsolation.check_pilot_holder(Keyword.get(opts, :pilot_holder_context), :cleanup),
+             :ok <- cleanup_ephemeral_home(ephemeral_home) do
+          {:error, reason}
+        else
           {:error, cleanup_reason} -> {:error, cleanup_reason}
         end
 
@@ -590,16 +605,23 @@ defmodule SymphonyElixir.Codex.AppServer do
 
     deadline_ms = Map.get(session, :absolute_deadline_ms, Keyword.get(opts, :absolute_deadline_ms))
 
-    case start_turn(
-           port,
-           thread_id,
-           prompt,
-           issue,
-           workspace,
-           session_policies,
-           Keyword.get(opts, :model),
-           deadline_ms
-         ) do
+    turn_start =
+      with :ok <- pilot_holder_turn_options(Map.get(session, :pilot_holder_context), opts),
+           :ok <- RuntimeIsolation.check_pilot_holder(Map.get(session, :pilot_holder_context), :turn),
+           :ok <- check_deadline(deadline_ms) do
+        start_turn(
+          port,
+          thread_id,
+          prompt,
+          issue,
+          workspace,
+          session_policies,
+          Keyword.get(opts, :model),
+          deadline_ms
+        )
+      end
+
+    case turn_start do
       {:ok, turn_id} ->
         session_id = "#{thread_id}-#{turn_id}"
 
@@ -696,7 +718,9 @@ defmodule SymphonyElixir.Codex.AppServer do
 
     case stop_result do
       :ok ->
-        cleanup_ephemeral_home(Map.get(session, :ephemeral_home))
+        with :ok <- RuntimeIsolation.check_pilot_holder(Map.get(session, :pilot_holder_context), :cleanup) do
+          cleanup_ephemeral_home(Map.get(session, :ephemeral_home))
+        end
 
       {:error, _reason} = error ->
         error
@@ -959,6 +983,16 @@ defmodule SymphonyElixir.Codex.AppServer do
     |> Enum.join(" && ")
   end
 
+  defp pilot_holder_turn_options(nil, _opts), do: :ok
+
+  defp pilot_holder_turn_options(%{binding: %{profile: profile}}, opts) do
+    if Keyword.get(opts, :model) == profile.model,
+      do: :ok,
+      else: {:error, :pilot_holder_binding_invalid}
+  end
+
+  defp pilot_holder_turn_options(_holder, _opts), do: {:error, :pilot_holder_binding_invalid}
+
   defp runtime_command(opts) do
     case Keyword.get(opts, :command) do
       command when is_binary(command) and byte_size(command) > 0 -> command
@@ -1059,6 +1093,7 @@ defmodule SymphonyElixir.Codex.AppServer do
     with :ok <- validate_routed_policy(session_policies, workspace),
          :ok <- revalidate_routed_workspace(workspace, session_policies, opts),
          {:ok, resolved} <- IsolationProfile.resolve_codex_executable(runtime_command(opts)),
+         :ok <- IsolationProfile.validate_pilot_holder_artifact(pilot_holder_selection(opts), resolved),
          {:ok, launch_identity} <- runtime_file_identity(resolved),
          {:ok, runtime_evidence} <- admit_runtime(resolved.executable, opts),
          :ok <- validate_routed_runtime_identity(resolved, launch_identity, runtime_evidence),
@@ -1077,6 +1112,13 @@ defmodule SymphonyElixir.Codex.AppServer do
         launch_identity,
         runtime_evidence
       )
+    end
+  end
+
+  defp pilot_holder_selection(opts) do
+    case Keyword.get(opts, :pilot_holder_context) do
+      %{binding: %{selection: selection}} -> selection
+      _ -> nil
     end
   end
 
@@ -1099,7 +1141,7 @@ defmodule SymphonyElixir.Codex.AppServer do
          }}
 
       {:error, reason} ->
-        cleanup_launch_after_error(%{session_home: session_home}, reason)
+        {:error, reason, %{session_home: session_home}}
     end
   end
 
@@ -1328,12 +1370,12 @@ defmodule SymphonyElixir.Codex.AppServer do
     end
   end
 
-  defp do_start_session(port, workspace, session_policies, dynamic_tool_binding, deadline_ms) do
-    with :ok <- check_deadline(deadline_ms) do
-      case send_initialize(port, deadline_ms) do
-        :ok -> start_thread(port, workspace, session_policies, dynamic_tool_binding, deadline_ms)
-        {:error, reason} -> {:error, reason}
-      end
+  defp do_start_session(port, workspace, session_policies, dynamic_tool_binding, deadline_ms, holder) do
+    with :ok <- check_deadline(deadline_ms),
+         :ok <- send_initialize(port, deadline_ms),
+         :ok <- RuntimeIsolation.check_pilot_holder(holder, :thread),
+         :ok <- check_deadline(deadline_ms) do
+      start_thread(port, workspace, session_policies, dynamic_tool_binding, deadline_ms)
     end
   end
 

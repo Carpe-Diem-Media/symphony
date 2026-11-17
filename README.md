@@ -7,6 +7,7 @@ An optional, separately authorized [single Planner pilot](elixir/README.md#singl
 uses a durable one-use dispatch grant, an absolute attempt deadline and retained final evidence.
 The grant also binds the selected Planner policy and trusted checkout-verification Git identity.
 Checkout admission verifies actual tracked bytes in the approved workspace.
+The opt-in C02 holder interface refuses production launch until its native custody dependencies are qualified.
 These controls do not authorize a live run or change H-100 acceptance requirements.
 
 [![Symphony demo video preview](.github/media/symphony-demo-poster.jpg)](https://player.vimeo.com/video/1186371009?h=5626e4b899)

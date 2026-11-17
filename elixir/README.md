@@ -43,6 +43,45 @@ pinned raw tree. Linked Git worktrees are supported by this read-only proof; the
 normal runtime still requires its existing ownership and credential admission,
 including its Git-metadata containment rule.
 
+The separately selected `agent.pilot_holder` profile is `siwc_planner_pilot_v1`
+under `SIWC_CHATGPT_PLAN_OAUTH_RESPONSES`. Its strict nonsecret selection binds
+holder artifact/profile identities, host permission and registration references,
+credential generation, host/boot identities and the five accepted lifetime budgets.
+The existing effective configuration digest includes that selection. A changed
+selection requires a fresh matching grant; the digest algorithm is unchanged.
+
+C02 currently implements consumer-side binding and refusal only. Production
+always refuses this profile because the native P01/P02/P03/P04/P05/P08 permission,
+storage, credential owner, holder/tool and disposal controls are not qualified.
+No native API, credential delivery, enrollment, token file or login RPC is added.
+Test builds alone can exercise a pinned synthetic Ed25519 peer that journals and
+synchronizes nonsecret receipts before signing them. Its assurance is always
+`synthetic_test_only`, never operational qualification.
+
+Admission checks the exact running C01 grant, RuntimeAttempt, pinned checkout,
+policy/configuration identity and absolute deadline before launch, thread and
+turn execution. Each synthetic receipt signs a fresh challenge and the complete
+binding. Replayed, malformed, expired, mismatched or unavailable receipts refuse.
+Holder/generation/lifetime rollover is refused. Verified process termination is
+followed by the separate disposal check before session-home deletion; uncertain
+disposal retains the home and C01's consumed entitlement. Fresh homes, environment
+clearing, Planner permissions, namespace stop proof and C04 persistence remain in
+force. Ordinary profiles without this opt-in selection keep their prior path.
+The test peer and public key must match the test-harness pin; runtime options
+cannot select a replacement signer. Forward admission also checks the full
+configured Planner profile and effective command/model, including turn options.
+
+The nonsecret interface progresses through `selected`, `launch_ready`,
+`thread_ready`, `turn_ready` and `disposed`. Every forward guard rechecks current
+C01 and source authority. A single turn consumes the fixture's turn permission;
+completion never grants continuation. Any refusal blocks the next operation.
+Disposal uses the captured original binding after independent process stop,
+including when forward authority has been revoked. Missing or uncertain disposal
+retains the session home and yields the existing quarantined final disposition.
+The cleanup budget reserves credential lifetime within the original absolute
+attempt deadline. It does not extend that deadline. An expired deadline refuses
+receipt processing and cannot produce a verified-stop claim.
+
 The existing attempt ledger retains the exact grant. Its normal states are
 `configured`, `consumed`, `running`, `stopverified`. Dispatch synchronizes consumption
 before creating the worker. AgentRunner synchronizes a separate one-use launch claim

@@ -169,6 +169,57 @@ defmodule SymphonyElixir.Codex.IsolationProfile do
           native_executable: Path.t()
         }
 
+  @pilot_holder_keys ~w(profile contract holder_profile_identity holder_artifact_identity host_permission_ref registration_ref credential_generation host_id host_boot_id lifetime_budget)
+  @pilot_lifetime_keys ~w(startup_allowance_ms maximum_attempt_wall_time_ms cleanup_allowance_ms clock_skew_bound_ms credential_safety_margin_ms)
+
+  @doc "Validates only the explicit nonsecret pilot selection. Operational qualification is separate."
+  @spec validate_pilot_holder_selection(term()) :: :ok | {:error, :pilot_holder_selection_invalid}
+  def validate_pilot_holder_selection(nil), do: :ok
+
+  def validate_pilot_holder_selection(selection) when is_map(selection) do
+    valid? =
+      Enum.sort(Map.keys(selection)) == Enum.sort(@pilot_holder_keys) and
+        selection["profile"] == "siwc_planner_pilot_v1" and
+        selection["contract"] == "SIWC_CHATGPT_PLAN_OAUTH_RESPONSES" and
+        Enum.all?(~w(holder_profile_identity holder_artifact_identity), &pilot_digest?(selection[&1])) and
+        Enum.all?(~w(host_permission_ref registration_ref host_id host_boot_id), &pilot_reference?(selection[&1])) and
+        pilot_holder_generation?(selection["credential_generation"]) and
+        pilot_lifetime_budget?(selection["lifetime_budget"])
+
+    if valid?, do: :ok, else: {:error, :pilot_holder_selection_invalid}
+  end
+
+  def validate_pilot_holder_selection(_selection), do: {:error, :pilot_holder_selection_invalid}
+
+  defp pilot_holder_generation?(generation), do: is_integer(generation) and generation > 0
+
+  defp pilot_lifetime_budget?(budget) when is_map(budget) do
+    Enum.sort(Map.keys(budget)) == Enum.sort(@pilot_lifetime_keys) and
+      Enum.all?(Map.values(budget), &(is_integer(&1) and &1 >= 0)) and
+      budget["maximum_attempt_wall_time_ms"] > 0
+  end
+
+  defp pilot_lifetime_budget?(_budget), do: false
+
+  @doc "Binds the selected artifact bytes without changing routed executable trust or installing a holder."
+  @spec validate_pilot_holder_artifact(map() | nil, map()) :: :ok | {:error, :pilot_holder_artifact_mismatch}
+  def validate_pilot_holder_artifact(nil, _resolved), do: :ok
+
+  def validate_pilot_holder_artifact(selection, %{native_executable: path}) do
+    with {:ok, bytes} <- File.read(path),
+         digest <- :crypto.hash(:sha256, bytes) |> Base.encode16(case: :lower),
+         true <- digest == selection["holder_artifact_identity"] do
+      :ok
+    else
+      _ -> {:error, :pilot_holder_artifact_mismatch}
+    end
+  rescue
+    _ -> {:error, :pilot_holder_artifact_mismatch}
+  end
+
+  defp pilot_digest?(value), do: is_binary(value) and Regex.match?(~r/\A[0-9a-f]{64}\z/, value)
+  defp pilot_reference?(value), do: is_binary(value) and Regex.match?(~r/\A[A-Za-z0-9][A-Za-z0-9._-]{0,127}\z/, value)
+
   @spec profile_name(String.t()) :: String.t() | {:error, term()}
   def profile_name(responsibility) when is_binary(responsibility) do
     case responsibility do
