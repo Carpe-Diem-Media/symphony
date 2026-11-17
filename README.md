@@ -8,6 +8,9 @@ uses a durable one-use dispatch grant, an absolute attempt deadline and retained
 The grant also binds the selected Planner policy and trusted checkout-verification Git identity.
 Checkout admission verifies actual tracked bytes in the approved workspace.
 The opt-in C02 holder interface refuses production launch until its native custody dependencies are qualified.
+A [native synthetic development slice](native/pilot_c02/README.md) now executes the
+bootstrap, one-use materialization channel and restricted ELF probe. It does not
+implement the patched Codex app-server or authorize authenticated execution.
 These controls do not authorize a live run or change H-100 acceptance requirements.
 
 [![Symphony demo video preview](.github/media/symphony-demo-poster.jpg)](https://player.vimeo.com/video/1186371009?h=5626e4b899)

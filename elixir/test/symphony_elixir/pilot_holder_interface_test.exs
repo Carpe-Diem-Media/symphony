@@ -87,6 +87,10 @@ defmodule SymphonyElixir.PilotHolderInterfaceTest do
     File.write!(codex, synthetic_codex(protocol_log))
     File.chmod!(codex, 0o700)
 
+    if context[:native_boundary] do
+      File.cp!(Path.expand("../native/pilot_c02/build/holder-probe"), codex)
+    end
+
     policy_root = Path.join(root, "policies")
     File.mkdir_p!(policy_root)
     policy_path = Path.join(policy_root, "planner.md")
@@ -264,7 +268,68 @@ defmodule SymphonyElixir.PilotHolderInterfaceTest do
       |> Keyword.put(:test_pilot_holder_peer, {peer, public_key})
       |> Keyword.put(:runtime_issue, issue)
 
+    opts =
+      if context[:native_boundary] do
+        native = Path.expand("../native/pilot_c02")
+        files = Enum.map(~w(host guard holder-probe), &Path.join([native, "build", &1]))
+        driver = Path.join(native, "tests/run_attempt.py")
+
+        pin = %{
+          driver: driver,
+          files: Map.new([driver, codex | files], &{&1, Base.encode16(:crypto.hash(:sha256, File.read!(&1)), case: :lower)}),
+          holder: codex,
+          evidence_root: Path.join(root, "native-evidence"),
+          fault: "none"
+        }
+
+        Application.put_env(:symphony_elixir, :test_native_pilot, pin)
+        on_exit(fn -> Application.delete_env(:symphony_elixir, :test_native_pilot) end)
+        Keyword.put(opts, :test_native_pilot, pin)
+      else
+        opts
+      end
+
     {:ok, Map.merge(fixture, %{workspace: workspace, selector: selector, opts: opts, peer: peer, raw: raw, protocol_log: protocol_log})}
+  end
+
+  @tag native_boundary: true
+  test "C02 executes the native slice but refuses unqualified inference", ctx do
+    assert {:error, :pilot_holder_native_controlled_refusal} = AppServer.start_session(ctx.workspace, ctx.opts)
+    path = Path.join([ctx.opts[:test_native_pilot].evidence_root, ctx.identity.runtime_attempt_id, "correlation.json"])
+    evidence = path |> File.read!() |> Jason.decode!()
+    assert evidence["binding"]["attempt"]["runtime_attempt_id"] == ctx.identity.runtime_attempt_id
+    assert evidence["binding"]["grant"]["config_identity"] == ctx.grant.config_identity
+    assert evidence["native"]["native_exec"]
+    assert evidence["native"]["stop_verified"]
+    refute evidence["native"]["inference_succeeded"]
+    refute_received {:holder_phase, _}
+    assert {:ok, %{state: :running}} = AttemptLedger.pilot_status(ctx.ledger)
+    assert {:error, _} = AttemptLedger.begin_attempt(ctx.ledger, ctx.issue.id, pilot_binding: ctx.grant)
+    assert {:error, :pilot_holder_native_refused} = AppServer.start_session(ctx.workspace, ctx.opts)
+  end
+
+  @tag native_boundary: true, full_runner: true
+  test "native controlled refusal retains C01 and a noncompleted C04 result", ctx do
+    opts = Keyword.put(ctx.opts, :runtime, SymphonyElixir.AgentRuntime.Codex)
+    assert_raise RuntimeError, fn -> AgentRunner.run(ctx.issue, self(), opts) end
+    assert {:ok, %{state: :quarantined, result: result}} = AttemptLedger.pilot_status(ctx.ledger)
+    assert result.stop_disposition == :quarantined
+    refute result.model_state == :completed
+    path = Path.join([ctx.opts[:test_native_pilot].evidence_root, ctx.identity.runtime_attempt_id, "correlation.json"])
+    assert File.regular?(path)
+    refute_received {:holder_phase, _}
+    assert {:error, _} = AttemptLedger.begin_attempt(ctx.ledger, ctx.issue.id, pilot_binding: ctx.grant)
+  end
+
+  @tag native_boundary: true
+  test "native options cannot replace the trusted fixture selection", ctx do
+    pin = %{ctx.opts[:test_native_pilot] | fault: "ambiguous_provider"}
+
+    assert {:error, :pilot_holder_native_refused} =
+             AppServer.start_session(ctx.workspace, Keyword.put(ctx.opts, :test_native_pilot, pin))
+
+    refute File.exists?(pin.evidence_root)
+    refute_received {:holder_phase, _}
   end
 
   @tag review_regression: true

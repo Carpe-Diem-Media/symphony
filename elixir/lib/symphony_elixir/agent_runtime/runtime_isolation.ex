@@ -55,11 +55,24 @@ defmodule SymphonyElixir.AgentRuntime.RuntimeIsolation do
   defp prepare_selected_pilot_holder(nil, _settings, _workspace, _opts), do: {:ok, nil}
 
   if @pilot_holder_test_build do
+    alias SymphonyElixir.AgentRuntime.NativePilot
+
     defp prepare_selected_pilot_holder(selection, settings, workspace, opts) do
-      with {:ok, binding} <- pilot_holder_binding(settings, workspace, opts, selection),
-           {:ok, peer} <- synthetic_pilot_peer(opts),
-           {:ok, receipt} <- synthetic_pilot_receipt(peer, :launch, binding, nil) do
-        {:ok, %{assurance: :synthetic_test_only, binding: binding, receipt: receipt, peer: peer, opts: opts}}
+      with {:ok, binding} <- pilot_holder_binding(settings, workspace, opts, selection) do
+        prepare_test_pilot_holder(binding, opts)
+      end
+    end
+
+    defp prepare_test_pilot_holder(binding, opts) do
+      case Keyword.fetch(opts, :test_native_pilot) do
+        {:ok, pin} ->
+          NativePilot.exercise(binding, pin)
+
+        :error ->
+          with {:ok, peer} <- synthetic_pilot_peer(opts),
+               {:ok, receipt} <- synthetic_pilot_receipt(peer, :launch, binding, nil) do
+            {:ok, %{assurance: :synthetic_test_only, binding: binding, receipt: receipt, peer: peer, opts: opts}}
+          end
       end
     end
   else

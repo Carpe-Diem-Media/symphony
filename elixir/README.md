@@ -50,10 +50,19 @@ credential generation, host/boot identities and the five accepted lifetime budge
 The existing effective configuration digest includes that selection. A changed
 selection requires a fresh matching grant; the digest algorithm is unchanged.
 
-C02 currently implements consumer-side binding and refusal only. Production
-always refuses this profile because the native P01/P02/P03/P04/P05/P08 permission,
-storage, credential owner, holder/tool and disposal controls are not qualified.
-No native API, credential delivery, enrollment, token file or login RPC is added.
+C02 implements consumer-side binding and production refusal. Production always
+refuses this profile because the native P01/P02/P03/P04/P05/P08 permission, storage,
+credential owner, patched Codex holder/tool and disposal controls are not qualified.
+The [native development slice](../native/pilot_c02/README.md) executes a compiled
+host, credential-free guard, post-fork bootstrap and restricted synthetic ELF probe.
+Only test builds can invoke it through `RuntimeIsolation` and `NativePilot`, after
+existing C01/source/holder binding checks. The harness pins every executable and
+driver hash, and correlates native evidence with the existing RuntimeAttempt.
+It always returns refusal, never a model-ready session or authenticated receipt.
+A safe probe result requires independent pidfd death observation and synchronized
+correlation evidence. Uncertainty retains C01 quarantine. No operational credential
+input, enrollment, token file or login RPC is added. The ordinary CLI is not the
+required patched standalone holder.
 Test builds alone can exercise a pinned synthetic Ed25519 peer that journals and
 synchronizes nonsecret receipts before signing them. Its assurance is always
 `synthetic_test_only`, never operational qualification.
