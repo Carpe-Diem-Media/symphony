@@ -6,6 +6,34 @@ This patch builds the actual `codex-app-server` target from Codex 0.162.1, commi
 ordinary entry path. It is a partial protected holder, not operational SIWC custody.
 Production Symphony C02 still refuses execution until its host dependencies qualify.
 
+## Blocked Slice A draft
+
+The local Slice A patch adds draft context, configuration, authentication and
+provider-refusal guards. It does not implement schema2 admission, strict service
+construction or a functional native thread/turn session. The new
+`test_functional_session.py` is a retained failing acceptance test. A passing
+schema1 test does not establish Slice A completion.
+
+The approved 33-entry inventory omits `core/src/session/session.rs`, which owns
+the actual `Session::new` constructor, and `core/src/state/service.rs`, which
+requires concrete MCP, hook, plugin and skill services. A strict constructor
+needs selected or absent service representations before excluded startup work.
+Those two files are the apparent minimum scope extension for review; they have
+not been changed. The selected draft thread guard refuses before ordinary
+thread startup while that construction boundary is unavailable.
+
+The previously accepted patch SHA-256 is
+`59a9d0ebabd18de96f7f6552b307183fb11bc091b1152b04aef2c34f1255148a`, with patched
+tree `39d3926e6c2a528c3039c2ff9368c1858b1d7f78`. Preserve those historical bytes.
+The current `upstream.json` identifies the distinct blocked draft patch.
+
+A delegated formatter in this task invoked rustup outside the required denial
+wrapper. It reported downloading seven Rust 1.95.0 components, and toolchain
+files with task-time creation metadata were observed. Its exit and completion
+were not captured. This violated the offline constraint. The retained incident
+record must accompany review; no rollback was authorized or attempted. Further
+checks use the existing stable binaries explicitly through the denial wrapper.
+
 ## Selected entry and lifecycle
 
 The first operation in standalone `main` is `symphony_gate2::try_run`. A selected
@@ -96,8 +124,9 @@ PINNED_CODEX_BINARY=/absolute/pinned/codex/codex-rs/target/dev-small/codex-app-s
 
 The pinned release's lockfile still declares 161 local workspace packages as 0.0.0.
 The retained patch reconciles only those versions to 0.162.1, with no external
-package/checksum/source changes. The installed development compiler is Rust1.98.1;
-upstream requests1.95.0. No new toolchain was installed. This difference is retained
+package/checksum/source changes. The R1 development compiler was Rust1.98.1;
+upstream requests1.95.0. No new toolchain was installed in that earlier build.
+This difference is retained
 in build evidence and is not an operational reproducibility qualification.
 The build uses dev-small and optimizes SHA2 to keep exact self-identity verification
 inside the existing finite budget. No timeout or admission rule is relaxed.
