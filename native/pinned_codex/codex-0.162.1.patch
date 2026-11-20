@@ -2516,10 +2516,17 @@ index 0000000000000000000000000000000000000000..bf7886b6e0f094fb4681b129fd234460
 +    outcome
 +}
 diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
-index 24f2964ffe566faa7a9de34636e11a528123c6c1..cdd364f30d96b751b28a1bb59a891c1e17c7958b 100644
+index 24f2964ffe566faa7a9de34636e11a528123c6c1..bee562b739c103d83841d6fb7cc298bfa07e1b43 100644
 --- a/codex-rs/core/src/client.rs
 +++ b/codex-rs/core/src/client.rs
-@@ -660,6 +660,7 @@ impl ModelClient {
+@@ -656,10 +656,14 @@ impl ModelClient {
+         session_telemetry: &SessionTelemetry,
+         _model_info: &ModelInfo,
+     ) -> bool {
++        if crate::symphony_boundary::is_selected() {
++            return false;
++        }
+         let websocket_enabled = self.responses_websocket_enabled();
          let activated =
              websocket_enabled && !self.state.disable_websockets.swap(true, Ordering::Relaxed);
          if activated {
@@ -2527,7 +2534,17 @@ index 24f2964ffe566faa7a9de34636e11a528123c6c1..cdd364f30d96b751b28a1bb59a891c1e
              warn!("falling back to HTTP");
              session_telemetry.counter(
                  "codex.transport.fallback_to_http",
-@@ -1042,6 +1043,9 @@ impl ModelClient {
+@@ -1028,6 +1032,9 @@ impl ModelClient {
+     ///
+     /// WebSocket use is controlled by provider capability and session-scoped fallback state.
+     pub fn responses_websocket_enabled(&self) -> bool {
++        if crate::symphony_boundary::is_selected() {
++            return false;
++        }
+         if !self.state.provider.info().supports_websockets
+             || self.state.disable_websockets.load(Ordering::Relaxed)
+         {
+@@ -1042,6 +1049,9 @@ impl ModelClient {
      /// This centralizes setup used by both prewarm and normal request paths so they stay in
      /// lockstep when auth/provider resolution changes.
      async fn current_client_setup(&self, routing: ClientRouting) -> Result<CurrentClientSetup> {
@@ -2537,7 +2554,7 @@ index 24f2964ffe566faa7a9de34636e11a528123c6c1..cdd364f30d96b751b28a1bb59a891c1e
          // Capture before resolving credentials so an account switch during setup cannot label
          // an old connection with the new owner's revision.
          let auth_owner_generation = self.auth_owner_generation();
-@@ -1052,6 +1056,7 @@ impl ModelClient {
+@@ -1052,6 +1062,7 @@ impl ModelClient {
              .map(|manager| manager.auth_change_receiver());
          loop {
              let revision = auth_changes.as_ref().map(|changes| *changes.borrow());
@@ -2545,15 +2562,18 @@ index 24f2964ffe566faa7a9de34636e11a528123c6c1..cdd364f30d96b751b28a1bb59a891c1e
              let auth = self.state.provider.auth().await;
              let (api_provider, redirect_policy) = match routing {
                  ClientRouting::Workspace => {
-@@ -1185,6 +1190,7 @@ impl ModelClient {
+@@ -1185,6 +1196,10 @@ impl ModelClient {
          endpoint: &str,
          redirect_policy: ClientRedirectPolicy,
      ) -> Result<ReqwestTransport> {
++        if crate::symphony_boundary::is_selected() {
++            return Err(crate::symphony_boundary::provider_boundary_unavailable());
++        }
 +        crate::symphony_boundary::record_http();
          let redirect_policy = if api_provider
              .headers
              .contains_key(codex_model_provider::ACCOUNT_ROUTING_HEADER)
-@@ -1204,6 +1210,9 @@ impl ModelClient {
+@@ -1204,6 +1219,9 @@ impl ModelClient {
      }
 
      pub(crate) async fn prewarm_auth(&self) -> Result<()> {
@@ -2563,15 +2583,32 @@ index 24f2964ffe566faa7a9de34636e11a528123c6c1..cdd364f30d96b751b28a1bb59a891c1e
          self.current_client_setup(ClientRouting::Workspace)
              .await
              .map(|_| ())
-@@ -1224,6 +1233,7 @@ impl ModelClient {
+@@ -1224,6 +1242,13 @@ impl ModelClient {
          request_route_telemetry: RequestRouteTelemetry,
          responses_headers: &ApiHeaderMap,
      ) -> std::result::Result<ApiWebSocketConnection, ApiError> {
++        if crate::symphony_boundary::is_selected() {
++            let refusal = crate::symphony_boundary::provider_boundary_unavailable();
++            return Err(ApiError::InvalidRequest {
++                message: refusal.to_string(),
++            });
++        }
 +        crate::symphony_boundary::record_websocket();
          let mut headers = self.build_websocket_headers(responses_metadata).await;
          headers.extend(responses_headers.clone());
          let websocket_telemetry = ModelClientSession::build_websocket_telemetry(
-@@ -1472,6 +1482,9 @@ impl ModelClientSession {
+@@ -1305,6 +1330,10 @@ impl ModelClient {
+         &self,
+         responses_metadata: &CodexResponsesMetadata,
+     ) -> ApiHeaderMap {
++        if crate::symphony_boundary::is_selected() {
++            // The selected connection entry refuses before requesting headers.
++            return ApiHeaderMap::new();
++        }
+         let mut headers = build_responses_headers(
+             self.state.beta_features_header.as_deref(),
+             /*turn_state*/ None,
+@@ -1472,6 +1501,9 @@ impl ModelClientSession {
          session_telemetry: &SessionTelemetry,
          responses_metadata: &CodexResponsesMetadata,
      ) -> Result<()> {
@@ -2581,7 +2618,7 @@ index 24f2964ffe566faa7a9de34636e11a528123c6c1..cdd364f30d96b751b28a1bb59a891c1e
          if !self.client.responses_websocket_enabled() {
              return Ok(());
          }
-@@ -1529,6 +1542,7 @@ impl ModelClientSession {
+@@ -1529,6 +1561,7 @@ impl ModelClientSession {
                  Err(ApiError::Transport(unauthorized_transport))
                      if provider.is_recoverable_auth_error(&unauthorized_transport) =>
                  {
@@ -2589,7 +2626,30 @@ index 24f2964ffe566faa7a9de34636e11a528123c6c1..cdd364f30d96b751b28a1bb59a891c1e
                      pending_retry = PendingUnauthorizedRetry::from_recovery(
                          handle_unauthorized(
                              unauthorized_transport,
-@@ -1779,6 +1793,7 @@ impl ModelClientSession {
+@@ -1564,6 +1597,12 @@ impl ModelClientSession {
+         &mut self,
+         params: WebsocketConnectParams<'_>,
+     ) -> std::result::Result<&ApiWebSocketConnection, ApiError> {
++        if crate::symphony_boundary::is_selected() {
++            let refusal = crate::symphony_boundary::provider_boundary_unavailable();
++            return Err(ApiError::InvalidRequest {
++                message: refusal.to_string(),
++            });
++        }
+         let WebsocketConnectParams {
+             session_telemetry,
+             api_provider,
+@@ -1670,6 +1709,9 @@ impl ModelClientSession {
+         responses_metadata: &CodexResponsesMetadata,
+         inference_trace: &InferenceTraceContext,
+     ) -> Result<ResponseStream> {
++        if crate::symphony_boundary::is_selected() {
++            return Err(crate::symphony_boundary::provider_boundary_unavailable());
++        }
+         let auth_manager = self.client.state.provider.auth_manager();
+         let mut auth_recovery = auth_manager
+             .as_ref()
+@@ -1779,6 +1821,7 @@ impl ModelClientSession {
                  client_setup.api_auth,
              )
              .with_telemetry(Some(request_telemetry), Some(sse_telemetry));
@@ -2597,7 +2657,7 @@ index 24f2964ffe566faa7a9de34636e11a528123c6c1..cdd364f30d96b751b28a1bb59a891c1e
              let stream_result = client.stream_request(request, options).await;
 
              match stream_result {
-@@ -1799,6 +1814,7 @@ impl ModelClientSession {
+@@ -1799,6 +1842,7 @@ impl ModelClientSession {
                          .provider
                          .is_recoverable_auth_error(&unauthorized_transport) =>
                  {
@@ -2605,7 +2665,17 @@ index 24f2964ffe566faa7a9de34636e11a528123c6c1..cdd364f30d96b751b28a1bb59a891c1e
                      let response_debug_context =
                          extract_response_debug_context(&unauthorized_transport);
                      inference_trace_attempt.record_failed(
-@@ -1945,6 +1961,7 @@ impl ModelClientSession {
+@@ -1863,6 +1907,9 @@ impl ModelClientSession {
+         request_trace: Option<W3cTraceContext>,
+         inference_trace: &InferenceTraceContext,
+     ) -> Result<WebsocketStreamOutcome> {
++        if crate::symphony_boundary::is_selected() {
++            return Err(crate::symphony_boundary::provider_boundary_unavailable());
++        }
+         let after_prewarm = !warmup && self.websocket_session.last_response_from_untraced_warmup;
+         let provider = Arc::clone(&self.client.state.provider);
+         let auth_manager = provider.auth_manager();
+@@ -1945,6 +1992,7 @@ impl ModelClientSession {
                  Err(ApiError::Transport(unauthorized_transport))
                      if provider.is_recoverable_auth_error(&unauthorized_transport) =>
                  {
@@ -2613,7 +2683,7 @@ index 24f2964ffe566faa7a9de34636e11a528123c6c1..cdd364f30d96b751b28a1bb59a891c1e
                      pending_retry = PendingUnauthorizedRetry::from_recovery(
                          handle_unauthorized(
                              unauthorized_transport,
-@@ -2089,6 +2106,7 @@ impl ModelClientSession {
+@@ -2089,6 +2137,7 @@ impl ModelClientSession {
                      ),
                  ],
              );
@@ -2621,7 +2691,17 @@ index 24f2964ffe566faa7a9de34636e11a528123c6c1..cdd364f30d96b751b28a1bb59a891c1e
              let stream_result = websocket_connection
                  .stream_request(
                      ws_request,
-@@ -2245,6 +2263,9 @@ impl ModelClientSession {
+@@ -2183,6 +2232,9 @@ impl ModelClientSession {
+         service_tier: Option<String>,
+         responses_metadata: &CodexResponsesMetadata,
+     ) -> Result<()> {
++        if crate::symphony_boundary::is_selected() {
++            return Err(crate::symphony_boundary::provider_boundary_unavailable());
++        }
+         if !self.client.responses_websocket_enabled() {
+             return Ok(());
+         }
+@@ -2245,6 +2297,9 @@ impl ModelClientSession {
          responses_metadata: &CodexResponsesMetadata,
          inference_trace: &InferenceTraceContext,
      ) -> Result<ResponseStream> {
@@ -2631,7 +2711,7 @@ index 24f2964ffe566faa7a9de34636e11a528123c6c1..cdd364f30d96b751b28a1bb59a891c1e
          let wire_api = self.client.state.provider.info().wire_api;
          match wire_api {
              WireApi::Responses => {
-@@ -2298,6 +2319,9 @@ impl ModelClientSession {
+@@ -2298,6 +2353,9 @@ impl ModelClientSession {
          session_telemetry: &SessionTelemetry,
          model_info: &ModelInfo,
      ) -> bool {
@@ -2703,21 +2783,10 @@ index a2b44e3f1fb6b8c3ede999ec306f5592b9a5a0b9..ba5174990dc89550794b86a80d8024f3
  pub use codex_protocol::turn_input::RecoverTurnRequest;
  pub use codex_protocol::turn_input::StartIfIdleSubmission;
 diff --git a/codex-rs/core/src/session/handlers.rs b/codex-rs/core/src/session/handlers.rs
-index c569b04ec95770768385fcafcaeee5f1aa2fc26e..7d1f644bdb44efc0ba3d2dedb0f6ca4ad18fcfaf 100644
+index c569b04ec95770768385fcafcaeee5f1aa2fc26e..0178dd3ac4d13cf6d58c0509da61135c16d36a71 100644
 --- a/codex-rs/core/src/session/handlers.rs
 +++ b/codex-rs/core/src/session/handlers.rs
-@@ -44,6 +44,10 @@ use codex_protocol::protocol::TurnAbortReason;
- use codex_protocol::protocol::WarningEvent;
- use codex_protocol::request_permissions::RequestPermissionsResponse;
- use codex_protocol::request_user_input::RequestUserInputResponse;
-+use codex_protocol::turn_input::TurnInput;
-+use codex_protocol::turn_input::TurnInputMode;
-+use codex_protocol::turn_input::TurnInputRequest;
-+use codex_protocol::user_input::UserInput;
- use codex_thread_store::PersistContext;
-
- use crate::context_manager::is_user_turn_boundary;
-@@ -288,6 +292,15 @@ pub async fn set_thread_memory_mode(sess: &Arc<Session>, sub_id: String, mode: T
+@@ -288,6 +288,15 @@ pub async fn set_thread_memory_mode(sess: &Arc<Session>, sub_id: String, mode: T
  }
 
  pub(super) async fn shutdown_session_runtime(sess: &Arc<Session>) {
@@ -2733,7 +2802,7 @@ index c569b04ec95770768385fcafcaeee5f1aa2fc26e..7d1f644bdb44efc0ba3d2dedb0f6ca4a
      let startup_prewarm = {
          let mut state = sess.state.lock().await;
          // Stop admission and take the current warmup together so resume cannot replace it.
-@@ -347,6 +360,18 @@ async fn emit_thread_stop_lifecycle(sess: &Session) {
+@@ -347,6 +356,18 @@ async fn emit_thread_stop_lifecycle(sess: &Session) {
  }
 
  pub async fn shutdown(sess: &Arc<Session>, sub_id: String) -> bool {
@@ -2752,7 +2821,7 @@ index c569b04ec95770768385fcafcaeee5f1aa2fc26e..7d1f644bdb44efc0ba3d2dedb0f6ca4a
      shutdown_session_runtime(sess).await;
      info!("Shutting down Codex instance");
      let history = sess.clone_history().await;
-@@ -450,7 +475,19 @@ pub(super) async fn submission_loop(
+@@ -450,7 +471,19 @@ pub(super) async fn submission_loop(
      loop {
          let sub = tokio::select! {
              biased;
@@ -2773,7 +2842,7 @@ index c569b04ec95770768385fcafcaeee5f1aa2fc26e..7d1f644bdb44efc0ba3d2dedb0f6ca4a
                  shutdown_received = shutdown(&sess, super::new_submission_id()).await;
                  break;
              }
-@@ -477,15 +514,36 @@ pub(super) async fn submission_loop(
+@@ -477,15 +510,36 @@ pub(super) async fn submission_loop(
                  continue;
              }
          };
@@ -2819,34 +2888,7 @@ index c569b04ec95770768385fcafcaeee5f1aa2fc26e..7d1f644bdb44efc0ba3d2dedb0f6ca4a
          let dispatch_span = submission_dispatch_span(&sub);
          let should_exit = async {
              match sub.op {
-@@ -543,11 +601,22 @@ pub(super) async fn submission_loop(
-                     mode,
-                     reply,
-                 } => {
--                    let request = WithTurnExtensionData {
--                        request: *request,
--                        turn_extension_init: sub.turn_extension_init,
-+                    let result = if crate::symphony_boundary::is_selected()
-+                        && !strict_turn_request_is_valid(
-+                            &request,
-+                            &mode,
-+                            sub.turn_extension_init.is_some(),
-+                        ) {
-+                        Err(CodexErr::InvalidRequest(
-+                            "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE".to_string(),
-+                        ))
-+                    } else {
-+                        let request = WithTurnExtensionData {
-+                            request: *request,
-+                            turn_extension_init: sub.turn_extension_init,
-+                        };
-+                        turn_input::handle(&sess, request, mode, sub.id.clone()).await
-                     };
--                    let result = turn_input::handle(&sess, request, mode, sub.id.clone()).await;
-                     let _ = reply.send(result);
-                     false
-                 }
-@@ -693,7 +762,13 @@ pub(super) async fn submission_loop(
+@@ -693,7 +747,13 @@ pub(super) async fn submission_loop(
                          .await;
                      false
                  }
@@ -2861,7 +2903,7 @@ index c569b04ec95770768385fcafcaeee5f1aa2fc26e..7d1f644bdb44efc0ba3d2dedb0f6ca4a
                  Op::Review { review_request } => {
                      review(&sess, &config, sub.id.clone(), review_request).await;
                      false
-@@ -716,24 +791,63 @@ pub(super) async fn submission_loop(
+@@ -716,19 +776,25 @@ pub(super) async fn submission_loop(
      // If the submission loop exits because the channel closed without an
      // explicit shutdown op, still run session teardown.
      if !shutdown_received {
@@ -2900,44 +2942,6 @@ index c569b04ec95770768385fcafcaeee5f1aa2fc26e..7d1f644bdb44efc0ba3d2dedb0f6ca4a
          }
      }
      debug!("Agent loop exited");
- }
-
-+fn strict_turn_request_is_valid(
-+    request: &TurnInputRequest,
-+    mode: &TurnInputMode,
-+    has_turn_extension_init: bool,
-+) -> bool {
-+    let Some(context) = crate::symphony_boundary::context() else {
-+        return false;
-+    };
-+    if context.deadline <= std::time::Instant::now()
-+        || has_turn_extension_init
-+        || *mode != TurnInputMode::StartIfIdle
-+        || request.thread_settings != Default::default()
-+        || request.start.turn_trigger.is_some()
-+        || request.start.final_output_json_schema.is_some()
-+        || request.start.service_tier.is_some()
-+        || request.start.parent_turn_id.is_some()
-+        || request.start.initiating_agent_path.is_some()
-+        || request.start.root_turn_id.is_some()
-+        || request.start.cyber_access_program.is_some()
-+        || !request.additional_context.is_empty()
-+        || request.responsesapi_client_metadata.is_some()
-+        || request.trace.is_some()
-+    {
-+        return false;
-+    }
-+    match &request.input {
-+        TurnInput::UserInput { content, client_id } if client_id.is_none() => {
-+            matches!(content.as_slice(), [UserInput::Text { text, text_elements }] if text == &context.prompt_text && text_elements.is_empty())
-+        }
-+        _ => false,
-+    }
-+}
-+
- async fn approve_guardian_denied_action(sess: &Arc<Session>, event: GuardianAssessmentEvent) {
-     if event.status != GuardianAssessmentStatus::Denied {
-         warn!(
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
 index bc086f8661f32ca94cdac8fc161c8ff86f5aaf38..f34b8d55afa78d037124e85b3d029859519d71f2 100644
 --- a/codex-rs/core/src/session/mod.rs
@@ -3225,6 +3229,40 @@ index 263f08f2f1ea43b283406c0200bcbccfa5e022a1..372f20454a8d25315c6616861b9233a7
              let (mcp_prewarm_tx, mcp_prewarm_rx) = async_channel::bounded(1);
              let sess = Arc::new(Session {
                  thread_id,
+diff --git a/codex-rs/core/src/session/startup_prewarm.rs b/codex-rs/core/src/session/startup_prewarm.rs
+index 554e69e178b937c865610b57e5ad27103658e948..399d8377f17493e7465ff800f2d7ed56b69a9e71 100644
+--- a/codex-rs/core/src/session/startup_prewarm.rs
++++ b/codex-rs/core/src/session/startup_prewarm.rs
+@@ -207,6 +207,12 @@ impl SessionStartupPrewarmHandle {
+
+ impl Session {
+     pub(crate) async fn schedule_startup_prewarm(self: &Arc<Self>, input: PrewarmInput) {
++        if crate::symphony_boundary::is_selected() {
++            if self.take_session_startup_prewarm().await.is_some() {
++                crate::symphony_boundary::mark_stop_unconfirmed();
++            }
++            return;
++        }
+         let websocket_connect_timeout = self.provider().await.websocket_connect_timeout();
+         let mut state = self.state.lock().await;
+         if state.shutting_down {
+@@ -290,6 +296,16 @@ impl Session {
+         &self,
+         cancellation_token: &CancellationToken,
+     ) -> SessionStartupPrewarmResolution {
++        if crate::symphony_boundary::is_selected() {
++            if self.take_session_startup_prewarm().await.is_some() {
++                crate::symphony_boundary::mark_stop_unconfirmed();
++                return SessionStartupPrewarmResolution::Cancelled;
++            }
++            return SessionStartupPrewarmResolution::Unavailable {
++                status: "strict_disabled",
++                prewarm_duration: None,
++            };
++        }
+         let Some(startup_prewarm) = self.take_session_startup_prewarm().await else {
+             return SessionStartupPrewarmResolution::Unavailable {
+                 status: "not_scheduled",
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
 index 496114a113a6d8474343c887b9d244dad4b5b1be..01b6a763bb8257745a164b88f8c25a5f039bc37c 100644
 --- a/codex-rs/core/src/session/tests.rs
@@ -3437,6 +3475,145 @@ index f74f5558ca87a10b9503822f208cfd43082f75c0..b7bc4583e76f5f1bd54edba7ec898236
          if tc.model_info().used_fallback_model_metadata {
              self.send_event(
                  tc,
+diff --git a/codex-rs/core/src/session/turn_input.rs b/codex-rs/core/src/session/turn_input.rs
+index be2d43d6206a149d876cc913b5a193348ef338ad..cf2de9353b10b311c3eed6f8f5e6e0143b5d3ce8 100644
+--- a/codex-rs/core/src/session/turn_input.rs
++++ b/codex-rs/core/src/session/turn_input.rs
+@@ -216,6 +216,44 @@ impl PreparedTurnInputSettings {
+     }
+ }
+
++fn strict_turn_request_is_valid(
++    session: &Session,
++    request: &TurnInputRequest,
++    mode: &TurnInputMode,
++    has_turn_extension_init: bool,
++) -> bool {
++    let Some(context) = crate::symphony_boundary::context() else {
++        return false;
++    };
++    if !session
++        .services
++        .strict_context()
++        .is_ok_and(|bound| std::ptr::eq(bound, context.as_ref()))
++        || context.deadline <= std::time::Instant::now()
++        || has_turn_extension_init
++        || *mode != TurnInputMode::StartIfIdle
++        || request.thread_settings != Default::default()
++        || request.start.turn_trigger.is_some()
++        || request.start.final_output_json_schema.is_some()
++        || request.start.service_tier.is_some()
++        || request.start.parent_turn_id.is_some()
++        || request.start.initiating_agent_path.is_some()
++        || request.start.root_turn_id.is_some()
++        || request.start.cyber_access_program.is_some()
++        || !request.additional_context.is_empty()
++        || request.responsesapi_client_metadata.is_some()
++        || request.trace.is_some()
++    {
++        return false;
++    }
++    match &request.input {
++        SubmittedTurnInput::UserInput { content, client_id } if client_id.is_none() => {
++            matches!(content.as_slice(), [UserInput::Text { text, text_elements }] if text == &context.prompt_text && text_elements.is_empty())
++        }
++        _ => false,
++    }
++}
++
+ #[tracing::instrument(
+     name = "codex.turn_input",
+     level = "trace",
+@@ -229,6 +267,18 @@ pub(super) async fn handle(
+     submission_id: String,
+ ) -> CodexResult<TurnInputSubmission> {
+     let request = request.into();
++    if crate::symphony_boundary::is_selected()
++        && !strict_turn_request_is_valid(
++            session,
++            &request.request,
++            &mode,
++            request.turn_extension_init.is_some(),
++        )
++    {
++        return Err(CodexErr::InvalidRequest(
++            "SYMPHONY_STRICT_TURN_REFUSED".into(),
++        ));
++    }
+     let result = match mode {
+         TurnInputMode::StartOrSteer => start_or_steer(session, request, submission_id).await,
+         TurnInputMode::StartIfIdle => {
+@@ -292,6 +342,11 @@ pub(super) async fn handle_recovery(
+     start_options: TurnStartOptions,
+     submission_id: String,
+ ) -> CodexResult<TurnInputSubmission> {
++    if crate::symphony_boundary::is_selected() {
++        return Err(CodexErr::InvalidRequest(
++            "SYMPHONY_STRICT_TURN_REFUSED".into(),
++        ));
++    }
+     let WithTurnExtensionData {
+         request: thread_settings,
+         turn_extension_init,
+@@ -470,10 +525,18 @@ async fn start_if_idle(
+         });
+     }
+
+-    let _admission = session.services.extensions.admit_turn_start();
++    // Selected sessions have no extension registry. Their immutable one-use
++    // admission is consumed in new_turn_with_sub_id after idle reservation.
++    let strict = crate::symphony_boundary::is_selected();
++    let _admission = if strict {
++        None
++    } else {
++        session.services.extensions.admit_turn_start()
++    };
+     // A one-shot review delegate completes its already-running parent's work.
+     // Its explicit input carries parent lineage; automatic starts do not qualify.
+-    if _admission.is_none()
++    if !strict
++        && _admission.is_none()
+         && !(kind == TurnStartKind::User
+             && start.parent_turn_id.is_some()
+             && matches!(
+@@ -561,9 +624,11 @@ async fn start_if_idle(
+     let mut task_input = merge_additional_context_input(session, additional_context).await;
+     match kind {
+         TurnStartKind::User => {
+-            session.clear_connector_selection().await;
+-            if let SubmittedTurnInput::UserInput { content, .. } = &input {
+-                turn_context.session_telemetry.user_prompt(content);
++            if !strict {
++                session.clear_connector_selection().await;
++                if let SubmittedTurnInput::UserInput { content, .. } = &input {
++                    turn_context.session_telemetry.user_prompt(content);
++                }
+             }
+             task_input.push(pending_turn_input(session, input, &turn_context.sub_id, origin).await);
+         }
+@@ -582,9 +647,19 @@ async fn start_if_idle(
+             }
+         }
+     }
+-    session
+-        .start_task(Arc::clone(&turn_context), task_input, RegularTask::new())
+-        .await;
++    if strict {
++        if let Err(error) = session
++            .start_strict_task(Arc::clone(&turn_context), task_input, RegularTask::new())
++            .await
++        {
++            session.clear_reserved_idle_turn(&turn_state).await;
++            return Err(error);
++        }
++    } else {
++        session
++            .start_task(Arc::clone(&turn_context), task_input, RegularTask::new())
++            .await;
++    }
+     Ok(TurnInputSubmission::Started {
+         turn_id: submission_id,
+         root_turn_id: turn_context.root_turn_id(),
 diff --git a/codex-rs/core/src/state/mod.rs b/codex-rs/core/src/state/mod.rs
 index 07ce5c366f1bf3695a1e7969dbbcff0ada0bf739..b16542d8b79a2650cdcaf32c9c13b2b4918eb5b8 100644
 --- a/codex-rs/core/src/state/mod.rs
@@ -3835,7 +4012,7 @@ index 0000000000000000000000000000000000000000..72ebb3226d4625661dea595a95f60f79
 +    STOP_UNCONFIRMED.load(Ordering::Acquire)
 +}
 diff --git a/codex-rs/core/src/tasks/mod.rs b/codex-rs/core/src/tasks/mod.rs
-index bfc9c13415be9fb6c25f19910bbdf4969e24483b..5067881f79d814f0cc4f5c7c386e0096b790c3f3 100644
+index bfc9c13415be9fb6c25f19910bbdf4969e24483b..dc334ecac5799ff3868204e73affe889813cd667 100644
 --- a/codex-rs/core/src/tasks/mod.rs
 +++ b/codex-rs/core/src/tasks/mod.rs
 @@ -48,6 +48,7 @@ use codex_otel::TURN_TOOL_CALL_METRIC;
@@ -3851,7 +4028,7 @@ index bfc9c13415be9fb6c25f19910bbdf4969e24483b..5067881f79d814f0cc4f5c7c386e0096
          task: T,
      ) {
 +        if crate::symphony_boundary::is_selected() {
-+            self.start_strict_task(turn_context, input, task).await;
++            let _ = self.start_strict_task(turn_context, input, task).await;
 +            return;
 +        }
          self.abort_all_tasks(TurnAbortReason::Replaced).await;
@@ -3862,30 +4039,42 @@ index bfc9c13415be9fb6c25f19910bbdf4969e24483b..5067881f79d814f0cc4f5c7c386e0096
          task: T,
      ) {
 +        if crate::symphony_boundary::is_selected() {
-+            self.start_strict_task(turn_context, input, task).await;
++            let _ = self.start_strict_task(turn_context, input, task).await;
 +            return;
 +        }
          self.activate_plugin_selection(&turn_context).await;
          // Inherited or recovered roots are applied before task start. Otherwise this
          // task owns its turn, including background work. Later mail cannot change it.
-@@ -424,6 +433,76 @@ impl Session {
+@@ -424,6 +433,81 @@ impl Session {
          turn.task = Some(running_task);
      }
 
-+    async fn start_strict_task<T: SessionTask>(
++    #[expect(
++        clippy::await_holding_invalid_type,
++        reason = "record the started turn atomically with its active reservation"
++    )]
++    pub(crate) async fn start_strict_task<T: SessionTask>(
 +        self: &Arc<Self>,
 +        turn_context: Arc<TurnContext>,
 +        input: Vec<TurnInput>,
 +        task: T,
-+    ) {
++    ) -> CodexResult<()> {
++        let refuse = || {
++            codex_protocol::error::CodexErr::InvalidRequest("SYMPHONY_STRICT_TURN_REFUSED".into())
++        };
 +        if task.kind() != TaskKind::Regular
 +            || self.services.strict_context().is_err()
-+            || task.kind() != TaskKind::Regular
 +            || turn_context.sub_id.is_empty()
 +            || !crate::symphony_boundary::is_selected()
 +        {
-+            return;
++            return Err(refuse());
 +        }
++        let mut active = self.active_turn.lock().await;
++        let turn = active
++            .as_mut()
++            .filter(|turn| turn.task.is_none())
++            .ok_or_else(refuse)?;
++        self.record_started_turn(&turn_context.sub_id, None).await;
 +        let started_at = Instant::now();
 +        let started_at_unix_ms = turn_context
 +            .turn_timing_state
@@ -3929,23 +4118,16 @@ index bfc9c13415be9fb6c25f19910bbdf4969e24483b..5067881f79d814f0cc4f5c7c386e0096
 +            _diagnostics_guard: ACTIVE_TURNS.track(),
 +            _timer: None,
 +        };
-+        let mut active = self.active_turn.lock().await;
-+        if active.is_some() {
-+            return;
-+        }
-+        *active = Some(ActiveTurn {
-+            task: Some(running_task),
-+            turn_state: Arc::new(Mutex::new(TurnState::default())),
-+        });
++        turn.task = Some(running_task);
 +        drop(active);
 +        self.set_agent_status(AgentStatus::Running);
-+        let _ = start_tx.send(());
++        start_tx.send(()).map_err(|_| refuse())
 +    }
 +
      /// Returns whether an extension has marked this thread as durably asleep.
      pub(crate) fn has_outstanding_durable_sleep(&self) -> bool {
          self.services
-@@ -547,6 +626,29 @@ impl Session {
+@@ -547,6 +631,29 @@ impl Session {
      }
 
      pub async fn abort_all_tasks(self: &Arc<Self>, reason: TurnAbortReason) {
@@ -3975,7 +4157,7 @@ index bfc9c13415be9fb6c25f19910bbdf4969e24483b..5067881f79d814f0cc4f5c7c386e0096
          let mut aborted_turn = false;
          let mut active_turn_to_clear = None;
          if let Some(mut active_turn) = self.take_active_turn(&reason).await {
-@@ -633,6 +735,11 @@ impl Session {
+@@ -633,6 +740,11 @@ impl Session {
          turn_context: Arc<TurnContext>,
          task_result: SessionTaskResult,
      ) {
@@ -3987,7 +4169,7 @@ index bfc9c13415be9fb6c25f19910bbdf4969e24483b..5067881f79d814f0cc4f5c7c386e0096
          let (last_agent_message, abort_reason) = match task_result {
              Ok(last_agent_message) => (last_agent_message, None),
              Err(err) if matches!(err.details(), CodexErrorDetails::TurnAborted) => {
-@@ -890,6 +997,91 @@ impl Session {
+@@ -890,6 +1002,91 @@ impl Session {
          }
      }
 
@@ -4982,6 +5164,79 @@ index ea4dee313edd2bdeb17aad8fb763719f7b6861c9..a2940c04c2c20998a519e49473f70f9f
                  .copy_thread_attachments(source_thread_id, thread_id)
                  .await
              {
+diff --git a/codex-rs/core/src/thread_manager_tests.rs b/codex-rs/core/src/thread_manager_tests.rs
+index c9c6fdea1b7edbbb51896472281f74bf11f6ae02..08e0f98b49154dbcf97456bbe6b3eebfa81ef89a 100644
+--- a/codex-rs/core/src/thread_manager_tests.rs
++++ b/codex-rs/core/src/thread_manager_tests.rs
+@@ -97,7 +97,7 @@ async fn live_fork_keeps_instructions_when_source_is_unloaded_during_setup() {
+     );
+     Arc::get_mut(&mut manager.state)
+         .expect("unshared manager")
+-        .user_instructions_provider = Arc::new(ParentInstructionsProvider(global.clone()));
++        .user_instructions_provider = Some(Arc::new(ParentInstructionsProvider(global.clone())));
+     let source = manager
+         .start_thread(StartThreadOptions {
+             environments: Some(Vec::new()),
+@@ -475,7 +475,13 @@ async fn thread_id_generator_does_not_replace_resumed_thread_id() {
+         .resume_legacy_thread_from_rollout(
+             config,
+             rollout_path,
+-            Arc::clone(&resumed_manager.state.auth_manager),
++            Arc::clone(
++                resumed_manager
++                    .state
++                    .auth_manager
++                    .as_ref()
++                    .expect("standard auth manager"),
++            ),
+             /*parent_trace*/ None,
+             ClientMcpExtensions::default(),
+         )
+@@ -964,7 +970,11 @@ async fn code_mode_session_provider_is_shared_across_threads() {
+     assert!(Arc::ptr_eq(&first_provider, &provider));
+     assert!(Arc::ptr_eq(
+         &first_provider,
+-        &manager.state.code_mode_session_provider
++        manager
++            .state
++            .code_mode_session_provider
++            .as_ref()
++            .expect("standard code mode provider")
+     ));
+
+     let mut completed = vec![first.thread_id, second.thread_id];
+@@ -1325,14 +1335,24 @@ async fn spawn_internal_session_preserves_parent_lineage_without_forking_history
+     extensions.thread_lifecycle_contributor(parent_contributor.clone());
+     extensions.mcp_server_contributor(parent_contributor);
+     let manager_state = Arc::get_mut(&mut manager.state).expect("unshared thread manager state");
+-    manager_state.extensions = Arc::new(extensions.build());
+-    manager_state.mcp_manager = Arc::new(McpManager::new_with_extensions(
+-        Arc::clone(&manager_state.plugins_manager),
+-        Arc::clone(&manager_state.extensions),
+-        manager_state.mcp_manager.codex_apps_tools_cache(),
+-    ));
++    let extensions = Arc::new(extensions.build());
++    manager_state.extensions = Some(Arc::clone(&extensions));
++    manager_state.mcp_manager = Some(Arc::new(McpManager::new_with_extensions(
++        Arc::clone(
++            manager_state
++                .plugins_manager
++                .as_ref()
++                .expect("standard plugins manager"),
++        ),
++        extensions,
++        manager_state
++            .mcp_manager
++            .as_ref()
++            .expect("standard MCP manager")
++            .codex_apps_tools_cache(),
++    )));
+     let parent_provider = Arc::new(ParentInstructionsProvider(parent_instructions.clone()));
+-    manager_state.user_instructions_provider = parent_provider.clone();
++    manager_state.user_instructions_provider = Some(parent_provider.clone());
+     let parent = manager
+         .start_thread(StartThreadOptions {
+             metrics_service_name: Some("codex_work_desktop".to_string()),
 diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec_plan.rs
 index 7e2213456dcb0e5b2784f848c0fca061e7c2e677..8de180095680374ee635c58348f2251acb975c5b 100644
 --- a/codex-rs/core/src/tools/spec_plan.rs

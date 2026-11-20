@@ -106,7 +106,11 @@ int main(int argc, char **argv) {
             if (!strcmp(fault, "cleanup_failure")) event("QUARANTINED", peer.pid);
             else {
                 while (faccessat(root_fd, "guard-reaped", F_OK, 0) && monotonic_ms() < authority.deadline) usleep(1000);
-                if (faccessat(root_fd, "guard-reaped", F_OK, 0) == 0 && faccessat(root_fd, "controlled-refusal", F_OK, 0) == 0) {
+                bool schema2 = !strcmp(authority.profile, SCHEMA2_PROFILE);
+                const char *terminal = schema2 ? "schema2-clean-exit" : "controlled-refusal";
+                if (faccessat(root_fd, "guard-reaped", F_OK, 0) == 0 &&
+                    (!schema2 || faccessat(root_fd, "channel-closed", F_OK, 0) == 0) &&
+                    faccessat(root_fd, terminal, F_OK, 0) == 0) {
                 if (!event("DISPOSAL_VERIFIED", peer.pid)) marker("disposed");
                 } else event("QUARANTINED", peer.pid);
             }

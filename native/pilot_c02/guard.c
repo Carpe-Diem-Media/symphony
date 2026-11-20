@@ -32,6 +32,67 @@ static int sealed_manifest(const char *fault) {
     }
     return fd;
 }
+/* Seal the exact nonsecret manifest identified by the synthetic permit. */
+static int sealed_schema2_manifest(void) {
+    int fd = openat(root_fd, "manifest.json", O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+    struct stat st;
+    if (fd < 0 || fstat(fd, &st) || !S_ISREG(st.st_mode) || st.st_nlink != 1 ||
+        st.st_uid != geteuid() || (st.st_mode & 0777) != 0600 || st.st_size < 2 || st.st_size > 131072) {
+        if (fd >= 0) close(fd);
+        return -1;
+    }
+    int sealed = (int)syscall(SYS_memfd_create, "symphony-schema2-manifest", MFD_CLOEXEC | MFD_ALLOW_SEALING);
+    if (sealed < 0) { close(fd); return -1; }
+    char bytes[4096], digest[65];
+    size_t total = 0;
+    ssize_t n;
+    while ((n = read(fd, bytes, sizeof(bytes))) > 0) {
+        total += (size_t)n;
+        if (total > 131072 || monotonic_ms() >= authority.deadline || write(sealed, bytes, (size_t)n) != n) break;
+    }
+    close(fd);
+    if (n != 0 || total != (size_t)st.st_size ||
+        fcntl(sealed, F_ADD_SEALS, F_SEAL_WRITE | F_SEAL_GROW | F_SEAL_SHRINK | F_SEAL_SEAL) ||
+        digest_fd(sealed, digest) || strcmp(digest, authority.manifest) || lseek(sealed, 0, SEEK_SET) < 0) {
+        close(sealed);
+        return -1;
+    }
+    return sealed;
+}
+
+/* The Rust holder owns RPC admission. Forward only bounded pipe data until EOF
+ * or the original execution deadline. The guard never receives material. */
+static bool relay_schema2(int *input, int output, pid_t child, unsigned long long deadline,
+                          bool *stop_requested) {
+    size_t sent = 0, received = 0;
+    char bytes[4096];
+    for (;;) {
+        unsigned long long now = monotonic_ms();
+        if (now >= deadline) return false;
+        struct pollfd fds[] = {{.fd = *input >= 0 ? 0 : -1, .events = POLLIN}, {.fd = output, .events = POLLIN}};
+        int ready = poll(fds, 2, (int)(deadline - now));
+        if (ready < 0 && errno == EINTR) continue;
+        if (ready <= 0) return false;
+        if (fds[0].revents & (POLLIN | POLLHUP)) {
+            ssize_t size = read(0, bytes, sizeof(bytes));
+            if (size == 0) {
+                if (event("TERMINATION_REQUESTED", child)) return false;
+                *stop_requested = true;
+                close(*input);
+                *input = -1;
+            }
+            else if (size < 0 || (sent += (size_t)size) > 262144 ||
+                !wait_fd(*input, POLLOUT, deadline) || write(*input, bytes, (size_t)size) != size) return false;
+        }
+        if (fds[1].revents & (POLLIN | POLLHUP)) {
+            ssize_t size = read(output, bytes, sizeof(bytes));
+            if (size == 0) return *input == -1;
+            if (size < 0 || (received += (size_t)size) > 32768 ||
+                !wait_fd(1, POLLOUT, deadline) || write(1, bytes, (size_t)size) != size) return false;
+        }
+        if ((fds[0].revents | fds[1].revents) & (POLLERR | POLLNVAL)) return false;
+    }
+}
 static void bootstrap(const char *root, const char *fault, int image, int manifest, int input, int output, pid_t guard_pid) {
     if (prctl(PR_SET_PDEATHSIG, SIGKILL) || getppid() != guard_pid) _exit(82);
     if (!strcmp(fault, "bootstrap_failure") || !strcmp(fault, "before_materialization")) _exit(83);
@@ -108,7 +169,9 @@ int main(int argc, char **argv) {
         event("HOST_PERMISSION_VALIDATED", getpid())) return 73;
     int image = sealed_holder(argv[2], argv[3], pinned);
     if (image < 0 || strcmp(argv[3], authority.holder)) { event("HOLDER_IDENTITY_REFUSED", 0); return 0; }
-    int manifest = pinned ? sealed_manifest(fault) : -1;
+    bool schema2 = !strcmp(authority.profile, SCHEMA2_PROFILE);
+    if (schema2 && !pinned) { close(image); return 73; }
+    int manifest = schema2 ? sealed_schema2_manifest() : (pinned ? sealed_manifest(fault) : -1);
     if (pinned && manifest < 0) { close(image); event("MANIFEST_REFUSED", 0); return 0; }
     int input[2], output[2];
     if (pipe2(input, O_CLOEXEC) || pipe2(output, O_CLOEXEC)) return 74;
@@ -117,10 +180,19 @@ int main(int argc, char **argv) {
     if (child == 0) bootstrap(root, fault, image, manifest, input[0], output[1], guard_pid);
     close(image); if (manifest >= 0) close(manifest); close(input[0]); close(output[1]);
     if (child < 0) { event("QUARANTINED", 0); return 0; }
+    bool clean_shutdown = false;
+    bool stop_requested = false;
     if (event("BOOTSTRAP_CREATED", child)) goto stopping;
 
     unsigned long long execution_deadline = authority.deadline > 200 ? authority.deadline - 200 : authority.deadline;
-    char line[2048];
+    char line[4096];
+    if (schema2) {
+        while (faccessat(root_fd, "channel-closed", F_OK, 0) && monotonic_ms() < execution_deadline) usleep(1000);
+        if (faccessat(root_fd, "channel-closed", F_OK, 0) == 0 &&
+            !event("SCHEMA2_CHANNEL_CLOSED_BEFORE_RPC", child))
+            clean_shutdown = relay_schema2(&input[1], output[0], child, execution_deadline, &stop_requested);
+        goto stopping;
+    }
     bool ready = read_line(output[0], line, sizeof(line), execution_deadline) == 0;
     if (ready && !strncmp(line, "{\"ready\":true,", 14)) {
         while (faccessat(root_fd, "channel-closed", F_OK, 0) && monotonic_ms() < execution_deadline) usleep(1000);
@@ -148,14 +220,20 @@ int main(int argc, char **argv) {
         }
     }
 stopping:
-    event("TERMINATION_REQUESTED", child);
-    close(input[1]); close(output[0]);
+    if (!stop_requested) event("TERMINATION_REQUESTED", child);
+    if (input[1] >= 0) close(input[1]);
+    close(output[0]);
     /* Kill only the exact direct child. PID reuse is impossible before waitpid. */
-    kill(child, SIGKILL);
+    if (!clean_shutdown) kill(child, SIGKILL);
     int status = 0;
     while (monotonic_ms() < authority.deadline) {
         pid_t r = waitpid(child, &status, WNOHANG);
-        if (r == child) { if (!event("GUARD_REAPED", child)) marker("guard-reaped"); break; }
+        if (r == child) {
+            if (schema2 && clean_shutdown && WIFEXITED(status) && WEXITSTATUS(status) == 0 &&
+                !event("SCHEMA2_CLEAN_EXIT", child)) marker("schema2-clean-exit");
+            if (!event("GUARD_REAPED", child)) marker("guard-reaped");
+            break;
+        }
         if (r < 0 && errno != EINTR) break;
         usleep(1000);
     }

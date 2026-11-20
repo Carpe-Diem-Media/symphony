@@ -48,13 +48,17 @@ def proc_start(pid):
     return int(text[text.rindex(")") + 2:].split()[19])
 
 
-def run(root, binding, attempt, fault, duration, selected_holder=None, pinned_codex=False):
+def run(root, binding, attempt, fault, duration, selected_holder=None, pinned_codex=False,
+        *, schema2_manifest=None, drive_schema2=None):
     if len(binding) != 64 or any(c not in "0123456789abcdef" for c in binding):
         raise ValueError("Invalid binding")
     if not attempt or len(attempt) > 128 or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in attempt):
         raise ValueError("Invalid attempt")
     if fault not in FAULTS or not 500 <= duration <= 5000:
         raise ValueError("Invalid synthetic test case")
+    schema2 = schema2_manifest is not None
+    if schema2 != (drive_schema2 is not None) or (schema2 and not pinned_codex):
+        raise ValueError("Schema2 requires the pinned holder and an explicit synthetic RPC driver")
     root = root.resolve()
     os.chmod(root, 0o700)
     if (root / "permission").exists() or (root / "events.jsonl").exists():
@@ -75,6 +79,23 @@ def run(root, binding, attempt, fault, duration, selected_holder=None, pinned_co
     env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
     start = time.monotonic()
     deadline = start + duration / 1000
+    manifest_digest = None
+    if schema2:
+        manifest = dict(schema2_manifest, deadline_ms=int(deadline * 1000))
+        if (manifest["binding"], manifest["attempt"], manifest["holder_sha256"]) != (binding, attempt, digest(holder)):
+            raise ValueError("Schema2 manifest identity does not match its native attempt")
+        raw = json.dumps(manifest, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        manifest_digest = hashlib.sha256(raw).hexdigest()
+        fd = os.open(root / "manifest.json", os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        directory = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
     host = subprocess.Popen([str(host_path), str(root), fault, binding, attempt], stdin=subprocess.DEVNULL,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     guard = None
@@ -83,6 +104,8 @@ def run(root, binding, attempt, fault, duration, selected_holder=None, pinned_co
     guard_pidfd = None
     controls = {}
     native_exec = False
+    protocol = None
+    protocol_verified = False
     try:
         if read_line(host.stdout, start + 2) != "HOST_LISTENING":
             raise RuntimeError("Native synthetic owner unavailable")
@@ -104,8 +127,11 @@ def run(root, binding, attempt, fault, duration, selected_holder=None, pinned_co
         if fault != "missing_permit":
             holder_hash = "0" * 64 if fault == "substituted_holder" else digest(holder)
             guard_start = proc_start(actual_guard_pid) + (1 if fault == "wrong_peer" else 0)
-            fields = ["C02_SYNTHETIC_NATIVE_V1", binding, attempt, holder_hash, digest(guard_path), str(actual_guard_pid),
+            profile = "C02_SYNTHETIC_SCHEMA2_V1" if schema2 else "C02_SYNTHETIC_NATIVE_V1"
+            fields = [profile, binding, attempt, holder_hash, digest(guard_path), str(actual_guard_pid),
                       str(guard_start), str(int(deadline * 1000))]
+            if schema2:
+                fields.append(manifest_digest)
             fd = os.open(root / "permission", os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
             with os.fdopen(fd, "w") as stream:
                 stream.write("\n".join(fields) + "\n")
@@ -123,6 +149,15 @@ def run(root, binding, attempt, fault, duration, selected_holder=None, pinned_co
                 raise RuntimeError("Native holder identity/readiness mismatch")
             controls = record["controls"]
             native_exec = True
+            if schema2 and fault not in {"launcher_loss", "parent_loss"}:
+                try:
+                    protocol = drive_schema2(guard.stdin, guard.stdout, deadline - .2)
+                    protocol_verified = protocol is not None
+                except (OSError, ValueError, KeyError, TimeoutError, AssertionError):
+                    # Retain consumption and quarantine. Never retry the same turn.
+                    protocol_verified = False
+                finally:
+                    guard.stdin.close()
             if fault in {"launcher_loss", "parent_loss"}:
                 # Kill the actual native guard for launcher loss. For parent
                 # loss kill its real parent process; PR_SET_PDEATHSIG must kill
@@ -133,6 +168,11 @@ def run(root, binding, attempt, fault, duration, selected_holder=None, pinned_co
                     parent_loss_verified = (actual_guard_pid != guard.pid and guard.returncode == -signal.SIGKILL
                                             and bool(select.select([guard_pidfd], [], [], .4)[0]))
         guard.wait(timeout=max(.2, deadline - time.monotonic() + .3))
+        if schema2 and protocol_verified:
+            # The relay has exited. Unexpected trailing protocol data invalidates
+            # the claim even when native process and channel disposal succeeded.
+            if not select.select([guard.stdout], [], [], 0)[0] or os.read(guard.stdout.fileno(), 1):
+                protocol_verified = False
         # Before materialization, no client may have connected. Stop only this
         # exact native owner process instead of waiting its startup interval.
         if not (root / "consumed").exists() and host.poll() is None:
@@ -162,13 +202,22 @@ def run(root, binding, attempt, fault, duration, selected_holder=None, pinned_co
     else:
         replay_refused = (root / "permission").exists() and guard is not None and guard.poll() is not None
     stop = "TERMINATION_VERIFIED" in states
-    disposition = "CONTROLLED_REFUSAL" if "DISPOSAL_VERIFIED" in states else ("QUARANTINED" if consumed else "REFUSED")
+    disposed = "DISPOSAL_VERIFIED" in states
+    if schema2 and (guard is None or guard.returncode != 0 or host.returncode != 0):
+        disposed = False
+    disposition = ("CONTROLLED_REFUSAL" if disposed and (not schema2 or protocol_verified)
+                   else "QUARANTINED" if consumed else "REFUSED")
     return {"binding": binding, "attempt": attempt, "disposition": disposition, "native_exec": native_exec,
             "stop_verified": stop, "inference_succeeded": False, "controls": controls, "consumed": consumed,
             "materialization_count": states.count("SYNTHETIC_MATERIALIZED"), "replay_refused": replay_refused,
             "elapsed_ms": int((time.monotonic() - start) * 1000), "evidence_root": str(root),
             "parent_loss_verified": parent_loss_verified, "pinned_codex": pinned_codex, "qualified_host": False,
-            "disposal_scope": "synthetic_process_and_channel_only"}
+            "disposal_scope": "synthetic_process_and_channel_only",
+            **({"schema2": True, "scope": "SYNTHETIC_NATIVE_NOT_ROUTED_C01_QUALIFICATION",
+                "protocol_evidence": protocol, "protocol_verified": protocol_verified,
+                "native_disposal_verified": disposed, "manifest_sha256": manifest_digest,
+                "guard_exit_code": guard.returncode if guard else None, "host_exit_code": host.returncode}
+               if schema2 else {})}
 
 
 def main():

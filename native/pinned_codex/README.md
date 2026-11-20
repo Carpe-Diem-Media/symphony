@@ -6,21 +6,20 @@ This patch builds the actual `codex-app-server` target from Codex 0.162.1, commi
 ordinary entry path. It is a partial protected holder, not operational SIWC custody.
 Production Symphony C02 still refuses execution until its host dependencies qualify.
 
-## Slice A compilation checkpoint
+## Slice A offline turn
 
-The 39-entry offline source authority includes strict session construction and
-its service consumers. The patch has an explicit schema2 synthetic feature,
-immutable context validation, a real ThreadManager thread constructor and a
-bridge to the existing core turn-input operation. Standard services are absent,
-not constructed and shut down. Schema1 retains its earlier refusal contract.
+The approved 41-entry source inventory includes the core turn-input consumer and
+the ThreadManager test fixtures. The selected schema2 profile validates its sealed
+context, starts a thread through ThreadManager and registers RegularTask through
+normal core turn admission. The strict branch skips the absent extension registry
+and uses the existing one-use turn latch. It registers the task in the existing
+idle reservation. A registration failure leaves the latch consumed.
 
-Compilation and thread creation do not establish a functioning turn. The actual
-turn-input implementation still unconditionally accesses the standard extension
-registry in `core/src/session/turn_input.rs`. That file is outside the approved
-39-entry inventory. The strict representation cannot satisfy this access. The
-candidate must remain blocked until an independently authorized correction and
-actual failed-terminal/stop regressions close this consumer dependency. No dummy
-registry or duplicate turn-admission path is supplied to conceal it.
+The actual offline app-server emitted a nonretryable
+`SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE` error and a correlated failed terminal.
+The native guard and host independently recorded child reaping, pidfd death and
+channel closure. Missing stop observation results in quarantine with the consumed
+marker retained. The synthetic fixture always reports `qualified_host=false`.
 
 The previously accepted patch SHA-256 is
 `59a9d0ebabd18de96f7f6552b307183fb11bc091b1152b04aef2c34f1255148a`, with patched
@@ -152,10 +151,8 @@ remain unqualified. C03's operational PID-namespace proof is unchanged; these
 synthetic tests do not substitute for it. Swap/core-collector/hibernation host
 qualification is also not established by this build.
 
-The schema1 branch refuses before thread/turn execution. Schema2 does not enable
-provider egress and remains blocked before the required core terminal outcome. The installed ordinary Codex CLI is untouched. No signing, installation,
-enrollment, publication, resource adoption, Gate2 activation or live pilot is implied.
-
+Schema1 retains its controlled refusal before turn execution. The explicit schema2
+test build admits one synthetic turn and refuses before provider transport.
 
 ### Reproduction and evidence limits
 
@@ -174,27 +171,19 @@ Negative cases cover context drift, unsupported schema, expiry and protocol
 mutation/replay. Missing deterministic cancellation coverage and an absent
 feature-disabled executable are reported as blocked checks, never passing proof.
 
-The schema2 direct-binary fixture does not exercise native host materialization
-or C01 dispatch consumption. Schema1 native tests remain compatibility evidence.
-Full schema2 bootstrap/host integration, retained C01 consumption and namespace
-stop proof remain outstanding. Counter unit controls prove recorder wiring only;
-zero counters on a path that never reaches the client do not prove client-entry
-coverage or authenticated inference.
+The schema2 native fixture binds the manifest digest to the local permit, relays
+bounded pipe data after materialization channel closure and correlates actual core
+events with independent stop observations. Its consumed marker is synthetic.
+Routed C01 consumption and C03 namespace proof rely on the separately governed
+pilot integration.
 
-The crate-private state re-export and two standard-service test-fixture migrations
-preserve the existing fixture assertions. The production app-server builds,
-but the final core lib-test compilation reports nine type errors in the unchanged
-`core/src/thread_manager_tests.rs`. Its ordinary fixture code still expects
-concrete manager services rather than the selected optional representation.
-That test file is also outside the approved inventory. The focused counter and
-fixture tests cannot execute on this final candidate until a separately
-approved fixture migration preserves their original assertions. Clippy stops
-at two unchanged upstream `path-uri` warnings under the development compiler;
-no lint rule is relaxed. Native schema1 compatibility and the 125 focused Elixir
-regressions pass, while the actual Slice A module has ten passes, three failed
-turn cases and one blocked cancellation case. None constitutes Slice A acceptance.
- Normal non-selected behavior retains
-standard service construction. `Deref`/`DerefMut` compatibility may still panic
-if strict execution touches standard fields; that is a known defect, not an
-accepted guard. No functional Slice A acceptance or operational qualification is
-claimed by this checkpoint.
+The crate-private state re-export, two standard session test fixtures and the
+affected ThreadManager fixtures preserve the ordinary test assertions. The
+selected route uses checked access to strict session services. The standard
+compatibility Deref still panics if called on a strict session.
+
+Independent review and full R1 regression coverage remain pending. Direct-client
+entry probes and deterministic in-flight cancellation require separate evidence.
+Counter controls test recorder wiring. Zero effects on the admitted turn do not
+establish behavior for client entry points that the turn never reached. Clippy's
+two development-toolchain failures are on unchanged upstream path-uri lines.
