@@ -72,9 +72,9 @@ if Mix.env() == :test do
     def request(%__MODULE__{request: request}), do: request
 
     @doc "Accepts one exact frame. Fault points are fixed synthetic persistence and process-loss tests."
-    @spec invoke(t(), binary(), atom() | {:pause, atom(), pid()}) :: {:ok, map()} | {:error, atom()}
     def invoke(binding, frame, fault \\ :none)
 
+    @spec invoke(t(), binary(), atom() | {:pause, atom(), pid()}) :: {:ok, map()} | {:error, atom()}
     def invoke(%__MODULE__{} = binding, frame, fault) do
       with :ok <- validate_fault(fault),
            {:ok, path} when path == binding.path <- slot_path(binding.fixture),
