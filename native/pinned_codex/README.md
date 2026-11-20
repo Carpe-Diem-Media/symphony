@@ -168,8 +168,10 @@ aborted on turn submission; its failed output and identity remain evidence.
 attempt. Positive assertions require real thread and turn identifiers, a core
 error, failed terminal status, no final answer and positive pidfd stop evidence.
 Negative cases cover context drift, unsupported schema, expiry and protocol
-mutation/replay. Missing deterministic cancellation coverage and an absent
-feature-disabled executable are reported as blocked checks, never passing proof.
+mutation/replay. The sealed schema2 test control can pause the real task before
+sampling. The driver waits for the core turn-start event, interrupts the same
+thread and turn, and requires the interrupted terminal and independent native
+stop observations. An elapsed deadline without interrupt is quarantined.
 
 The schema2 native fixture binds the manifest digest to the local permit, relays
 bounded pipe data after materialization channel closure and correlates actual core
@@ -182,8 +184,14 @@ affected ThreadManager fixtures preserve the ordinary test assertions. The
 selected route uses checked access to strict session services. The standard
 compatibility Deref still panics if called on a strict session.
 
-Independent review and full R1 regression coverage remain pending. Direct-client
-entry probes and deterministic in-flight cancellation require separate evidence.
-Counter controls test recorder wiring. Zero effects on the admitted turn do not
-establish behavior for client entry points that the turn never reached. Clippy's
-two development-toolchain failures are on unchanged upstream path-uri lines.
+Core's focused tests exercise auth, HTTP construction, both stream entries,
+WebSocket prewarm and fallback with a task-local detector scope. The positive
+controls verify the detector records an effect when invoked. Startup and
+completion tests cover unexpected prewarm state, absent strict services, pending
+mail, and step capture. The actual binary runs provide the protected runtime
+and core event evidence.
+
+The existing routed adapter selects the earlier synthetic holder exercise. Its
+C01 and C03 fixture results do not establish routed schema2 integration. The
+approved Slice A inventory contains no Elixir adapter or test file. Clippy's
+prior two development-toolchain failures are on unchanged upstream path-uri lines.

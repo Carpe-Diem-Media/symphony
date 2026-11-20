@@ -106,6 +106,7 @@ def run(root, binding, attempt, fault, duration, selected_holder=None, pinned_co
     native_exec = False
     protocol = None
     protocol_verified = False
+    terminal = None
     try:
         if read_line(host.stdout, start + 2) != "HOST_LISTENING":
             raise RuntimeError("Native synthetic owner unavailable")
@@ -152,8 +153,10 @@ def run(root, binding, attempt, fault, duration, selected_holder=None, pinned_co
             if schema2 and fault not in {"launcher_loss", "parent_loss"}:
                 try:
                     protocol = drive_schema2(guard.stdin, guard.stdout, deadline - .2)
-                    protocol_verified = protocol is not None
-                except (OSError, ValueError, KeyError, TimeoutError, AssertionError):
+                    if protocol and protocol[-1]["method"] == "turn/completed":
+                        terminal = protocol[-1]["params"]["turn"]["status"]
+                        protocol_verified = terminal in {"failed", "interrupted"}
+                except (OSError, ValueError, KeyError, IndexError, TypeError, TimeoutError, AssertionError):
                     # Retain consumption and quarantine. Never retry the same turn.
                     protocol_verified = False
                 finally:
@@ -205,8 +208,10 @@ def run(root, binding, attempt, fault, duration, selected_holder=None, pinned_co
     disposed = "DISPOSAL_VERIFIED" in states
     if schema2 and (guard is None or guard.returncode != 0 or host.returncode != 0):
         disposed = False
-    disposition = ("CONTROLLED_REFUSAL" if disposed and (not schema2 or protocol_verified)
-                   else "QUARANTINED" if consumed else "REFUSED")
+    if disposed and (not schema2 or protocol_verified):
+        disposition = "INTERRUPTED" if terminal == "interrupted" else "CONTROLLED_REFUSAL"
+    else:
+        disposition = "QUARANTINED" if consumed else "REFUSED"
     return {"binding": binding, "attempt": attempt, "disposition": disposition, "native_exec": native_exec,
             "stop_verified": stop, "inference_succeeded": False, "controls": controls, "consumed": consumed,
             "materialization_count": states.count("SYNTHETIC_MATERIALIZED"), "replay_refused": replay_refused,

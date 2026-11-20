@@ -2017,10 +2017,10 @@ index 0000000000000000000000000000000000000000..4d267ce5235625872e214c2523af3bbf
 +}
 diff --git a/codex-rs/app-server/src/symphony_session.rs b/codex-rs/app-server/src/symphony_session.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..bf7886b6e0f094fb4681b129fd234460eb5ffc1b
+index 0000000000000000000000000000000000000000..4ed324fadae8026f71145a319ef67da59c73d0d6
 --- /dev/null
 +++ b/codex-rs/app-server/src/symphony_session.rs
-@@ -0,0 +1,494 @@
+@@ -0,0 +1,501 @@
 +//! Selected synthetic protocol bridge. This never enters generic app-server startup.
 +//!
 +//! Admission is one-way: initialize -> initialized -> thread -> turn -> actual
@@ -2115,6 +2115,7 @@ index 0000000000000000000000000000000000000000..bf7886b6e0f094fb4681b129fd234460
 +            "workspace",
 +            "home",
 +            "codex_home",
++            "wait_for_interrupt",
 +        ],
 +    )?;
 +    let digest = text(&value, "context_digest")?;
@@ -2163,6 +2164,11 @@ index 0000000000000000000000000000000000000000..bf7886b6e0f094fb4681b129fd234460
 +        context_digest: digest,
 +        model_catalog: value.get("model_catalog").cloned().ok_or(REFUSED)?,
 +        deadline: Instant::now() + remaining(deadline)?,
++        wait_for_interrupt: match value.get("wait_for_interrupt") {
++            None => false,
++            Some(Value::Bool(value)) => *value,
++            Some(_) => return Err("SYMPHONY_CONTEXT_INVALID"),
++        },
 +    };
 +    install_context(context).map_err(|_| "SYMPHONY_CONTEXT_INVALID")
 +}
@@ -2477,7 +2483,8 @@ index 0000000000000000000000000000000000000000..bf7886b6e0f094fb4681b129fd234460
 +                                        actual.started_at, actual.completed_at, actual.duration_ms)}}), deadline)?;
 +                                break;
 +                            }
-+                            EventMsg::TurnAborted(actual) if started && actual.turn_id.as_deref() == Some(&turn_id) => {
++                            EventMsg::TurnAborted(actual) if started && !error_seen && actual.error.is_none()
++                                && actual.turn_id.as_deref() == Some(&turn_id) => {
 +                                emit(json!({"method":"turn/completed","params":{"threadId":thread_id,
 +                                    "turn":wire_turn(turn_id.clone(), actual.root_turn_id,
 +                                        codex_app_server_protocol::TurnStatus::Interrupted, actual.error,
@@ -2516,7 +2523,7 @@ index 0000000000000000000000000000000000000000..bf7886b6e0f094fb4681b129fd234460
 +    outcome
 +}
 diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
-index 24f2964ffe566faa7a9de34636e11a528123c6c1..bee562b739c103d83841d6fb7cc298bfa07e1b43 100644
+index 24f2964ffe566faa7a9de34636e11a528123c6c1..d248acbb7ee20245cd083f52e7ee1d3efdbf6957 100644
 --- a/codex-rs/core/src/client.rs
 +++ b/codex-rs/core/src/client.rs
 @@ -656,10 +656,14 @@ impl ModelClient {
@@ -2721,6 +2728,244 @@ index 24f2964ffe566faa7a9de34636e11a528123c6c1..bee562b739c103d83841d6fb7cc298bf
          let activated = self
              .client
              .force_http_fallback(session_telemetry, model_info);
+@@ -2959,3 +3017,237 @@ impl WebsocketTelemetry for ApiTelemetry {
+ #[cfg(test)]
+ #[path = "client_tests.rs"]
+ mod tests;
++
++#[cfg(test)]
++mod symphony_client_entry_tests {
++    use super::*;
++
++    fn model_client() -> ModelClient {
++        let mut provider = codex_model_provider_info::create_oss_provider_with_base_url(
++            "https://symphony.invalid/v1",
++            codex_model_provider_info::WireApi::Responses,
++        );
++        provider.supports_websockets = true;
++        ModelClient::new(
++            /*auth_manager*/ None,
++            codex_login::auth::AgentIdentityAuthPolicy::JwtOnly,
++            ThreadId::new(),
++            provider,
++            SessionSource::Cli,
++            "test_originator".to_string(),
++            /*model_verbosity*/ None,
++            /*content_item_kinds_enabled*/ true,
++            /*reasoning_effort_override_enabled*/ false,
++            /*enable_request_compression*/ false,
++            /*include_timing_metrics*/ false,
++            /*beta_features_header*/ None,
++            /*concurrent_reasoning_summaries_enabled*/ false,
++            /*attestation_provider*/ None,
++            HttpClientFactory::new(codex_http_client::OutboundProxyPolicy::ReqwestDefault),
++            codex_model_provider::WorkspaceRoutingContext::new(
++                "https://symphony.invalid/backend-api".into(),
++            ),
++            Vec::new(),
++        )
++    }
++
++    fn model_info() -> ModelInfo {
++        serde_json::from_value(serde_json::json!({
++            "slug": "gpt-test",
++            "display_name": "gpt-test",
++            "description": "desc",
++            "default_reasoning_level": "medium",
++            "supported_reasoning_levels": [{"effort": "medium", "description": "medium"}],
++            "shell_type": "shell_command",
++            "visibility": "list",
++            "supported_in_api": true,
++            "priority": 1,
++            "upgrade": null,
++            "model_messages": null,
++            "support_verbosity": false,
++            "default_verbosity": null,
++            "apply_patch_tool_type": null,
++            "truncation_policy": {"mode": "bytes", "limit": 10000},
++            "supports_image_detail_original": false,
++            "context_window": 272000,
++            "auto_compact_token_limit": null,
++            "experimental_supported_tools": []
++        }))
++        .expect("deserialize inert probe model info")
++    }
++
++    #[tokio::test]
++    async fn selected_client_auth_and_prewarm_entries_refuse_before_provider_calls() {
++        let client = model_client();
++        let mut session = client.new_session();
++        let info = model_info();
++        let telemetry = SessionTelemetry::new(
++            client.state.thread_id,
++            "gpt-test",
++            "gpt-test",
++            None,
++            None,
++            None,
++            "test-originator".to_string(),
++            false,
++            "test-terminal".to_string(),
++            SessionSource::Cli,
++        );
++        let metadata = crate::responses_metadata::CodexResponsesMetadata::new(
++            "test-installation".to_string(),
++            client.state.thread_id.to_string(),
++            client.state.thread_id.to_string(),
++            "test-window".to_string(),
++        );
++        let prompt = Prompt::default();
++        let inference_trace = InferenceTraceContext::disabled();
++        let api_provider = client
++            .state
++            .provider
++            .info()
++            .to_api_provider(None)
++            .expect("inert endpoint metadata");
++        assert!(client.responses_websocket_enabled());
++
++        let auth: SharedAuthProvider =
++            Arc::new(codex_model_provider::BearerAuthProvider::default());
++        let headers = ApiHeaderMap::new();
++        let auth_context = AuthRequestTelemetryContext::new(
++            None,
++            auth.as_ref(),
++            None,
++            PendingUnauthorizedRetry::default(),
++        );
++        crate::symphony_boundary::with_test_selection(async {
++            assert!(!client.responses_websocket_enabled());
++            assert_eq!(
++                session.stream(
++                    &prompt, &info, &telemetry, None, ReasoningSummaryConfig::default(), None,
++                    &metadata, &inference_trace,
++                ).await.err().expect("selected public model stream must refuse").to_string(),
++                "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE"
++            );
++            assert!(matches!(
++                client.connect_websocket(
++                    &telemetry, api_provider.clone(), Arc::clone(&auth), &metadata,
++                    auth_context.clone(), RequestRouteTelemetry::for_endpoint("responses"), &headers,
++                ).await,
++                Err(ApiError::InvalidRequest { message }) if message == "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE"
++            ));
++            assert!(matches!(
++                session.websocket_connection(WebsocketConnectParams {
++                    session_telemetry: &telemetry,
++                    api_provider: api_provider.clone(),
++                    auth_revision: None,
++                    api_auth: Arc::clone(&auth),
++                    auth_owner_generation: None,
++                    responses_metadata: &metadata,
++                    auth_context,
++                    request_route_telemetry: RequestRouteTelemetry::for_endpoint("responses"),
++                    responses_headers: &headers,
++                }).await,
++                Err(ApiError::InvalidRequest { message }) if message == "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE"
++            ));
++            assert_eq!(
++                client.prewarm_auth().await.unwrap_err().to_string(),
++                "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE"
++            );
++            assert_eq!(
++                session
++                    .stream_responses_api(
++                        &prompt,
++                        &info,
++                        &telemetry,
++                        None,
++                        ReasoningSummaryConfig::default(),
++                        None,
++                        &metadata,
++                        &inference_trace,
++                    )
++                    .await
++                    .err()
++                    .expect("selected HTTP response stream must refuse")
++                    .to_string(),
++                "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE"
++            );
++            // Both stream entries refuse before their retry and provider transport loops.
++            assert_eq!(
++                session
++                    .stream_responses_websocket(
++                        &prompt,
++                        &info,
++                        &telemetry,
++                        None,
++                        ReasoningSummaryConfig::default(),
++                        None,
++                        &metadata,
++                        /*warmup*/ false,
++                        None,
++                        &inference_trace,
++                    )
++                    .await
++                    .err()
++                    .expect("selected websocket stream must refuse")
++                    .to_string(),
++                "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE"
++            );
++            assert_eq!(
++                session
++                    .prewarm_websocket(
++                        &prompt,
++                        &info,
++                        &telemetry,
++                        None,
++                        ReasoningSummaryConfig::default(),
++                        None,
++                        &metadata,
++                    )
++                    .await
++                    .err()
++                    .expect("selected websocket prewarm must refuse")
++                    .to_string(),
++                "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE"
++            );
++            assert_eq!(
++                session
++                    .preconnect_websocket(&info, None, &telemetry, &metadata)
++                    .await
++                    .expect_err("selected websocket preconnect must refuse")
++                    .to_string(),
++                "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE"
++            );
++            assert!(client.build_websocket_headers(&metadata).await.is_empty());
++            assert!(!client.force_http_fallback(&telemetry, &info));
++            assert!(!session.try_switch_fallback_transport(&telemetry, &info));
++            assert_eq!(
++                client
++                    .current_client_setup(ClientRouting::Workspace)
++                    .await
++                    .err()
++                    .expect("selected setup must refuse")
++                    .to_string(),
++                "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE"
++            );
++            assert_eq!(
++                client.build_api_transport(
++                    &api_provider,
++                    "/responses",
++                    ClientRedirectPolicy::Default,
++                )
++                .err()
++                .expect("selected HTTP transport must refuse")
++                .to_string(),
++                "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE"
++            );
++            assert!(!client.state.disable_websockets.load(Ordering::Relaxed));
++            assert_eq!(
++                crate::symphony_boundary::effect_counts(),
++                crate::symphony_boundary::EffectCounts {
++                    provider_refusals: 10,
++                    ..Default::default()
++                }
++            );
++        })
++        .await;
++    }
++}
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
 index 1eb2cdf83fe8dd52cb06ca9de494b194a1bc0179..816af34872bfba8f401c613595a93281599a792e 100644
 --- a/codex-rs/core/src/config/mod.rs
@@ -2783,17 +3028,21 @@ index a2b44e3f1fb6b8c3ede999ec306f5592b9a5a0b9..ba5174990dc89550794b86a80d8024f3
  pub use codex_protocol::turn_input::RecoverTurnRequest;
  pub use codex_protocol::turn_input::StartIfIdleSubmission;
 diff --git a/codex-rs/core/src/session/handlers.rs b/codex-rs/core/src/session/handlers.rs
-index c569b04ec95770768385fcafcaeee5f1aa2fc26e..0178dd3ac4d13cf6d58c0509da61135c16d36a71 100644
+index c569b04ec95770768385fcafcaeee5f1aa2fc26e..5b2433fa6faf29fd135bb38735181319587b258d 100644
 --- a/codex-rs/core/src/session/handlers.rs
 +++ b/codex-rs/core/src/session/handlers.rs
-@@ -288,6 +288,15 @@ pub async fn set_thread_memory_mode(sess: &Arc<Session>, sub_id: String, mode: T
+@@ -288,6 +288,19 @@ pub async fn set_thread_memory_mode(sess: &Arc<Session>, sub_id: String, mode: T
  }
 
  pub(super) async fn shutdown_session_runtime(sess: &Arc<Session>) {
 +    if crate::symphony_boundary::is_selected() {
 +        let mut state = sess.state.lock().await;
 +        state.shutting_down = true;
-+        state.take_session_startup_prewarm();
++        if state.take_session_startup_prewarm().is_some() {
++            // A selected session never owns a prewarm task. Dropping the
++            // handle aborts it, but does not establish that it stopped.
++            crate::symphony_boundary::mark_stop_unconfirmed();
++        }
 +        drop(state);
 +        sess.abort_all_tasks(TurnAbortReason::Interrupted).await;
 +        let _ = sess.conversation.shutdown().await;
@@ -2802,7 +3051,7 @@ index c569b04ec95770768385fcafcaeee5f1aa2fc26e..0178dd3ac4d13cf6d58c0509da61135c
      let startup_prewarm = {
          let mut state = sess.state.lock().await;
          // Stop admission and take the current warmup together so resume cannot replace it.
-@@ -347,6 +356,18 @@ async fn emit_thread_stop_lifecycle(sess: &Session) {
+@@ -347,6 +360,18 @@ async fn emit_thread_stop_lifecycle(sess: &Session) {
  }
 
  pub async fn shutdown(sess: &Arc<Session>, sub_id: String) -> bool {
@@ -2821,7 +3070,7 @@ index c569b04ec95770768385fcafcaeee5f1aa2fc26e..0178dd3ac4d13cf6d58c0509da61135c
      shutdown_session_runtime(sess).await;
      info!("Shutting down Codex instance");
      let history = sess.clone_history().await;
-@@ -450,7 +471,19 @@ pub(super) async fn submission_loop(
+@@ -450,7 +475,19 @@ pub(super) async fn submission_loop(
      loop {
          let sub = tokio::select! {
              biased;
@@ -2842,7 +3091,7 @@ index c569b04ec95770768385fcafcaeee5f1aa2fc26e..0178dd3ac4d13cf6d58c0509da61135c
                  shutdown_received = shutdown(&sess, super::new_submission_id()).await;
                  break;
              }
-@@ -477,15 +510,36 @@ pub(super) async fn submission_loop(
+@@ -477,15 +514,36 @@ pub(super) async fn submission_loop(
                  continue;
              }
          };
@@ -2888,7 +3137,7 @@ index c569b04ec95770768385fcafcaeee5f1aa2fc26e..0178dd3ac4d13cf6d58c0509da61135c
          let dispatch_span = submission_dispatch_span(&sub);
          let should_exit = async {
              match sub.op {
-@@ -693,7 +747,13 @@ pub(super) async fn submission_loop(
+@@ -693,7 +751,13 @@ pub(super) async fn submission_loop(
                          .await;
                      false
                  }
@@ -2903,7 +3152,7 @@ index c569b04ec95770768385fcafcaeee5f1aa2fc26e..0178dd3ac4d13cf6d58c0509da61135c
                  Op::Review { review_request } => {
                      review(&sess, &config, sub.id.clone(), review_request).await;
                      false
-@@ -716,19 +776,25 @@ pub(super) async fn submission_loop(
+@@ -716,19 +780,25 @@ pub(super) async fn submission_loop(
      // If the submission loop exits because the channel closed without an
      // explicit shutdown op, still run session teardown.
      if !shutdown_received {
@@ -2943,7 +3192,7 @@ index c569b04ec95770768385fcafcaeee5f1aa2fc26e..0178dd3ac4d13cf6d58c0509da61135c
      }
      debug!("Agent loop exited");
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index bc086f8661f32ca94cdac8fc161c8ff86f5aaf38..f34b8d55afa78d037124e85b3d029859519d71f2 100644
+index bc086f8661f32ca94cdac8fc161c8ff86f5aaf38..f868387c1e6987233ce10d07c829ae93694eb2a6 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
 @@ -517,6 +517,40 @@ const CYBER_VERIFY_URL: &str = "https://chatgpt.com/cyber";
@@ -3024,7 +3273,19 @@ index bc086f8661f32ca94cdac8fc161c8ff86f5aaf38..f34b8d55afa78d037124e85b3d029859
          let flush_guardian_completion = persist
              && matches!(event.msg, EventMsg::TurnComplete(_))
              && self.is_private_guardian_reviewer().await;
-@@ -5003,6 +5053,10 @@ impl Session {
+@@ -3724,6 +3774,11 @@ impl Session {
+         required_servers: &[String],
+         required_plugins: &HashSet<String>,
+     ) -> CodexResult<Arc<StepContext>> {
++        if crate::symphony_boundary::is_selected() {
++            return Err(CodexErr::InvalidRequest(
++                "SYMPHONY_STEP_SERVICES_UNAVAILABLE".into(),
++            ));
++        }
+         // Read the step's model and record its environments together so an update cannot split them.
+         // Wait for executor startup below, after releasing the lock.
+         let (mut settings, environments) = {
+@@ -5003,6 +5058,10 @@ impl Session {
      }
 
      pub async fn interrupt_task(self: &Arc<Self>) {
@@ -3264,7 +3525,7 @@ index 554e69e178b937c865610b57e5ad27103658e948..399d8377f17493e7465ff800f2d7ed56
              return SessionStartupPrewarmResolution::Unavailable {
                  status: "not_scheduled",
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index 496114a113a6d8474343c887b9d244dad4b5b1be..01b6a763bb8257745a164b88f8c25a5f039bc37c 100644
+index 496114a113a6d8474343c887b9d244dad4b5b1be..087361f518ac639f31bd7366f4ff1ac45c172654 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
 @@ -6970,7 +6970,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
@@ -3303,8 +3564,108 @@ index 496114a113a6d8474343c887b9d244dad4b5b1be..01b6a763bb8257745a164b88f8c25a5f
 
      let session = Arc::new(Session {
          thread_id,
+@@ -13555,3 +13555,99 @@ async fn rejected_mcp_refresh_then_corrected_user_config_blocks_ordinary_replace
+         "rejection must not permit same-name ordinary-auth replacement in this session"
+     );
+ }
++
++#[tokio::test]
++async fn symphony_strict_task_refuses_a_session_without_selected_services() {
++    let (session, turn_context) = make_session_and_context().await;
++    let result = crate::symphony_boundary::with_test_selection(
++        Arc::new(crate::tasks::RegularTask::new()).run(
++            Arc::new(session),
++            Arc::new(turn_context),
++            Vec::new(),
++            CancellationToken::new(),
++        ),
++    )
++    .await;
++    assert_eq!(
++        result
++            .expect_err("standard fixture cannot run a strict turn")
++            .to_string(),
++        "SYMPHONY_STRICT_SERVICES_UNAVAILABLE"
++    );
++}
++
++#[tokio::test]
++async fn symphony_strict_prewarm_never_adopts_an_unexpected_task() {
++    use super::startup_prewarm::PrewarmInput;
++    use super::startup_prewarm::SessionStartupPrewarmHandle;
++    use super::startup_prewarm::SessionStartupPrewarmResolution;
++
++    let (session, _) = make_session_and_context().await;
++    let session = Arc::new(session);
++    crate::symphony_boundary::with_test_selection(async {
++        session.schedule_startup_prewarm(PrewarmInput::Base).await;
++        assert!(session.take_session_startup_prewarm().await.is_none());
++
++        // Supply only an inert task handle to exercise the impossible-state check.
++        let task = tokio::spawn(std::future::pending());
++        session
++            .state
++            .lock()
++            .await
++            .set_session_startup_prewarm(SessionStartupPrewarmHandle::new(
++                task,
++                std::time::Instant::now(),
++                Duration::from_secs(1),
++            ));
++        assert!(matches!(
++            session
++                .consume_startup_prewarm_for_regular_turn(&CancellationToken::new())
++                .await,
++            SessionStartupPrewarmResolution::Cancelled
++        ));
++        assert!(session.take_session_startup_prewarm().await.is_none());
++        assert!(crate::symphony_boundary::stop_unconfirmed());
++    })
++    .await;
++}
++
++#[tokio::test]
++async fn symphony_strict_pending_mail_does_not_start_another_turn() {
++    let (session, _) = make_session_and_context().await;
++    let session = Arc::new(session);
++    session
++        .input_queue
++        .enqueue_mailbox_communication(
++            InterAgentCommunication::new(
++                AgentPath::root(),
++                AgentPath::root(),
++                Vec::new(),
++                "synthetic late trigger".to_string(),
++                /*trigger_turn*/ true,
++            ),
++            Default::default(),
++        )
++        .await;
++    crate::symphony_boundary::with_test_selection(session.maybe_start_turn_for_pending_work())
++        .await;
++    assert!(session.input_queue.has_trigger_turn_mailbox_items().await);
++    assert!(session.active_turn.lock().await.is_none());
++}
++
++#[tokio::test]
++async fn symphony_strict_step_capture_refuses_before_service_access() {
++    let (session, turn_context) = make_session_and_context().await;
++    let session = Arc::new(session);
++    let cancellation = CancellationToken::new();
++    let result = crate::symphony_boundary::with_test_selection(
++        session.capture_step_context(Arc::new(turn_context), &cancellation),
++    )
++    .await;
++    assert_eq!(
++        result
++            .err()
++            .expect("selected step capture must refuse")
++            .to_string(),
++        "SYMPHONY_STEP_SERVICES_UNAVAILABLE"
++    );
++}
 diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
-index 64e8786a15b48e68a4ad60e95790069c90b7d3a1..d0122a03691579a1710ae389e09ca2ebceb22ab7 100644
+index 64e8786a15b48e68a4ad60e95790069c90b7d3a1..c566f5a8ecadf1931bef3e58cba3cf6c600b82ae 100644
 --- a/codex-rs/core/src/session/turn.rs
 +++ b/codex-rs/core/src/session/turn.rs
 @@ -168,6 +168,19 @@ pub(crate) async fn run_turn(
@@ -3327,6 +3688,41 @@ index 64e8786a15b48e68a4ad60e95790069c90b7d3a1..d0122a03691579a1710ae389e09ca2eb
      if crate::guardian::is_basic_session_source(&turn_context.session_source) {
          crate::guardian::check_pending_guardian_input(&sess, &turn_context).await?;
      }
+@@ -868,6 +881,9 @@ pub(crate) async fn run_hooks_and_record_inputs(
+     input: &[TurnInput],
+     persist_context: PersistContext,
+ ) -> bool {
++    if crate::symphony_boundary::is_selected() {
++        return false;
++    }
+     // Cancellation can reach this path before Guardian's tools and context are
+     // resolved. Only finalized evidence may enter reusable reviewer history.
+     if sess
+@@ -1741,6 +1757,12 @@ pub(crate) async fn prepare_tool_recommendations(
+     sess: &Session,
+     turn_context: &TurnContext,
+ ) -> PreparedToolRecommendations {
++    if crate::symphony_boundary::is_selected() {
++        return PreparedToolRecommendations {
++            auth: None,
++            endpoint_candidates: None,
++        };
++    }
+     let loaded_plugins = sess
+         .services
+         .plugins_manager
+@@ -1793,6 +1815,11 @@ pub(crate) async fn built_tools(
+     step_store: &ExtensionData,
+     prepared_recommendations: PreparedToolRecommendations,
+ ) -> CodexResult<Arc<ToolRouter>> {
++    if crate::symphony_boundary::is_selected() {
++        return Err(CodexErr::InvalidRequest(
++            "SYMPHONY_TOOL_SERVICES_UNAVAILABLE".into(),
++        ));
++    }
+     let all_mcp_tools = mcp.tools();
+     let connector_snapshot = mcp.config().connector_snapshot.clone();
+
 diff --git a/codex-rs/core/src/session/turn_context.rs b/codex-rs/core/src/session/turn_context.rs
 index f74f5558ca87a10b9503822f208cfd43082f75c0..b7bc4583e76f5f1bd54edba7ec898236e49a1690 100644
 --- a/codex-rs/core/src/session/turn_context.rs
@@ -3748,10 +4144,10 @@ index 0000000000000000000000000000000000000000..34b0b1f93eb7d5fb7d3565511df56e70
 +}
 diff --git a/codex-rs/core/src/symphony_boundary/mod.rs b/codex-rs/core/src/symphony_boundary/mod.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..72ebb3226d4625661dea595a95f60f79f9375583
+index 0000000000000000000000000000000000000000..1a91db1dd0b448114cb6f7f675d45b2371101e02
 --- /dev/null
 +++ b/codex-rs/core/src/symphony_boundary/mod.rs
-@@ -0,0 +1,259 @@
+@@ -0,0 +1,320 @@
 +//! Immutable, process-local boundary for the protected synthetic session.
 +//!
 +//! This module contains no provider transport. Installing a context selects the
@@ -3764,6 +4160,12 @@ index 0000000000000000000000000000000000000000..72ebb3226d4625661dea595a95f60f79
 +use std::sync::atomic::AtomicU64;
 +use std::sync::atomic::Ordering;
 +use std::time::Instant;
++
++#[cfg(test)]
++tokio::task_local! {
++    static TEST_SELECTED: std::cell::Cell<EffectCounts>;
++    static TEST_STOP_UNCONFIRMED: std::cell::Cell<bool>;
++}
 +
 +mod hardening;
 +
@@ -3799,6 +4201,7 @@ index 0000000000000000000000000000000000000000..72ebb3226d4625661dea595a95f60f79
 +    pub home: PathBuf,
 +    pub codex_home: PathBuf,
 +    pub deadline: Instant,
++    pub wait_for_interrupt: bool,
 +}
 +
 +#[derive(Debug, thiserror::Error)]
@@ -3885,7 +4288,25 @@ index 0000000000000000000000000000000000000000..72ebb3226d4625661dea595a95f60f79
 +
 +/// Return whether this process uses the protected strict path.
 +pub fn is_selected() -> bool {
-+    CONTEXT.get().is_some()
++    CONTEXT.get().is_some() || {
++        #[cfg(test)]
++        {
++            return TEST_SELECTED.try_with(|_| true).unwrap_or(false);
++        }
++        #[cfg(not(test))]
++        false
++    }
++}
++
++/// Select the strict path only on the current test thread for direct boundary probes.
++#[cfg(test)]
++pub(crate) async fn with_test_selection<F: std::future::Future>(future: F) -> F::Output {
++    TEST_SELECTED
++        .scope(
++            std::cell::Cell::new(EffectCounts::default()),
++            TEST_STOP_UNCONFIRMED.scope(std::cell::Cell::new(false), future),
++        )
++        .await
 +}
 +
 +/// Admit the one real core thread for the selected attempt.
@@ -3905,34 +4326,51 @@ index 0000000000000000000000000000000000000000..72ebb3226d4625661dea595a95f60f79
 +}
 +
 +/// Record a forbidden side-effect entry immediately before the effect boundary.
++fn count_effect(counter: &AtomicU64, field: fn(&mut EffectCounts) -> &mut u64) {
++    #[cfg(test)]
++    if TEST_SELECTED
++        .try_with(|cell| {
++            let mut counts = cell.get();
++            *field(&mut counts) += 1;
++            cell.set(counts);
++        })
++        .is_ok()
++    {
++        return;
++    }
++    #[cfg(not(test))]
++    let _ = field;
++    counter.fetch_add(1, Ordering::Relaxed);
++}
++
 +pub(crate) fn record_auth() {
-+    AUTH_CALLS.fetch_add(1, Ordering::Relaxed);
++    count_effect(&AUTH_CALLS, |counts| &mut counts.auth);
 +}
 +pub(crate) fn record_http() {
-+    HTTP_CALLS.fetch_add(1, Ordering::Relaxed);
++    count_effect(&HTTP_CALLS, |counts| &mut counts.http);
 +}
 +pub(crate) fn record_websocket() {
-+    WEBSOCKET_CALLS.fetch_add(1, Ordering::Relaxed);
++    count_effect(&WEBSOCKET_CALLS, |counts| &mut counts.websocket);
 +}
 +pub(crate) fn record_responses() {
-+    RESPONSES_CALLS.fetch_add(1, Ordering::Relaxed);
++    count_effect(&RESPONSES_CALLS, |counts| &mut counts.responses);
 +}
 +pub(crate) fn record_retry() {
-+    RETRY_CALLS.fetch_add(1, Ordering::Relaxed);
++    count_effect(&RETRY_CALLS, |counts| &mut counts.retry);
 +}
 +pub(crate) fn record_fallback() {
-+    FALLBACK_CALLS.fetch_add(1, Ordering::Relaxed);
++    count_effect(&FALLBACK_CALLS, |counts| &mut counts.fallback);
 +}
 +pub(crate) fn record_discovery() {
-+    DISCOVERY_CALLS.fetch_add(1, Ordering::Relaxed);
++    count_effect(&DISCOVERY_CALLS, |counts| &mut counts.discovery);
 +}
 +pub(crate) fn record_process() {
-+    PROCESS_CALLS.fetch_add(1, Ordering::Relaxed);
++    count_effect(&PROCESS_CALLS, |counts| &mut counts.process);
 +}
 +
 +/// Build the shared strict refusal and count the observed refusal boundary.
 +pub(crate) fn provider_boundary_unavailable() -> codex_protocol::error::CodexErr {
-+    PROVIDER_REFUSALS.fetch_add(1, Ordering::Relaxed);
++    count_effect(&PROVIDER_REFUSALS, |counts| &mut counts.provider_refusals);
 +    codex_protocol::error::CodexErr::InvalidRequest(
 +        "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE".to_string(),
 +    )
@@ -3953,6 +4391,10 @@ index 0000000000000000000000000000000000000000..72ebb3226d4625661dea595a95f60f79
 +}
 +
 +pub fn effect_counts() -> EffectCounts {
++    #[cfg(test)]
++    if let Ok(counts) = TEST_SELECTED.try_with(std::cell::Cell::get) {
++        return counts;
++    }
 +    EffectCounts {
 +        provider_refusals: PROVIDER_REFUSALS.load(Ordering::Relaxed),
 +        auth: AUTH_CALLS.load(Ordering::Relaxed),
@@ -3970,30 +4412,34 @@ index 0000000000000000000000000000000000000000..72ebb3226d4625661dea595a95f60f79
 +mod tests {
 +    use super::*;
 +
-+    #[test]
-+    fn positive_control_observes_provider_refusal_counter() {
-+        let before = effect_counts().provider_refusals;
-+        let error = provider_boundary_unavailable();
-+        assert_eq!(error.to_string(), "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE");
-+        assert_eq!(effect_counts().provider_refusals, before + 1);
++    #[tokio::test]
++    async fn positive_control_observes_provider_refusal_counter() {
++        with_test_selection(async {
++            let error = provider_boundary_unavailable();
++            assert_eq!(error.to_string(), "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE");
++            assert_eq!(effect_counts().provider_refusals, 1);
++        })
++        .await;
 +    }
 +
-+    #[test]
-+    fn positive_control_observes_each_provider_effect_counter() {
-+        let before = effect_counts();
-+        record_auth();
-+        record_http();
-+        record_websocket();
-+        record_responses();
-+        record_retry();
-+        record_fallback();
-+        let after = effect_counts();
-+        assert_eq!(after.auth, before.auth + 1);
-+        assert_eq!(after.http, before.http + 1);
-+        assert_eq!(after.websocket, before.websocket + 1);
-+        assert_eq!(after.responses, before.responses + 1);
-+        assert_eq!(after.retry, before.retry + 1);
-+        assert_eq!(after.fallback, before.fallback + 1);
++    #[tokio::test]
++    async fn positive_control_observes_each_provider_effect_counter() {
++        with_test_selection(async {
++            record_auth();
++            record_http();
++            record_websocket();
++            record_responses();
++            record_retry();
++            record_fallback();
++            let after = effect_counts();
++            assert_eq!(after.auth, 1);
++            assert_eq!(after.http, 1);
++            assert_eq!(after.websocket, 1);
++            assert_eq!(after.responses, 1);
++            assert_eq!(after.retry, 1);
++            assert_eq!(after.fallback, 1);
++        })
++        .await;
 +    }
 +}
 +
@@ -4006,13 +4452,24 @@ index 0000000000000000000000000000000000000000..72ebb3226d4625661dea595a95f60f79
 +// owner still decides the final stop disposition from independent observations.
 +static STOP_UNCONFIRMED: AtomicBool = AtomicBool::new(false);
 +pub(crate) fn mark_stop_unconfirmed() {
++    #[cfg(test)]
++    if TEST_STOP_UNCONFIRMED
++        .try_with(|cell| cell.set(true))
++        .is_ok()
++    {
++        return;
++    }
 +    STOP_UNCONFIRMED.store(true, Ordering::Release);
 +}
 +pub fn stop_unconfirmed() -> bool {
++    #[cfg(test)]
++    if let Ok(value) = TEST_STOP_UNCONFIRMED.try_with(std::cell::Cell::get) {
++        return value;
++    }
 +    STOP_UNCONFIRMED.load(Ordering::Acquire)
 +}
 diff --git a/codex-rs/core/src/tasks/mod.rs b/codex-rs/core/src/tasks/mod.rs
-index bfc9c13415be9fb6c25f19910bbdf4969e24483b..dc334ecac5799ff3868204e73affe889813cd667 100644
+index bfc9c13415be9fb6c25f19910bbdf4969e24483b..c03cc2855875a71297c905ddf81a305de4902b1b 100644
 --- a/codex-rs/core/src/tasks/mod.rs
 +++ b/codex-rs/core/src/tasks/mod.rs
 @@ -48,6 +48,7 @@ use codex_otel::TURN_TOOL_CALL_METRIC;
@@ -4127,7 +4584,17 @@ index bfc9c13415be9fb6c25f19910bbdf4969e24483b..dc334ecac5799ff3868204e73affe889
      /// Returns whether an extension has marked this thread as durably asleep.
      pub(crate) fn has_outstanding_durable_sleep(&self) -> bool {
          self.services
-@@ -547,6 +631,29 @@ impl Session {
+@@ -457,6 +541,9 @@ impl Session {
+         self: &Arc<Self>,
+         sub_id: String,
+     ) {
++        if crate::symphony_boundary::is_selected() {
++            return;
++        }
+         if !self.input_queue.has_pending_mailbox_items().await {
+             return;
+         }
+@@ -547,6 +634,29 @@ impl Session {
      }
 
      pub async fn abort_all_tasks(self: &Arc<Self>, reason: TurnAbortReason) {
@@ -4157,7 +4624,7 @@ index bfc9c13415be9fb6c25f19910bbdf4969e24483b..dc334ecac5799ff3868204e73affe889
          let mut aborted_turn = false;
          let mut active_turn_to_clear = None;
          if let Some(mut active_turn) = self.take_active_turn(&reason).await {
-@@ -633,6 +740,11 @@ impl Session {
+@@ -633,6 +743,11 @@ impl Session {
          turn_context: Arc<TurnContext>,
          task_result: SessionTaskResult,
      ) {
@@ -4169,7 +4636,7 @@ index bfc9c13415be9fb6c25f19910bbdf4969e24483b..dc334ecac5799ff3868204e73affe889
          let (last_agent_message, abort_reason) = match task_result {
              Ok(last_agent_message) => (last_agent_message, None),
              Err(err) if matches!(err.details(), CodexErrorDetails::TurnAborted) => {
-@@ -890,6 +1002,91 @@ impl Session {
+@@ -890,6 +1005,92 @@ impl Session {
          }
      }
 
@@ -4180,6 +4647,7 @@ index bfc9c13415be9fb6c25f19910bbdf4969e24483b..dc334ecac5799ff3868204e73affe889
 +    ) {
 +        let error = match task_result {
 +            Ok(_) => {
++                crate::symphony_boundary::mark_stop_unconfirmed();
 +                self.clear_strict_active_turn().await;
 +                return;
 +            }
@@ -4262,15 +4730,36 @@ index bfc9c13415be9fb6c25f19910bbdf4969e24483b..dc334ecac5799ff3868204e73affe889
          let mut active = self.active_turn.lock().await;
          if matches!(
 diff --git a/codex-rs/core/src/tasks/regular.rs b/codex-rs/core/src/tasks/regular.rs
-index 0eca40f3d42fa5528ec4623d3309c80de6f08155..ef73e7107f161458c465db046646886b05c4a34f 100644
+index 0eca40f3d42fa5528ec4623d3309c80de6f08155..c9b91d02e1c26ba2fc393343c7eaea00590dadc1 100644
 --- a/codex-rs/core/src/tasks/regular.rs
 +++ b/codex-rs/core/src/tasks/regular.rs
-@@ -44,6 +44,19 @@ impl SessionTask for RegularTask {
+@@ -44,6 +44,40 @@ impl SessionTask for RegularTask {
          input: Vec<TurnInput>,
          cancellation_token: CancellationToken,
      ) -> SessionTaskResult {
 +        if crate::symphony_boundary::is_selected() {
++            let context = sess
++                .services
++                .strict_context()
++                .map_err(|reason| codex_protocol::error::CodexErr::InvalidRequest(reason.into()))?;
 +            sess.emit_turn_started(&ctx, TaskKind::Regular).await;
++            // Sealed synthetic fixture only. Wait in the real registered task
++            // so an exact-ID interrupt can exercise cancellation before sampling.
++            if context.wait_for_interrupt {
++                if tokio::time::timeout_at(
++                    tokio::time::Instant::from_std(context.deadline),
++                    cancellation_token.cancelled(),
++                )
++                .await
++                .is_err()
++                {
++                    crate::symphony_boundary::mark_stop_unconfirmed();
++                    return Err(codex_protocol::error::CodexErr::InvalidRequest(
++                        "SYMPHONY_DEADLINE".into(),
++                    ));
++                }
++                return Err(codex_protocol::error::CodexErr::TurnAborted);
++            }
 +            let mut requirements = McpStartupRequirements::default();
 +            return run_turn(
 +                Arc::clone(&sess),
