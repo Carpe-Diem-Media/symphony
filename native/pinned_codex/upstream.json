@@ -7,7 +7,7 @@
   "target": "x86_64-unknown-linux-gnu",
   "upstream_toolchain": "1.95.0",
   "development_toolchain": "stable 1.98.1",
-  "qualification": "synthetic_only_not_operational",
-  "patch_sha256": "aedca2e1b5c114dd9d603efcbffb267f918a3772a1630e73cb241064394388a5",
-  "patched_tree": "4d3673405bf4eb4545ba8f0cebc43acb7e91e5a0"
+  "qualification": "blocked_unbuildable_slice_a_draft_not_operational",
+  "patch_sha256": "62c81af487169bf496794481b76243bb96dd2613889fd56aa87438c911a7d437",
+  "patched_tree": "e1255de6fca14c41ca7b0170615d1a5a8faefb0c"
 }

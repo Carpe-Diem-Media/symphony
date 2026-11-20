@@ -154,3 +154,22 @@ qualification is also not established by this build.
 The selected branch refuses before thread/turn execution and cannot enable provider
 egress. The installed ordinary Codex CLI is untouched. No signing, installation,
 enrollment, publication, resource adoption, Gate2 activation or live pilot is implied.
+
+
+### Consumer extension draft, 2026-11-20
+
+The continued Slice A draft adds mutually exclusive standard/strict service
+representations and provisional selected turn/shutdown guards. It remains
+unbuildable. The constructor cannot name the standard service payload through
+the private state module. Existing session test fixtures also use the former
+struct literal. These consumers are outside the approved 37-entry inventory.
+No strict Session constructor, functional schema2 bridge, real thread/turn or
+core failed-turn evidence has been qualified. The provisional turn guard refuses
+before the required actual core task; it is not acceptance evidence.
+
+The explicit `--synthetic-functional` build option forwards the selected Cargo
+feature only after the unchanged source verification. The feature declaration
+alone supplies no runtime capability. Its source-admission regressions passed
+24 tests after two retained red failures. The draft also fails formatting.
+No newly compiled executable corresponds to this source tree. The earlier
+schema1 executable and its evidence retain their original identities.

@@ -69,10 +69,10 @@ class BuildSourceTest(unittest.TestCase):
     def write_pin(self):
         (self.tool / 'upstream.json').write_text(json.dumps(self.pin))
 
-    def run_build(self, extra=None, source=None):
+    def run_build(self, extra=None, source=None, flags=()):
         env = dict(self.env, **(extra or {}))
         return subprocess.run(['/usr/bin/python3', '-I', str(self.tool / 'build.py'),
-                               '--source', str(source or self.repo)], env=env,
+                               '--source', str(source or self.repo), *flags], env=env,
                               capture_output=True, text=True, timeout=15)
 
     def refused(self, result):
@@ -92,6 +92,26 @@ class BuildSourceTest(unittest.TestCase):
         self.assertIn('BUILD_REACHED', result.stdout)
         self.assertEqual(index, (self.repo / '.git/index').read_bytes())
         self.assertEqual((self.repo / 'codex-rs/added.rs').read_text(), 'added\n')
+
+    def test_functional_feature_requires_verified_source(self):
+        (self.repo / 'tracked.txt').write_text('unapproved\n')
+        result = self.run_build(flags=('--synthetic-functional',))
+        self.refused(result)
+        self.assertIn('Pinned source/build refused:', result.stderr)
+
+    def test_functional_feature_is_forwarded_after_admission(self):
+        cargo = self.bin / 'cargo'
+        cargo.write_text('#!/bin/sh\nprintf "BUILD_REACHED\\n"\nprintf "%s\\n" "$@"\n')
+        result = self.run_build(flags=('--synthetic-functional',))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('--features\nsymphony-synthetic-fixture', result.stdout)
+
+    def test_default_build_has_no_functional_feature(self):
+        cargo = self.bin / 'cargo'
+        cargo.write_text('#!/bin/sh\nprintf "BUILD_REACHED\\n"\nprintf "%s\\n" "$@"\n')
+        result = self.run_build()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('--features', result.stdout)
 
     def test_dirty_tracked_file_refuses(self):
         (self.repo / 'tracked.txt').write_text('unapproved\n')

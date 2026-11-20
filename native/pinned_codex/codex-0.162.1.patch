@@ -1430,6 +1430,21 @@ index 1cee1174c2e937758713df47683521233a36b4f7..b30500b71c169e4bd1805f57a59aa479
  dependencies = [
   "anyhow",
   "assert_cmd",
+diff --git a/codex-rs/app-server/Cargo.toml b/codex-rs/app-server/Cargo.toml
+index 0ef30505cc5e78102d8bfb64e18adaf0e0ad008b..11b6cba661fbbf4716f89186b6a88617d56b1b6f 100644
+--- a/codex-rs/app-server/Cargo.toml
++++ b/codex-rs/app-server/Cargo.toml
+@@ -24,6 +24,10 @@ doctest = false
+ [lints]
+ workspace = true
+
++[features]
++default = []
++symphony-synthetic-fixture = []
++
+ [dependencies]
+ codex-utils-process = { workspace = true }
+ anyhow = { workspace = true }
 diff --git a/codex-rs/app-server/src/main.rs b/codex-rs/app-server/src/main.rs
 index 4119cedfe413005e165ca8b00b86699dabe4458a..abf947d2aeb0383a7512bee82b6587cab513205d 100644
 --- a/codex-rs/app-server/src/main.rs
@@ -2048,6 +2063,56 @@ index a2b44e3f1fb6b8c3ede999ec306f5592b9a5a0b9..ba5174990dc89550794b86a80d8024f3
  pub use codex_protocol::turn_input::NotSubmittedReason;
  pub use codex_protocol::turn_input::RecoverTurnRequest;
  pub use codex_protocol::turn_input::StartIfIdleSubmission;
+diff --git a/codex-rs/core/src/session/handlers.rs b/codex-rs/core/src/session/handlers.rs
+index c569b04ec95770768385fcafcaeee5f1aa2fc26e..db6150c76208225473201c21bdf26b17c4038b11 100644
+--- a/codex-rs/core/src/session/handlers.rs
++++ b/codex-rs/core/src/session/handlers.rs
+@@ -288,6 +288,15 @@ pub async fn set_thread_memory_mode(sess: &Arc<Session>, sub_id: String, mode: T
+ }
+
+ pub(super) async fn shutdown_session_runtime(sess: &Arc<Session>) {
++    if crate::symphony_boundary::is_selected() {
++        let mut state = sess.state.lock().await;
++        state.shutting_down = true;
++        state.take_session_startup_prewarm();
++        drop(state);
++        sess.abort_all_tasks(TurnAbortReason::Interrupted).await;
++        let _ = sess.conversation.shutdown().await;
++        return;
++    }
+     let startup_prewarm = {
+         let mut state = sess.state.lock().await;
+         // Stop admission and take the current warmup together so resume cannot replace it.
+diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
+index 263f08f2f1ea43b283406c0200bcbccfa5e022a1..66866ac99445b2305c7d5b8646e6b6460d91eafc 100644
+--- a/codex-rs/core/src/session/session.rs
++++ b/codex-rs/core/src/session/session.rs
+@@ -21,6 +21,7 @@ use crate::responses_metadata::CompactionTurnMetadata;
+ use crate::shell_snapshot::ShellSnapshot;
+ use crate::shell_snapshot::SnapshotCredentialBrokerState;
+ use crate::state::ActiveTurn;
++use crate::state::StandardSessionServices;
+ use crate::turn_metadata::ExecutionMetadata;
+ use codex_analytics::ThreadProductUpdate;
+ use codex_attachment_store::AttachmentStore;
+@@ -1708,7 +1709,7 @@ impl Session {
+             );
+             let reasoning_effort_override_enabled =
+                 config.features.enabled(Feature::ReasoningEffortOverride) && !title_request;
+-            let services = SessionServices {
++            let services = SessionServices::standard(StandardSessionServices {
+                 // Start with an empty connection set. The initialized set is
+                 // published after SessionConfigured so MCP events follow it.
+                 mcp_runtime,
+@@ -1809,7 +1810,7 @@ impl Session {
+                 ),
+                 tool_search_handler_cache: Default::default(),
+                 turn_environments: Arc::clone(&turn_environments),
+-            };
++            });
+             let (mcp_prewarm_tx, mcp_prewarm_rx) = async_channel::bounded(1);
+             let sess = Arc::new(Session {
+                 thread_id,
 diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
 index 64e8786a15b48e68a4ad60e95790069c90b7d3a1..69dd7b48be5c03e27766dc4992c685f7943b8f39 100644
 --- a/codex-rs/core/src/session/turn.rs
@@ -2072,6 +2137,124 @@ index 64e8786a15b48e68a4ad60e95790069c90b7d3a1..69dd7b48be5c03e27766dc4992c685f7
      if crate::guardian::is_basic_session_source(&turn_context.session_source) {
          crate::guardian::check_pending_guardian_input(&sess, &turn_context).await?;
      }
+diff --git a/codex-rs/core/src/session/turn_context.rs b/codex-rs/core/src/session/turn_context.rs
+index f74f5558ca87a10b9503822f208cfd43082f75c0..93bf796d7ae731e8794365ef1133b07eee47bed6 100644
+--- a/codex-rs/core/src/session/turn_context.rs
++++ b/codex-rs/core/src/session/turn_context.rs
+@@ -1153,6 +1153,25 @@ impl Session {
+         updates: SessionSettingsUpdate,
+         options: NewTurnContextOptions,
+     ) -> CodexResult<(Arc<TurnContext>, ThreadSettingsSnapshot)> {
++        if crate::symphony_boundary::is_selected() {
++            let result = self.services.strict_context().map(|context| {
++                let _ = context;
++            });
++            let message = result
++                .err()
++                .unwrap_or("SYMPHONY_STRICT_TURN_CONSTRUCTION_UNAVAILABLE")
++                .to_string();
++            self.send_event_raw(Event {
++                id: sub_id,
++                msg: EventMsg::Error(ErrorEvent {
++                    misalignment: None,
++                    message: message.clone(),
++                    codex_error_info: Some(CodexErrorInfo::Other),
++                }),
++            })
++            .await;
++            return Err(CodexErr::InvalidRequest(message));
++        }
+         let Some((turn_context, snapshot)) = self
+             .new_turn_with_sub_id_if(sub_id, updates, options, |_, _| true)
+             .await?
+diff --git a/codex-rs/core/src/state/service.rs b/codex-rs/core/src/state/service.rs
+index bd723c453f1a466c39dcdba229a777d8c1c846a9..e07bbc0bf197923a0972c762392d51ce483df998 100644
+--- a/codex-rs/core/src/state/service.rs
++++ b/codex-rs/core/src/state/service.rs
+@@ -49,7 +49,15 @@ use codex_utils_git_discovery::GitRootDiscovery;
+ use tokio::runtime::Handle;
+ use tokio::sync::Mutex;
+
+-pub(crate) struct SessionServices {
++/// Mutually exclusive service sets owned by a session. A strict synthetic
++/// session must never instantiate the standard provider-backed services.
++pub(crate) enum SessionServices {
++    Standard(StandardSessionServices),
++    Strict(StrictSessionServices),
++}
++
++/// Services used by ordinary Codex sessions.
++pub(crate) struct StandardSessionServices {
+     /// The single owner of live MCP connections for this thread.
+     pub(crate) mcp_runtime: Arc<McpRuntime>,
+     /// Immutable MCP handlers scoped to this thread's current binding.
+@@ -110,7 +118,39 @@ pub(crate) struct SessionServices {
+     pub(crate) turn_environments: Arc<ThreadEnvironments>,
+ }
+
++/// Minimal identity retained by a strict synthetic session. It deliberately
++/// carries no auth, transport, plugin, skill, shell, or telemetry services.
++pub(crate) struct StrictSessionServices {
++    pub(crate) context: Arc<crate::symphony_boundary::SymphonyContext>,
++}
++
+ impl SessionServices {
++    pub(crate) fn standard(services: StandardSessionServices) -> Self {
++        Self::Standard(services)
++    }
++
++    pub(crate) fn strict(
++        context: Arc<crate::symphony_boundary::SymphonyContext>,
++    ) -> Self {
++        Self::Strict(StrictSessionServices { context })
++    }
++
++    pub(crate) fn strict_context(
++        &self,
++    ) -> Result<&crate::symphony_boundary::SymphonyContext, &'static str> {
++        match self {
++            Self::Strict(services) => Ok(&services.context),
++            Self::Standard(_) => Err("SYMPHONY_STRICT_SERVICES_UNAVAILABLE"),
++        }
++    }
++
++    pub(crate) fn standard_services(&self) -> Result<&StandardSessionServices, &'static str> {
++        match self {
++            Self::Standard(services) => Ok(services),
++            Self::Strict(_) => Err("SYMPHONY_STANDARD_SERVICES_UNAVAILABLE"),
++        }
++    }
++
+     #[expect(
+         clippy::expect_used,
+         reason = "poisoned grant state must not authorize further operations"
+@@ -120,7 +160,10 @@ impl SessionServices {
+         environment_id: &str,
+         permissions: AdditionalPermissionProfile,
+     ) {
+-        let mut grants = self
++        let Self::Standard(services) = self else {
++            return;
++        };
++        let mut grants = services
+             .granted_permissions_by_environment_id
+             .lock()
+             .expect("session permission grants lock poisoned");
+@@ -131,3 +174,14 @@ impl SessionServices {
+         }
+     }
+ }
++
++impl std::ops::Deref for SessionServices {
++    type Target = StandardSessionServices;
++
++    fn deref(&self) -> &Self::Target {
++        match self {
++            Self::Standard(services) => services,
++            Self::Strict(_) => panic!("standard session service accessed by strict session"),
++        }
++    }
++}
 diff --git a/codex-rs/core/src/symphony_boundary/hardening.rs b/codex-rs/core/src/symphony_boundary/hardening.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..34b0b1f93eb7d5fb7d3565511df56e7041a127d8
