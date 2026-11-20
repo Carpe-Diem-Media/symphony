@@ -61,7 +61,7 @@ end
 defmodule SymphonyElixir.PilotHolderInterfaceTest do
   use SymphonyElixir.TestSupport
 
-  alias SymphonyElixir.AgentRuntime.{AttemptLedger, Router, RuntimeIsolation}
+  alias SymphonyElixir.AgentRuntime.{AttemptLedger, NativePilot, Router, RuntimeIsolation}
   alias SymphonyElixir.AgentRuntime.RuntimeAttempt.Identity
   alias SymphonyElixir.C02SyntheticHost
   alias SymphonyElixir.Codex.IsolationProfile
@@ -160,7 +160,7 @@ defmodule SymphonyElixir.PilotHolderInterfaceTest do
       end
 
     raw =
-      if context[:native_schema2] do
+      if context[:native_schema2] || context[:schema2_boundary] do
         put_in(raw, ["agent", "profiles"], %{"planner" => %{"model" => "synthetic-planner-v1"}})
       else
         raw
@@ -376,6 +376,194 @@ defmodule SymphonyElixir.PilotHolderInterfaceTest do
 
     refute_received {:holder_phase, _}
     assert {:error, _} = AttemptLedger.begin_attempt(ctx.ledger, ctx.issue.id, pilot_binding: ctx.grant)
+  end
+
+  describe "schema2 adapter refusal without a Codex binary" do
+    @describetag schema2_boundary: true
+
+    test "invalid mode and missing pinned selection stop before launch", ctx do
+      {binding, pin} = schema2_refusal_fixture(ctx)
+      assert_prelaunch_refusal(binding, %{pin | schema2: :unexpected})
+      assert_prelaunch_refusal(binding, %{pin | pinned_codex: false})
+    end
+
+    test "missing, unreadable and unpinned catalog inputs stop before launch", ctx do
+      {binding, pin} = schema2_refusal_fixture(ctx)
+      assert_prelaunch_refusal(binding, Map.delete(pin, :model_catalog))
+      assert_prelaunch_refusal(binding, %{pin | model_catalog: ctx.workspace})
+      assert_prelaunch_refusal(binding, %{pin | files: Map.delete(pin.files, pin.model_catalog)})
+    end
+
+    test "catalog must declare exactly the bound model", ctx do
+      {binding, pin} = schema2_refusal_fixture(ctx)
+
+      for catalog <- ["{", ~s({"models":[]}), ~s({"models":[{"slug":"other-model"}]})] do
+        File.write!(pin.model_catalog, catalog)
+        assert_prelaunch_refusal(binding, %{pin | files: Map.put(pin.files, pin.model_catalog, digest_file(pin.model_catalog))})
+      end
+    end
+
+    test "stale configuration, runtime profile and tracked bytes stop before launch", ctx do
+      {binding, pin} = schema2_refusal_fixture(ctx)
+      assert_prelaunch_refusal(put_in(binding.grant.config_identity, String.duplicate("0", 64)), pin)
+      assert_prelaunch_refusal(put_in(binding.attempt.runtime_profile, "builder"), pin)
+      File.write!(Path.join(ctx.workspace, "sample.ex"), "unapproved tracked bytes")
+      assert_prelaunch_refusal(binding, pin)
+      assert {:ok, %{state: :running, runtime_identity: identity}} = AttemptLedger.pilot_status(ctx.ledger)
+      assert identity == ctx.identity
+      assert {:error, _} = AttemptLedger.begin_attempt(ctx.ledger, ctx.issue.id, pilot_binding: ctx.grant)
+    end
+
+    test "missing and altered sealed manifest observations refuse", ctx do
+      {binding, pin} = schema2_refusal_fixture(ctx)
+
+      for fault <- ["missing_manifest", "wrong_manifest_context"] do
+        directory = assert_observation_refusal(binding, %{pin | fault: fault})
+        refute File.exists?(Path.join(directory, "adapter-observation.json"))
+      end
+    end
+
+    test "retryable core error and unverified stop cannot certify synthetic disposal", ctx do
+      {binding, pin} = schema2_refusal_fixture(ctx)
+
+      for fault <- ["retryable_error", "missing_disposal", "wrong_stop_pid", "wrong_stop_order"] do
+        directory = assert_observation_refusal(binding, %{pin | fault: fault})
+
+        assert %{
+                 "attempt" => attempt,
+                 "outcome" => "pilot_holder_native_refused",
+                 "synthetic_stop_verified" => false,
+                 "operational_namespace_qualified" => false
+               } = directory |> Path.join("adapter-observation.json") |> File.read!() |> Jason.decode!()
+
+        assert attempt == ctx.identity.runtime_attempt_id
+      end
+
+      refute File.exists?(ctx.protocol_log)
+    end
+  end
+
+  defp schema2_refusal_fixture(ctx) do
+    opts = Keyword.put(ctx.opts, :model, ctx.route.profile.model)
+    assert {:ok, %{binding: binding}} = RuntimeIsolation.prepare_pilot_holder(ctx.workspace, opts)
+    assert_received {:holder_phase, :launch}
+    root = Path.dirname(ctx.protocol_log)
+    driver = Path.join(root, "schema2-refusal.py")
+    catalog = Path.join(root, "schema2-catalog.json")
+    holder = String.trim_trailing(binding.profile.command, " app-server")
+    File.write!(driver, schema2_observation_fixture())
+    File.write!(catalog, Jason.encode!(%{models: [%{slug: binding.profile.model}]}))
+
+    pin = %{
+      driver: driver,
+      holder: holder,
+      model_catalog: catalog,
+      files: Map.new([driver, holder, catalog], &{&1, digest_file(&1)}),
+      evidence_root: Path.join(root, "schema2-evidence"),
+      schema2: :refusal,
+      pinned_codex: true,
+      fault: "unexpected_launch"
+    }
+
+    prior = Application.fetch_env(:symphony_elixir, :test_native_pilot)
+
+    on_exit(fn ->
+      case prior do
+        {:ok, value} -> Application.put_env(:symphony_elixir, :test_native_pilot, value)
+        :error -> Application.delete_env(:symphony_elixir, :test_native_pilot)
+      end
+    end)
+
+    {binding, pin}
+  end
+
+  defp assert_prelaunch_refusal(binding, pin) do
+    directory = exercise_schema2_refusal(binding, pin)
+    refute File.exists?(Path.join(directory, "schema2-input.json"))
+    refute File.exists?(Path.join(directory, "driver-entered"))
+  end
+
+  defp assert_observation_refusal(binding, pin) do
+    directory = exercise_schema2_refusal(binding, pin)
+    assert File.regular?(Path.join(directory, "driver-entered"))
+    assert File.regular?(Path.join(directory, "correlation.json"))
+    directory
+  end
+
+  defp exercise_schema2_refusal(binding, pin) do
+    evidence_root = Path.join(pin.evidence_root, Integer.to_string(System.unique_integer([:positive])))
+    pin = %{pin | evidence_root: evidence_root}
+    Application.put_env(:symphony_elixir, :test_native_pilot, pin)
+    assert {:error, :pilot_holder_native_refused} = NativePilot.exercise(binding, pin)
+    directory = Path.join(evidence_root, binding.attempt.runtime_attempt_id)
+    assert File.regular?(Path.join(directory, "binding.json"))
+    directory
+  end
+
+  defp digest_file(path), do: :crypto.hash(:sha256, File.read!(path)) |> Base.encode16(case: :lower)
+
+  # Only feeds rejected observations to the adapter. It never executes a holder.
+  # The pinned-binary tests below provide the actual process and protocol evidence.
+  defp schema2_observation_fixture do
+    ~S"""
+    import hashlib
+    import json
+    from pathlib import Path
+    import sys
+
+    args = dict(zip(sys.argv[1:-2:2], sys.argv[2:-2:2]))
+    root = Path(args["--root"])
+    fault = args["--fault"]
+    (root / "driver-entered").touch()
+    assert fault in ("missing_manifest", "wrong_manifest_context", "retryable_error",
+                     "missing_disposal", "wrong_stop_pid", "wrong_stop_order")
+    binding = args["--binding"]
+    attempt = args["--attempt"]
+    context = json.loads((root / "schema2-input.json").read_text())["context"]
+    manifest = {"schema": 2, "profile": context["holder_profile"], "context": context,
+                "binding": binding, "attempt": attempt, "holder_sha256": context["holder_sha256"]}
+    if fault == "wrong_manifest_context":
+        context["model_slug"] = "unapproved"
+    manifest_bytes = json.dumps(manifest).encode()
+    if fault != "missing_manifest":
+        (root / "manifest.json").write_bytes(manifest_bytes)
+
+    thread, turn = "fixture-thread", "fixture-turn"
+    error = {"message": "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE", "codexErrorInfo": "other"}
+    events = [
+        {"id": 1},
+        {"id": 2, "result": {"thread": {"id": thread}}},
+        {"method": "thread/started", "params": {"thread": {"id": thread}}},
+        {"id": 3, "result": {"turn": {"id": turn}}},
+        {"method": "turn/started", "params": {"threadId": thread, "turn": {"id": turn}}},
+        {"method": "error", "params": {"threadId": thread, "turnId": turn,
+                                     "error": error, "willRetry": fault == "retryable_error"}},
+        {"method": "turn/completed", "params": {"threadId": thread,
+         "turn": {"id": turn, "status": "failed", "error": error}}},
+    ]
+    native = dict.fromkeys(("schema2", "native_exec", "protocol_verified", "consumed",
+                            "replay_refused", "stop_verified", "native_disposal_verified"), True)
+    native.update(binding=binding, attempt=attempt, inference_succeeded=False, qualified_host=False,
+                  scope="SYNTHETIC_NATIVE_NOT_ROUTED_C01_QUALIFICATION", materialization_count=1,
+                  guard_exit_code=0, host_exit_code=0, disposition="CONTROLLED_REFUSAL",
+                  protocol_evidence=events, manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest())
+    if fault != "missing_disposal":
+        for name in ("consumed", "channel-closed", "schema2-clean-exit", "guard-reaped", "disposed"):
+            (root / name).write_text(binding)
+        states = ["HOST_PERMISSION_VALIDATED", "BOOTSTRAP_CREATED", "MATERIALIZATION_INTENT",
+                  "SYNTHETIC_MATERIALIZED", "CREDENTIAL_CHANNEL_CLOSED", "SCHEMA2_CHANNEL_CLOSED_BEFORE_RPC",
+                  "TERMINATION_REQUESTED", "TERMINATION_VERIFIED", "SCHEMA2_CLEAN_EXIT", "GUARD_REAPED", "DISPOSAL_VERIFIED"]
+        if fault == "wrong_stop_order":
+            states[8], states[9] = states[9], states[8]
+        journal = [dict(binding=binding, attempt=attempt, state=state, pid=22 if i == 0 else 33)
+                   for i, state in enumerate(states)]
+        if fault == "wrong_stop_pid":
+            journal[-1]["pid"] = 44
+        (root / "events.jsonl").write_text("".join(json.dumps(event) + "\n" for event in journal))
+    retained = json.loads((root / "binding.json").read_text())
+    (root / "correlation.json").write_text(json.dumps({"binding": retained, "native": native}))
+    print(json.dumps(native))
+    """
   end
 
   # The source-only CI checkout has no protected Codex executable. These cases
