@@ -12,11 +12,14 @@ import os
 from pathlib import Path
 import select
 import signal
+import stat
 import subprocess
 import sys
 import time
 
 NATIVE = Path(__file__).resolve().parents[1]
+SCHEMA2_PROFILE = "H100_FUNCTIONAL_CODEX_SYNTHETIC_V1"
+SCHEMA2_REASON = "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE"
 FAULTS = {"none", "missing_permit", "wrong_attempt", "wrong_holder", "wrong_peer", "substituted_holder",
           "bootstrap_failure", "before_materialization", "partial_materialization", "after_materialization",
           "continuous", "launcher_loss", "parent_loss", "ambiguous_provider", "cleanup_failure",
@@ -46,6 +49,200 @@ def digest(path):
 def proc_start(pid):
     text = Path(f"/proc/{pid}/stat").read_text()
     return int(text[text.rindex(")") + 2:].split()[19])
+
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+
+def read_private_json(path, maximum=1_048_576):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077 or info.st_size > maximum:
+            raise ValueError("Unsafe or oversized schema2 input")
+        raw = bytearray()
+        while len(raw) <= maximum:
+            chunk = os.read(fd, min(65536, maximum + 1 - len(raw)))
+            if not chunk:
+                break
+            raw.extend(chunk)
+        if len(raw) > maximum:
+            raise ValueError("Oversized schema2 input")
+        value = json.loads(raw)
+        if not isinstance(value, dict):
+            raise ValueError("Invalid schema2 input")
+        return value
+    finally:
+        os.close(fd)
+
+
+def schema2_manifest(root, binding, attempt, holder):
+    binding_path = root / "binding.json"
+    input_path = root / "schema2-input.json"
+    bound = read_private_json(binding_path)
+    supplied = read_private_json(input_path)
+    context = supplied.get("context")
+    cancel = supplied.get("cancel")
+    if not isinstance(context, dict) or type(cancel) is not bool:
+        raise ValueError("Invalid schema2 input shape")
+    identity = bound.get("attempt")
+    grant = bound.get("grant")
+    profile = bound.get("profile")
+    selection = bound.get("selection")
+    if not all(isinstance(v, dict) for v in (identity, grant, profile, selection)):
+        raise ValueError("Incomplete attempt binding")
+    if identity.get("runtime_attempt_id") != attempt:
+        raise ValueError("Schema2 attempt does not match its bound identity")
+    holder_hash = digest(holder)
+    expected = {
+        "binding_id": binding,
+        "attempt_id": attempt,
+        "work_item_id": grant.get("work_item_id"),
+        "project_id": grant.get("project_id"),
+        "role": "Planner",
+        "model_slug": profile.get("model"),
+        "credential_generation": str(selection.get("credential_generation")),
+        "holder_sha256": holder_hash,
+        "holder_profile": SCHEMA2_PROFILE,
+        "holder_profile_digest": selection.get("holder_profile_identity"),
+        "permission_reference": selection.get("host_permission_ref"),
+        "host_identity": selection.get("host_id"),
+        "boot_identity": selection.get("host_boot_id"),
+        "workspace": bound.get("workspace"),
+        "home": str(root.resolve() / "home"),
+        "codex_home": str(root.resolve() / "codex-home"),
+        "configuration_digest": grant.get("config_identity"),
+        "source_commit": grant.get("source_commit"),
+        "source_tree": grant.get("source_tree"),
+    }
+    if context.get("binding_id") != binding or context.get("attempt_id") != attempt:
+        raise ValueError("Schema2 context does not match the native attempt")
+    if selection.get("holder_artifact_identity") != holder_hash:
+        raise ValueError("Pinned executable does not match the bound holder artifact")
+    for key, value in expected.items():
+        if value is None or context.get(key) != value:
+            raise ValueError("Schema2 context does not match its bound authority")
+    grant_id = context.get("grant_id")
+    if not isinstance(grant_id, str) or len(grant_id) != 64 or any(c not in "0123456789abcdef" for c in grant_id):
+        raise ValueError("Invalid schema2 grant digest")
+    if not isinstance(context.get("policy_text"), str) or not isinstance(context.get("prompt_text"), str):
+        raise ValueError("Schema2 policy and prompt must be text")
+    policy_root = context.get("policy_root")
+    if not isinstance(policy_root, str) or not Path(policy_root).is_absolute() or str(Path(policy_root).resolve(strict=True)) != policy_root:
+        raise ValueError("Schema2 policy root must be canonical")
+    if hashlib.sha256(context["policy_text"].encode("utf-8")).hexdigest() != context.get("policy_digest"):
+        raise ValueError("Schema2 policy digest mismatch")
+    if hashlib.sha256(context["prompt_text"].encode("utf-8")).hexdigest() != context.get("text_digest"):
+        raise ValueError("Schema2 prompt digest mismatch")
+    if type(context.get("wait_for_interrupt")) is not bool or context["wait_for_interrupt"] != cancel:
+        raise ValueError("Schema2 cancellation flag does not match its context")
+    catalog = context.get("model_catalog")
+    models = catalog.get("models") if isinstance(catalog, dict) else None
+    if not isinstance(models, list) or not any(isinstance(model, dict) and model.get("slug") == context.get("model_slug") for model in models):
+        raise ValueError("Schema2 model is absent from its catalog")
+    context["model_catalog_digest"] = hashlib.sha256(canonical(context.get("model_catalog"))).hexdigest()
+    context["context_digest"] = hashlib.sha256(canonical(context)).hexdigest()
+    manifest = {"schema": 2, "profile": SCHEMA2_PROFILE, "binding": binding,
+                "attempt": attempt, "holder_sha256": holder_hash, "fault": "none",
+                "context": context}
+    return manifest, cancel
+
+
+def drive_schema2(stdin, stdout, deadline, prompt, cancel):
+    events = []
+
+    def send(frame):
+        stdin.write(canonical(frame) + b"\n")
+        stdin.flush()
+
+    def receive():
+        raw = bytearray()
+        while time.monotonic() < deadline:
+            remaining = max(0, deadline - time.monotonic())
+            if not select.select([stdout], [], [], remaining)[0]:
+                break
+            byte = os.read(stdout.fileno(), 1)
+            if not byte:
+                break
+            if byte == b"\n":
+                break
+            raw.extend(byte)
+            if len(raw) > 65536:
+                raise ValueError("Schema2 protocol frame exceeded its bound")
+        if not raw or len(events) >= 7:
+            raise TimeoutError("Bounded schema2 protocol frame missing")
+        event = json.loads(raw.decode("utf-8"))
+        if not isinstance(event, dict):
+            raise ValueError("Invalid schema2 protocol frame")
+        events.append(event)
+        return event
+
+    send({"id": 1, "method": "initialize", "params": {"clientInfo": {"name": "symphony-native-schema2", "version": "1"}}})
+    if receive().get("id") != 1 or "result" not in events[-1]:
+        raise ValueError("Schema2 initialize response mismatch")
+    send({"method": "initialized", "params": {}})
+    send({"id": 2, "method": "thread/start", "params": {}})
+    reply, started = receive(), receive()
+    thread = reply.get("result", {}).get("thread", {}).get("id")
+    if reply.get("id") != 2 or not thread or started.get("method") != "thread/started" or started.get("params", {}).get("thread", {}).get("id") != thread:
+        raise ValueError("Schema2 thread frames do not correlate")
+    send({"id": 3, "method": "turn/start", "params": {"threadId": thread, "input": [{"type": "text", "text": prompt}]}})
+    reply, started = receive(), receive()
+    turn = reply.get("result", {}).get("turn", {}).get("id")
+    if reply.get("id") != 3 or not turn or started.get("method") != "turn/started" or started.get("params", {}).get("threadId") != thread or started.get("params", {}).get("turn", {}).get("id") != turn:
+        raise ValueError("Schema2 turn frames do not correlate")
+    if cancel:
+        send({"id": 4, "method": "turn/interrupt", "params": {"threadId": thread, "turnId": turn}})
+        ack, terminal = receive(), receive()
+        if ack.get("id") != 4 or ack.get("result") != {} or terminal.get("method") != "turn/completed" or terminal.get("params", {}).get("threadId") != thread:
+            raise ValueError("Schema2 interrupt frames do not correlate")
+        result_turn = terminal.get("params", {}).get("turn", {})
+        if result_turn.get("id") != turn or result_turn.get("status") != "interrupted" or result_turn.get("error") is not None or result_turn.get("items") != []:
+            raise ValueError("Schema2 interrupt terminal is invalid")
+    else:
+        error, terminal = receive(), receive()
+        ep = error.get("params", {})
+        turn_result = terminal.get("params", {}).get("turn", {})
+        err = ep.get("error", {})
+        if (error.get("method") != "error" or ep.get("threadId") != thread or ep.get("turnId") != turn or ep.get("willRetry") is not False or err.get("message") != SCHEMA2_REASON or err.get("codexErrorInfo") != "other" or terminal.get("method") != "turn/completed" or terminal.get("params", {}).get("threadId") != thread or turn_result.get("id") != turn or turn_result.get("status") != "failed" or turn_result.get("items") != [] or turn_result.get("error", {}).get("message") != SCHEMA2_REASON or turn_result.get("error", {}).get("codexErrorInfo") != "other"):
+            raise ValueError("Schema2 controlled failure evidence is invalid")
+    if any(e.get("method") in {"item/agentMessage/delta", "item/completed"} for e in events):
+        raise ValueError("Schema2 emitted an item frame")
+    return protocol_snapshot(events)
+
+
+def protocol_snapshot(events):
+    retained = []
+    for event in events:
+        frame = {}
+        if type(event.get("id")) is int or (isinstance(event.get("id"), str) and len(event["id"]) <= 128):
+            frame["id"] = event["id"]
+        if isinstance(event.get("method"), str):
+            frame["method"] = event["method"]
+        for group in ("result", "params"):
+            value = event.get(group)
+            if not isinstance(value, dict):
+                continue
+            output = {}
+            for key in ("threadId", "turnId", "willRetry"):
+                if key in value:
+                    output[key] = value[key]
+            for nested in ("thread", "turn"):
+                obj = value.get(nested)
+                if isinstance(obj, dict):
+                    selected = {key: obj[key] for key in ("id", "sessionId", "status") if key in obj}
+                    if isinstance(obj.get("error"), dict):
+                        selected["error"] = {key: obj["error"][key] for key in ("message", "codexErrorInfo") if key in obj["error"]}
+                    if selected:
+                        output[nested] = selected
+            if isinstance(value.get("error"), dict):
+                output["error"] = {key: value["error"][key] for key in ("message", "codexErrorInfo") if key in value["error"]}
+            if output:
+                frame[group] = output
+        if frame:
+            retained.append(frame)
+    return retained
 
 
 def run(root, binding, attempt, fault, duration, selected_holder=None, pinned_codex=False,
@@ -235,10 +432,20 @@ def main():
     parser.add_argument("--attempt", required=True)
     parser.add_argument("--holder", type=Path)
     parser.add_argument("--pinned-codex", action="store_true")
+    parser.add_argument("--schema2", action="store_true")
     parser.add_argument("--fault", choices=sorted(FAULTS), default="none")
     parser.add_argument("--duration-ms", type=int, default=2500)
     args = parser.parse_args()
-    native = run(args.root, args.binding, args.attempt, args.fault, args.duration_ms, args.holder, args.pinned_codex)
+    manifest = None
+    driver = None
+    if args.schema2:
+        if not args.pinned_codex or args.holder is None or args.fault not in {"none", "observe_failure"}:
+            raise ValueError("Schema2 requires the pinned holder and an approved stop observation fixture")
+        manifest, cancel = schema2_manifest(args.root.resolve(), args.binding, args.attempt, args.holder.resolve())
+        driver = lambda stdin, stdout, deadline: drive_schema2(
+            stdin, stdout, deadline, manifest["context"]["prompt_text"], cancel)
+    native = run(args.root, args.binding, args.attempt, args.fault, args.duration_ms, args.holder,
+                 args.pinned_codex, schema2_manifest=manifest, drive_schema2=driver)
     binding_file = args.root / "binding.json"
     binding = json.loads(binding_file.read_text()) if binding_file.exists() else None
     if binding_file.exists():
