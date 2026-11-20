@@ -133,6 +133,8 @@ def prepare_source(source, pin, patch):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, required=True)
+    parser.add_argument('--synthetic-functional', action='store_true',
+                        help='Build the explicitly selected synthetic session fixture')
     args = parser.parse_args()
     source = args.source.resolve(strict=True)
     here = Path(__file__).resolve().parent
@@ -141,9 +143,12 @@ def main():
     env = {key: value for key, value in os.environ.items() if not key.startswith('GIT_')}
     env.update({key: value for key, value in GIT_ENV.items() if key != 'PATH'})
     env.update(CARGO_INCREMENTAL='0', CARGO_BUILD_JOBS='1', CARGO_NET_OFFLINE='true')
-    subprocess.run(['cargo', '+stable', '--config', 'profile.dev-small.package.sha2.opt-level=3',
-                    'build', '--offline', '--locked', '--profile', 'dev-small', '-p', 'codex-app-server',
-                    '--bin', 'codex-app-server', '-j', '1'], cwd=source / 'codex-rs', env=env, check=True)
+    command = ['cargo', '+stable', '--config', 'profile.dev-small.package.sha2.opt-level=3',
+               'build', '--offline', '--locked', '--profile', 'dev-small', '-p', 'codex-app-server',
+               '--bin', 'codex-app-server', '-j', '1']
+    if args.synthetic_functional:
+        command.extend(['--features', 'symphony-synthetic-fixture'])
+    subprocess.run(command, cwd=source / 'codex-rs', env=env, check=True)
     target = Path(env.get('CARGO_TARGET_DIR', source / 'codex-rs/target'))
     print(target / 'dev-small/codex-app-server')
 

@@ -6,6 +6,33 @@ This patch builds the actual `codex-app-server` target from Codex 0.162.1, commi
 ordinary entry path. It is a partial protected holder, not operational SIWC custody.
 Production Symphony C02 still refuses execution until its host dependencies qualify.
 
+## Slice A offline turn
+
+The approved 41-entry source inventory includes the core turn-input consumer and
+the ThreadManager test fixtures. The selected schema2 profile validates its sealed
+context, starts a thread through ThreadManager and registers RegularTask through
+normal core turn admission. The strict branch skips the absent extension registry
+and uses the existing one-use turn latch. It registers the task in the existing
+idle reservation. A registration failure leaves the latch consumed.
+
+The actual offline app-server emitted a nonretryable
+`SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE` error and a correlated failed terminal.
+The native guard and host independently recorded child reaping, pidfd death and
+channel closure. Missing stop observation results in quarantine with the consumed
+marker retained. The synthetic fixture always reports `qualified_host=false`.
+
+The previously accepted patch SHA-256 is
+`59a9d0ebabd18de96f7f6552b307183fb11bc091b1152b04aef2c34f1255148a`, with patched
+tree `39d3926e6c2a528c3039c2ff9368c1858b1d7f78`. Preserve those historical bytes.
+The current `upstream.json` identifies the distinct Slice A draft patch.
+
+A delegated formatter in this task invoked rustup outside the required denial
+wrapper. It reported downloading seven Rust 1.95.0 components, and toolchain
+files with task-time creation metadata were observed. Its exit and completion
+were not captured. This violated the offline constraint. The retained incident
+record must accompany review; no rollback was authorized or attempted. Further
+checks use the existing stable binaries explicitly through the denial wrapper.
+
 ## Selected entry and lifecycle
 
 The first operation in standalone `main` is `symphony_gate2::try_run`. A selected
@@ -32,7 +59,7 @@ synthetic launch form is `--symphony-pilot-holder BINDING ATTEMPT`.
    host, authentication or inference readiness. The existing guard journals it only
    after independently observing credential-channel closure.
 6. Initialize uses the pinned upstream InitializeParams/InitializeResponse types.
-   Every other request returns `SYMPHONY_HOST_UNQUALIFIED` and stops. There is no
+   In schema1, every other request returns `SYMPHONY_HOST_UNQUALIFIED` and stops. There is no
    provider, tool broker, auth refresh, local Child, hook, MCP, nested agent, snapshot,
    installer or model-refresh service in this selected branch. No denied request
    can reach generic startup. Configuration is immutable for the process lifetime.
@@ -46,8 +73,9 @@ synthetic launch form is `--symphony-pilot-holder BINDING ATTEMPT`.
    retains consumption, evidence and quarantine. Restart cannot materialize again.
 
 The manifest is generated from the synthetic permit by the development guard.
-It is not an authenticated qualified host manifest. The standalone entry only
-runs a refusal path. Neither it nor its test manifest can authorize a real turn.
+It is not an authenticated qualified host manifest. The schema1 entry only
+runs its earlier refusal path. Schema2 selects an offline synthetic lifecycle;
+neither profile nor its test manifest authorizes live execution.
 The existing C02 full binding, C01 one-use allowance and C04 terminal persistence
 remain the attempt authority. No second RuntimeAttempt is allocated.
 
@@ -96,8 +124,9 @@ PINNED_CODEX_BINARY=/absolute/pinned/codex/codex-rs/target/dev-small/codex-app-s
 
 The pinned release's lockfile still declares 161 local workspace packages as 0.0.0.
 The retained patch reconciles only those versions to 0.162.1, with no external
-package/checksum/source changes. The installed development compiler is Rust1.98.1;
-upstream requests1.95.0. No new toolchain was installed. This difference is retained
+package/checksum/source changes. The R1 development compiler was Rust1.98.1;
+upstream requests1.95.0. No new toolchain was installed in that earlier build.
+This difference is retained
 in build evidence and is not an operational reproducibility qualification.
 The build uses dev-small and optimizes SHA2 to keep exact self-identity verification
 inside the existing finite budget. No timeout or admission rule is relaxed.
@@ -122,6 +151,47 @@ remain unqualified. C03's operational PID-namespace proof is unchanged; these
 synthetic tests do not substitute for it. Swap/core-collector/hibernation host
 qualification is also not established by this build.
 
-The selected branch refuses before thread/turn execution and cannot enable provider
-egress. The installed ordinary Codex CLI is untouched. No signing, installation,
-enrollment, publication, resource adoption, Gate2 activation or live pilot is implied.
+Schema1 retains its controlled refusal before turn execution. The explicit schema2
+test build admits one synthetic turn and refuses before provider transport.
+
+### Reproduction and evidence limits
+
+`build.py --source /absolute/clean/pinned/source --synthetic-functional` selects
+the schema2 feature only after the same source-byte and patched-tree checks.
+Use the explicit existing compiler, offline cache and outbound-denial wrapper
+recorded in the retained command evidence. The standalone protected runtime uses
+the pinned upstream 16 MiB worker stack budget. A prior default-stack binary
+aborted on turn submission; its failed output and identity remain evidence.
+
+`test_functional_session.py` executes the actual binary selected explicitly by
+`PINNED_CODEX_BINARY`. Every case creates a new disposable source, binding and
+attempt. Positive assertions require real thread and turn identifiers, a core
+error, failed terminal status, no final answer and positive pidfd stop evidence.
+Negative cases cover context drift, unsupported schema, expiry and protocol
+mutation/replay. The sealed schema2 test control can pause the real task before
+sampling. The driver waits for the core turn-start event, interrupts the same
+thread and turn, and requires the interrupted terminal and independent native
+stop observations. An elapsed deadline without interrupt is quarantined.
+
+The schema2 native fixture binds the manifest digest to the local permit, relays
+bounded pipe data after materialization channel closure and correlates actual core
+events with independent stop observations. Its consumed marker is synthetic.
+Routed C01 consumption and C03 namespace proof rely on the separately governed
+pilot integration.
+
+The crate-private state re-export, two standard session test fixtures and the
+affected ThreadManager fixtures preserve the ordinary test assertions. The
+selected route uses checked access to strict session services. The standard
+compatibility Deref still panics if called on a strict session.
+
+Core's focused tests exercise auth, HTTP construction, both stream entries,
+WebSocket prewarm and fallback with a task-local detector scope. The positive
+controls verify the detector records an effect when invoked. Startup and
+completion tests cover unexpected prewarm state, absent strict services, pending
+mail, and step capture. The actual binary runs provide the protected runtime
+and core event evidence.
+
+The existing routed adapter selects the earlier synthetic holder exercise. Its
+C01 and C03 fixture results do not establish routed schema2 integration. The
+approved Slice A inventory contains no Elixir adapter or test file. Clippy's
+prior two development-toolchain failures are on unchanged upstream path-uri lines.

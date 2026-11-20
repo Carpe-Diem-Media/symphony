@@ -28,8 +28,10 @@
 
 /* Synthetic native development profile only. No operational credential input. */
 #define PROFILE "C02_SYNTHETIC_NATIVE_V1"
+#define SCHEMA2_PROFILE "C02_SYNTHETIC_SCHEMA2_V1"
 struct permit {
     char profile[40], binding[65], attempt[129], holder[65], guard[65];
+    char manifest[65];
     int guard_pid;
     unsigned long long guard_start, deadline;
 };
@@ -72,9 +74,12 @@ static inline int read_permit(void) {
     int n = fscanf(f, "%39s\n%64s\n%128s\n%64s\n%64s\n%d\n%llu\n%llu\n", candidate.profile,
         candidate.binding, candidate.attempt, candidate.holder, candidate.guard, &candidate.guard_pid,
         &candidate.guard_start, &candidate.deadline);
+    bool schema2 = !strcmp(candidate.profile, SCHEMA2_PROFILE);
+    if (schema2 && fscanf(f, "%64s\n", candidate.manifest) != 1) n = -1;
     int trailing = fgetc(f);
     fclose(f);
-    if (n != 8 || trailing != EOF || strcmp(candidate.profile, PROFILE) || !hex64(candidate.binding) ||
+    if (n != 8 || trailing != EOF || (!schema2 && strcmp(candidate.profile, PROFILE)) ||
+        (schema2 && !hex64(candidate.manifest)) || !hex64(candidate.binding) ||
         !hex64(candidate.holder) || !hex64(candidate.guard) || !reference(candidate.attempt) ||
         candidate.guard_pid < 2 || candidate.deadline <= monotonic_ms()) return -1;
     authority = candidate;
