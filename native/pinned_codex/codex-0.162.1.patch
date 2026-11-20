@@ -1445,6 +1445,34 @@ index 0ef30505cc5e78102d8bfb64e18adaf0e0ad008b..11b6cba661fbbf4716f89186b6a88617
  [dependencies]
  codex-utils-process = { workspace = true }
  anyhow = { workspace = true }
+diff --git a/codex-rs/app-server/src/lib.rs b/codex-rs/app-server/src/lib.rs
+index 896aa6623b690bff7789a830699ae498f1a3b6dc..d0613430927c88e9b24dd856657b140dcc6ffb16 100644
+--- a/codex-rs/app-server/src/lib.rs
++++ b/codex-rs/app-server/src/lib.rs
+@@ -1627,3 +1627,23 @@ mod tests {
+         );
+     }
+ }
++
++#[cfg(all(
++    feature = "symphony-synthetic-fixture",
++    target_os = "linux",
++    target_arch = "x86_64"
++))]
++mod symphony_session;
++
++/// Entry selected only after synchronous native protection and manifest checks.
++#[cfg(all(
++    feature = "symphony-synthetic-fixture",
++    target_os = "linux",
++    target_arch = "x86_64"
++))]
++pub fn run_symphony_strict_session(
++    context: serde_json::Value,
++    deadline_ms: u64,
++) -> Result<(), &'static str> {
++    symphony_session::run(context, deadline_ms)
++}
 diff --git a/codex-rs/app-server/src/main.rs b/codex-rs/app-server/src/main.rs
 index 4119cedfe413005e165ca8b00b86699dabe4458a..abf947d2aeb0383a7512bee82b6587cab513205d 100644
 --- a/codex-rs/app-server/src/main.rs
@@ -1464,10 +1492,10 @@ index 4119cedfe413005e165ca8b00b86699dabe4458a..abf947d2aeb0383a7512bee82b6587ca
          let AppServerArgs {
 diff --git a/codex-rs/app-server/src/symphony_gate2.rs b/codex-rs/app-server/src/symphony_gate2.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..5b95fc15a62e4644bde704239dc4a5649f692dc7
+index 0000000000000000000000000000000000000000..4d267ce5235625872e214c2523af3bbf89178d60
 --- /dev/null
 +++ b/codex-rs/app-server/src/symphony_gate2.rs
-@@ -0,0 +1,477 @@
+@@ -0,0 +1,519 @@
 +//! Early, synthetic-only H-100 holder entry. Never invokes generic startup.
 +//!
 +//! This is a partial J3/J4 implementation in the actual standalone app-server.
@@ -1532,6 +1560,8 @@ index 0000000000000000000000000000000000000000..5b95fc15a62e4644bde704239dc4a564
 +        holder_sha256: String,
 +        deadline_ms: u64,
 +        fault: String,
++        #[serde(default)]
++        context: Option<serde_json::Value>,
 +    }
 +
 +    fn now() -> Result<u64> {
@@ -1671,7 +1701,12 @@ index 0000000000000000000000000000000000000000..5b95fc15a62e4644bde704239dc4a564
 +            .metadata()
 +            .map_err(|_| "SYMPHONY_MANIFEST_REFUSED")?
 +            .len();
-+        if size == 0 || size > 2048 {
++        let maximum = if cfg!(feature = "symphony-synthetic-fixture") {
++            131072
++        } else {
++            2048
++        };
++        if size == 0 || size > maximum {
 +            return Err("SYMPHONY_MANIFEST_REFUSED");
 +        }
 +        let mut bytes = Vec::new();
@@ -1702,10 +1737,20 @@ index 0000000000000000000000000000000000000000..5b95fc15a62e4644bde704239dc4a564
 +        }
 +        let manifest: Manifest =
 +            serde_json::from_slice(&bytes).map_err(|_| "SYMPHONY_MANIFEST_REFUSED")?;
++        let original: serde_json::Value =
++            serde_json::from_slice(&bytes).map_err(|_| "SYMPHONY_MANIFEST_REFUSED")?;
++        let schema1 = manifest.schema == 1
++            && manifest.profile == "C02_PINNED_CODEX_SYNTHETIC_V1"
++            && size <= 2048
++            && original.get("context").is_none();
++        let schema2 = cfg!(feature = "symphony-synthetic-fixture")
++            && manifest.schema == 2
++            && manifest.profile == "H100_FUNCTIONAL_CODEX_SYNTHETIC_V1"
++            && manifest.context.is_some()
++            && manifest.fault == "none";
 +        if manifest.binding != binding
 +            || manifest.attempt != attempt
-+            || manifest.schema != 1
-+            || manifest.profile != "C02_PINNED_CODEX_SYNTHETIC_V1"
++            || !(schema1 || schema2)
 +            || !hexadecimal(&manifest.binding)
 +            || !hexadecimal(&manifest.holder_sha256)
 +            || manifest.attempt.is_empty()
@@ -1876,6 +1921,31 @@ index 0000000000000000000000000000000000000000..5b95fc15a62e4644bde704239dc4a564
 +        if !(fork_denied && exec_denied && ptrace_denied && socket_denied && clone_denied) {
 +            return Err("SYMPHONY_KERNEL_PROOF_REFUSED");
 +        }
++        #[cfg(feature = "symphony-synthetic-fixture")]
++        if manifest.schema == 2 {
++            let context = manifest.context.ok_or("SYMPHONY_CONTEXT_INVALID")?;
++            if context
++                .get("binding_id")
++                .and_then(serde_json::Value::as_str)
++                != Some(&manifest.binding)
++                || context
++                    .get("attempt_id")
++                    .and_then(serde_json::Value::as_str)
++                    != Some(&manifest.attempt)
++                || context
++                    .get("holder_sha256")
++                    .and_then(serde_json::Value::as_str)
++                    != Some(&manifest.holder_sha256)
++            {
++                return Err("SYMPHONY_CONTEXT_INVALID");
++            }
++            // No access-bearing environment survives into core configuration or
++            // runtime threads. The synthetic bytes were checked and zeroed above.
++            unsafe {
++                std::env::remove_var("ACCESS_TOKEN");
++            }
++            return codex_app_server::run_symphony_strict_session(context, manifest.deadline_ms);
++        }
 +        // A real Tokio worker must start using only qualified pthread clone flags.
 +        let runtime = tokio::runtime::Builder::new_multi_thread()
 +            .worker_threads(1)
@@ -1945,59 +2015,623 @@ index 0000000000000000000000000000000000000000..5b95fc15a62e4644bde704239dc4a564
 +        Ok(())
 +    }
 +}
+diff --git a/codex-rs/app-server/src/symphony_session.rs b/codex-rs/app-server/src/symphony_session.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..bf7886b6e0f094fb4681b129fd234460eb5ffc1b
+--- /dev/null
++++ b/codex-rs/app-server/src/symphony_session.rs
+@@ -0,0 +1,494 @@
++//! Selected synthetic protocol bridge. This never enters generic app-server startup.
++//!
++//! Admission is one-way: initialize -> initialized -> thread -> turn -> actual
++//! core failure -> shutdown. Any protocol/evidence mismatch closes admission.
++//! A core turn completion without its own terminal error is never accepted.
++use codex_core::ThreadManager;
++use codex_core::config::Config;
++use codex_core::symphony_boundary::{SymphonyContext, install_context};
++use codex_protocol::protocol::{EventMsg, Op};
++use codex_protocol::turn_input::{TurnInput, TurnInputMode, TurnInputRequest, TurnInputSubmission};
++use codex_protocol::user_input::UserInput;
++use serde_json::{Value, json};
++use sha2::{Digest, Sha256};
++use std::sync::Arc;
++use std::time::{Duration, Instant};
++
++const REFUSED: &str = "SYMPHONY_STRICT_PROTOCOL_REFUSED";
++const PROVIDER: &str = "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE";
++type Result<T> = std::result::Result<T, &'static str>;
++
++fn now() -> Result<u64> {
++    let mut ts = libc::timespec {
++        tv_sec: 0,
++        tv_nsec: 0,
++    };
++    if unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) } != 0 {
++        return Err("SYMPHONY_CLOCK_REFUSED");
++    }
++    Ok(ts.tv_sec as u64 * 1000 + ts.tv_nsec as u64 / 1_000_000)
++}
++fn remaining(deadline: u64) -> Result<Duration> {
++    let ms = deadline.saturating_sub(now()?);
++    if ms == 0 {
++        return Err("SYMPHONY_DEADLINE");
++    }
++    Ok(Duration::from_millis(ms))
++}
++fn hash(bytes: &[u8]) -> String {
++    format!("{:x}", Sha256::digest(bytes))
++}
++fn text(value: &Value, name: &str) -> Result<String> {
++    value
++        .get(name)
++        .and_then(Value::as_str)
++        .map(str::to_owned)
++        .ok_or(REFUSED)
++}
++fn keys(value: &Value, allowed: &[&str]) -> Result<()> {
++    let map = value.as_object().ok_or(REFUSED)?;
++    if map.keys().any(|k| !allowed.contains(&k.as_str())) {
++        return Err(REFUSED);
++    }
++    Ok(())
++}
++fn path(value: &Value, name: &str) -> Result<std::path::PathBuf> {
++    let p = std::path::PathBuf::from(text(value, name)?);
++    if !p.is_absolute() || std::fs::canonicalize(&p).map_err(|_| REFUSED)? != p {
++        return Err("SYMPHONY_CONTEXT_INVALID");
++    }
++    Ok(p)
++}
++
++fn context(mut value: Value, deadline: u64) -> Result<Arc<SymphonyContext>> {
++    keys(
++        &value,
++        &[
++            "project_id",
++            "work_item_id",
++            "role",
++            "binding_id",
++            "attempt_id",
++            "grant_id",
++            "configuration_digest",
++            "source_commit",
++            "source_tree",
++            "policy_digest",
++            "policy_root",
++            "policy_text",
++            "holder_sha256",
++            "holder_profile",
++            "holder_profile_digest",
++            "permission_reference",
++            "host_identity",
++            "boot_identity",
++            "credential_generation",
++            "model_slug",
++            "model_catalog_digest",
++            "model_catalog",
++            "text_digest",
++            "prompt_text",
++            "context_digest",
++            "workspace",
++            "home",
++            "codex_home",
++        ],
++    )?;
++    let digest = text(&value, "context_digest")?;
++    value
++        .as_object_mut()
++        .ok_or(REFUSED)?
++        .remove("context_digest");
++    if hash(&serde_json::to_vec(&value).map_err(|_| REFUSED)?) != digest
++        || hash(text(&value, "policy_text")?.as_bytes()) != text(&value, "policy_digest")?
++        || hash(text(&value, "prompt_text")?.as_bytes()) != text(&value, "text_digest")?
++        || hash(
++            &serde_json::to_vec(value.get("model_catalog").ok_or(REFUSED)?).map_err(|_| REFUSED)?,
++        ) != text(&value, "model_catalog_digest")?
++        || text(&value, "home")? != std::env::var("HOME").map_err(|_| REFUSED)?
++        || text(&value, "codex_home")? != std::env::var("CODEX_HOME").map_err(|_| REFUSED)?
++    {
++        return Err("SYMPHONY_CONTEXT_INVALID");
++    }
++    let context = SymphonyContext {
++        project_id: text(&value, "project_id")?,
++        work_item_id: text(&value, "work_item_id")?,
++        role: text(&value, "role")?,
++        binding_id: text(&value, "binding_id")?,
++        attempt_id: text(&value, "attempt_id")?,
++        grant_id: text(&value, "grant_id")?,
++        configuration_digest: text(&value, "configuration_digest")?,
++        source_commit: text(&value, "source_commit")?,
++        source_tree: text(&value, "source_tree")?,
++        policy_digest: text(&value, "policy_digest")?,
++        policy_text: text(&value, "policy_text")?,
++        holder_sha256: text(&value, "holder_sha256")?,
++        holder_profile: text(&value, "holder_profile")?,
++        holder_profile_digest: text(&value, "holder_profile_digest")?,
++        permission_reference: text(&value, "permission_reference")?,
++        host_identity: text(&value, "host_identity")?,
++        boot_identity: text(&value, "boot_identity")?,
++        credential_generation: text(&value, "credential_generation")?,
++        model_slug: text(&value, "model_slug")?,
++        model_catalog_digest: text(&value, "model_catalog_digest")?,
++        text_digest: text(&value, "text_digest")?,
++        prompt_text: text(&value, "prompt_text")?,
++        workspace: path(&value, "workspace")?,
++        home: path(&value, "home")?,
++        codex_home: path(&value, "codex_home")?,
++        policy_root: path(&value, "policy_root")?,
++        context_digest: digest,
++        model_catalog: value.get("model_catalog").cloned().ok_or(REFUSED)?,
++        deadline: Instant::now() + remaining(deadline)?,
++    };
++    install_context(context).map_err(|_| "SYMPHONY_CONTEXT_INVALID")
++}
++
++fn poll(fd: i32, events: i16, deadline: u64) -> Result<()> {
++    let mut descriptor = libc::pollfd {
++        fd,
++        events,
++        revents: 0,
++    };
++    let wait = remaining(deadline)?.as_millis().min(i32::MAX as u128) as i32;
++    if unsafe { libc::poll(&mut descriptor, 1, wait) } <= 0 {
++        return Err("SYMPHONY_DEADLINE");
++    }
++    if descriptor.revents & (events | libc::POLLHUP) == 0 {
++        return Err(REFUSED);
++    }
++    Ok(())
++}
++fn emit(value: Value, deadline: u64) -> Result<()> {
++    let mut bytes = serde_json::to_vec(&value).map_err(|_| REFUSED)?;
++    bytes.push(b'\n');
++    // One bounded atomic pipe write after POLLOUT, never an unbounded flush.
++    if bytes.len() > 4096 {
++        return Err("SYMPHONY_OUTPUT_REFUSED");
++    }
++    poll(1, libc::POLLOUT, deadline)?;
++    if unsafe { libc::write(1, bytes.as_ptr().cast(), bytes.len()) } != bytes.len() as isize {
++        return Err("SYMPHONY_OUTPUT_REFUSED");
++    }
++    Ok(())
++}
++fn read(deadline: u64, total: &mut usize) -> Result<Option<Value>> {
++    let mut bytes = Vec::new();
++    loop {
++        poll(0, libc::POLLIN, deadline)?;
++        let mut b = 0_u8;
++        let count = unsafe { libc::read(0, (&mut b as *mut u8).cast(), 1) };
++        if count == 0 {
++            return if bytes.is_empty() {
++                Ok(None)
++            } else {
++                Err(REFUSED)
++            };
++        }
++        if count != 1 {
++            return Err(REFUSED);
++        }
++        *total += 1;
++        if *total > 262144 || bytes.len() >= 65536 {
++            return Err(REFUSED);
++        }
++        if b == b'\n' {
++            return serde_json::from_slice(&bytes)
++                .map(Some)
++                .map_err(|_| REFUSED);
++        }
++        bytes.push(b);
++    }
++}
++
++fn wire_thread(
++    configured: &codex_protocol::protocol::SessionConfiguredEvent,
++) -> Result<codex_app_server_protocol::Thread> {
++    let observed = std::time::SystemTime::now()
++        .duration_since(std::time::UNIX_EPOCH)
++        .map_err(|_| REFUSED)?
++        .as_secs() as i64;
++    Ok(codex_app_server_protocol::Thread {
++        id: configured.thread_id.to_string(),
++        environments: Some(Vec::new()),
++        extra: None,
++        session_id: configured.session_id.to_string(),
++        forked_from_id: None,
++        parent_thread_id: None,
++        preview: String::new(),
++        ephemeral: true,
++        section: None,
++        section_entered_at: None,
++        project_id: None,
++        history_mode: codex_protocol::protocol::ThreadHistoryMode::default().into(),
++        model_provider: configured.model_provider_id.clone(),
++        model: Some(configured.model.clone()),
++        reasoning_effort: configured.reasoning_effort.clone(),
++        created_at: observed,
++        updated_at: observed,
++        recency_at: None,
++        status: codex_app_server_protocol::ThreadStatus::Idle,
++        path: None,
++        cwd: configured.cwd.clone(),
++        cli_version: env!("CARGO_PKG_VERSION").into(),
++        originator: Some("symphony-protected-synthetic".into()),
++        source: codex_protocol::protocol::SessionSource::Exec.into(),
++        can_accept_direct_input: Some(true),
++        thread_source: None,
++        agent_nickname: None,
++        agent_role: None,
++        git_info: None,
++        name: None,
++        daybreak_enabled: None,
++        turns: Vec::new(),
++    })
++}
++fn wire_turn(
++    id: String,
++    root: Option<String>,
++    status: codex_app_server_protocol::TurnStatus,
++    error: Option<codex_protocol::protocol::ErrorEvent>,
++    started_at: Option<i64>,
++    completed_at: Option<i64>,
++    duration_ms: Option<i64>,
++) -> codex_app_server_protocol::Turn {
++    codex_app_server_protocol::Turn {
++        id,
++        root_turn_id: root,
++        items: Vec::new(),
++        items_view: codex_app_server_protocol::TurnItemsView::NotLoaded,
++        status,
++        error: error.map(|error| codex_app_server_protocol::TurnError {
++            message: error.message,
++            codex_error_info: error.codex_error_info.map(Into::into),
++            additional_details: None,
++            misalignment: None,
++        }),
++        started_at,
++        completed_at,
++        duration_ms,
++    }
++}
++
++pub fn run(value: Value, deadline: u64) -> Result<()> {
++    let ctx = context(value, deadline)?;
++    let runtime = tokio::runtime::Builder::new_multi_thread()
++        .worker_threads(1)
++        // Match the pinned arg0 runtime stack budget without its helper dispatch.
++        // Core turn futures require this budget even when external services are absent.
++        .thread_stack_size(16 * 1024 * 1024)
++        .enable_time()
++        .build()
++        .map_err(|_| "SYMPHONY_THREAD_REFUSED")?;
++    let result = runtime.block_on(async {
++        if tokio::spawn(async { 1621_u32 })
++            .await
++            .map_err(|_| "SYMPHONY_THREAD_REFUSED")?
++            != 1621
++        {
++            return Err("SYMPHONY_THREAD_REFUSED");
++        }
++        session(ctx, deadline).await
++    });
++    let counts = codex_core::symphony_boundary::effect_counts();
++    // Synthetic-only audit metadata, separate from real core protocol events.
++    // Zero counts do not prove coverage of a client entry that was never reached.
++    eprintln!(
++        "{}",
++        json!({"symphonySyntheticCounts": {
++            "providerRefusals":counts.provider_refusals, "auth":counts.auth,
++            "http":counts.http, "websocket":counts.websocket, "responses":counts.responses,
++            "retry":counts.retry, "fallback":counts.fallback,
++            "discovery":counts.discovery, "process":counts.process
++        }})
++    );
++    result
++}
++
++async fn session(ctx: Arc<SymphonyContext>, deadline: u64) -> Result<()> {
++    let config = Config::from_symphony_context(&ctx)
++        .await
++        .map_err(|_| "SYMPHONY_CONFIG_REFUSED")?;
++    let manager = ThreadManager::new_strict(Arc::clone(&ctx), config)
++        .map_err(|_| "SYMPHONY_STRICT_SERVICES_UNAVAILABLE")?;
++    emit(
++        json!({"ready":true,"binding":ctx.binding_id,"qualified_host":false,
++        "version":env!("CARGO_PKG_VERSION"),"controls":{
++            "protected_codex_entry":true,"tokio_thread":true,"fork_denied":true,
++            "exec_denied":true,"ptrace_denied":true,"inet_socket_denied":true,
++            "process_clone_denied":true,"credential_fds_absent":true,"fresh_home":true}}),
++        deadline,
++    )?;
++    let mut total = 0;
++    let mut initialized = false;
++    let mut acknowledged = false;
++    let mut thread = None;
++    let mut admitted = false;
++    let mut request_ids = std::collections::HashSet::new();
++    let outcome = async {
++        while let Some(message) = read(deadline, &mut total)? {
++            keys(&message, &["id", "method", "params"])?;
++            let method = text(&message, "method")?;
++            let params = message.get("params").cloned().unwrap_or_else(|| json!({}));
++            if method == "initialized" && initialized && !acknowledged && message.get("id").is_none() {
++                keys(&params, &[])?;
++                acknowledged = true;
++                continue;
++            }
++            let id = message.get("id").filter(|id| id.is_i64() || id.as_str().is_some_and(|s| s.len() <= 64))
++                .cloned().ok_or(REFUSED)?;
++            if !request_ids.insert(id.to_string()) { return Err(REFUSED); }
++            match method.as_str() {
++                "initialize" if !initialized => {
++                    keys(&params, &["clientInfo"])?;
++                    keys(params.get("clientInfo").ok_or(REFUSED)?, &["name", "version", "title"])?;
++                    let _: codex_app_server_protocol::InitializeParams = serde_json::from_value(params).map_err(|_| REFUSED)?;
++                    emit(json!({"id":id,"result":{"userAgent":"codex-app-server protected synthetic",
++                        "codexHome":ctx.codex_home,"platformFamily":"unix","platformOs":"linux"}}), deadline)?;
++                    initialized = true;
++                }
++                "thread/start" if acknowledged && thread.is_none() => {
++                    keys(&params, &[])?;
++                    let created = tokio::time::timeout(remaining(deadline)?, manager.start_strict_thread())
++                        .await.map_err(|_| "SYMPHONY_DEADLINE")?.map_err(|_| "SYMPHONY_THREAD_REFUSED")?;
++                    let thread_id = created.thread_id.to_string();
++                    let wire = wire_thread(&created.session_configured)?;
++                    let configured = &created.session_configured;
++                    let response = codex_app_server_protocol::ThreadStartResponse {
++                        thread: wire.clone(), model: configured.model.clone(),
++                        model_provider: configured.model_provider_id.clone(), service_tier: None,
++                        disabled_plugin_ids: Vec::new(), cwd: configured.cwd.clone(),
++                        runtime_workspace_roots: vec![configured.cwd.clone()], instruction_sources: Vec::new(),
++                        approval_policy: configured.approval_policy.clone().into(),
++                        approvals_reviewer: configured.approvals_reviewer.into(),
++                        sandbox: configured.permission_profile.to_legacy_sandbox_policy(&ctx.workspace)
++                            .map_err(|_| REFUSED)?.into(),
++                        active_permission_profile: configured.active_permission_profile.clone().map(Into::into),
++                        reasoning_effort: configured.reasoning_effort.clone(),
++                        multi_agent_mode: codex_protocol::config_types::MultiAgentMode::ExplicitRequestOnly,
++                    };
++                    emit(json!({"id":id,"result":response}), deadline)?;
++                    emit(json!({"method":"thread/started","params":{"thread":wire}}), deadline)?;
++                    thread = Some((thread_id, created.thread));
++                }
++                "turn/start" if !admitted => {
++                    keys(&params, &["threadId", "input"])?;
++                    let (thread_id, core) = thread.as_ref().ok_or(REFUSED)?;
++                    if text(&params, "threadId")? != *thread_id { return Err(REFUSED); }
++                    let input = params.get("input").and_then(Value::as_array).ok_or(REFUSED)?;
++                    if input.len() != 1 { return Err(REFUSED); }
++                    keys(&input[0], &["type", "text"])?;
++                    if text(&input[0], "type")? != "text" || text(&input[0], "text")? != ctx.prompt_text {
++                        return Err(REFUSED);
++                    }
++                    admitted = true;
++                    let request = TurnInputRequest::new(TurnInput::UserInput {
++                        content: vec![UserInput::Text { text:ctx.prompt_text.clone(), text_elements:Vec::new() }], client_id:None,
++                    });
++                    let (reply, response) = tokio::sync::oneshot::channel();
++                    core.submit(Op::TurnInput { request:Box::new(request), mode:TurnInputMode::StartIfIdle, reply })
++                        .await.map_err(|_| REFUSED)?;
++                    let actual = tokio::time::timeout(remaining(deadline)?, response).await
++                        .map_err(|_| "SYMPHONY_DEADLINE")?.map_err(|_| REFUSED)?.map_err(|_| REFUSED)?;
++                    let TurnInputSubmission::Started { turn_id, root_turn_id } = actual else { return Err(REFUSED); };
++                    emit(json!({"id":id,"result":codex_app_server_protocol::TurnStartResponse {
++                        turn:wire_turn(turn_id.clone(), Some(root_turn_id),
++                            codex_app_server_protocol::TurnStatus::InProgress, None, None, None, None)
++                    }}), deadline)?;
++                    let mut started = false;
++                    let mut error_seen = false;
++                    loop {
++                        // Poll only the already-open control pipe. No I/O reactor or
++                        // background reader is created in the protected holder.
++                        let mut input = libc::pollfd { fd: 0, events: libc::POLLIN, revents: 0 };
++                        let observed = unsafe { libc::poll(&mut input, 1, 0) };
++                        if observed < 0 { return Err(REFUSED); }
++                        if input.revents & libc::POLLIN != 0 {
++                            let interrupt = read(deadline, &mut total)?.ok_or(REFUSED)?;
++                            keys(&interrupt, &["id", "method", "params"])?;
++                            if text(&interrupt, "method")? != "turn/interrupt" { return Err(REFUSED); }
++                            let interrupt_id = interrupt.get("id")
++                                .filter(|id| id.is_i64() || id.as_str().is_some_and(|s| s.len() <= 64))
++                                .cloned().ok_or(REFUSED)?;
++                            if !request_ids.insert(interrupt_id.to_string()) { return Err(REFUSED); }
++                            let params = interrupt.get("params").ok_or(REFUSED)?;
++                            keys(params, &["threadId", "turnId"])?;
++                            if text(params, "threadId")? != *thread_id || text(params, "turnId")? != turn_id {
++                                return Err(REFUSED);
++                            }
++                            core.submit(Op::Interrupt).await.map_err(|_| REFUSED)?;
++                            emit(json!({"id":interrupt_id,"result":
++                                codex_app_server_protocol::TurnInterruptResponse {}}), deadline)?;
++                        }
++                        let event = match tokio::time::timeout(
++                            remaining(deadline)?.min(Duration::from_millis(5)), core.next_event()).await {
++                            Ok(event) => event.map_err(|_| REFUSED)?,
++                            Err(_) => { remaining(deadline)?; continue; }
++                        };
++                        if event.id != turn_id { return Err("SYMPHONY_CORE_EVIDENCE_REFUSED"); }
++                        match event.msg {
++                            EventMsg::TurnStarted(actual) if !started && actual.turn_id == turn_id => {
++                                started = true;
++                                emit(json!({"method":"turn/started","params":{"threadId":thread_id,
++                                    "turn":wire_turn(actual.turn_id, actual.root_turn_id,
++                                        codex_app_server_protocol::TurnStatus::InProgress, None,
++                                        actual.started_at, None, None)}}), deadline)?;
++                            }
++                            EventMsg::Error(error) if started && !error_seen && error.message == PROVIDER => {
++                                error_seen = true;
++                                emit(json!({"method":"error","params":codex_app_server_protocol::ErrorNotification {
++                                    thread_id:thread_id.clone(), turn_id:turn_id.clone(), will_retry:false,
++                                    error:codex_app_server_protocol::TurnError {
++                                        message:error.message,
++                                        codex_error_info:error.codex_error_info.map(Into::into),
++                                        additional_details:None, misalignment:None,
++                                    }
++                                }}), deadline)?;
++                            }
++                            EventMsg::TurnComplete(actual) if started && error_seen && actual.turn_id == turn_id
++                                && actual.last_agent_message.is_none()
++                                && actual.error.as_ref().is_some_and(|error| error.message == PROVIDER) => {
++                                emit(json!({"method":"turn/completed","params":{"threadId":thread_id,
++                                    "turn":wire_turn(actual.turn_id, actual.root_turn_id,
++                                        codex_app_server_protocol::TurnStatus::Failed, actual.error,
++                                        actual.started_at, actual.completed_at, actual.duration_ms)}}), deadline)?;
++                                break;
++                            }
++                            EventMsg::TurnAborted(actual) if started && actual.turn_id.as_deref() == Some(&turn_id) => {
++                                emit(json!({"method":"turn/completed","params":{"threadId":thread_id,
++                                    "turn":wire_turn(turn_id.clone(), actual.root_turn_id,
++                                        codex_app_server_protocol::TurnStatus::Interrupted, actual.error,
++                                        actual.started_at, actual.completed_at, actual.duration_ms)}}), deadline)?;
++                                break;
++                            }
++                            _ => return Err("SYMPHONY_CORE_EVIDENCE_REFUSED"),
++                        }
++                    }
++                }
++                _ => return Err(REFUSED),
++            }
++        }
++        Ok(())
++    }.await;
++    // No normal-success return is stop proof. The caller still requires the
++    // native namespace/PID/port observations owned by C03.
++    let stopped = tokio::time::timeout(
++        remaining(deadline)?,
++        manager.shutdown_all_threads_bounded(remaining(deadline)?),
++    )
++    .await
++    .map_err(|_| "SYMPHONY_DISPOSAL_UNCONFIRMED")?;
++    if codex_core::symphony_boundary::stop_unconfirmed()
++        || !stopped.submit_failed.is_empty()
++        || !stopped.timed_out.is_empty()
++        || thread.as_ref().is_some_and(|(id, _)| {
++            !stopped
++                .completed
++                .iter()
++                .any(|actual| actual.to_string() == *id)
++        })
++    {
++        return Err("SYMPHONY_DISPOSAL_UNCONFIRMED");
++    }
++    outcome
++}
 diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
-index 24f2964ffe566faa7a9de34636e11a528123c6c1..c9af895a6afb2a3a522b60c8cff7dc80ebfc284c 100644
+index 24f2964ffe566faa7a9de34636e11a528123c6c1..cdd364f30d96b751b28a1bb59a891c1e17c7958b 100644
 --- a/codex-rs/core/src/client.rs
 +++ b/codex-rs/core/src/client.rs
-@@ -1042,6 +1042,11 @@ impl ModelClient {
+@@ -660,6 +660,7 @@ impl ModelClient {
+         let activated =
+             websocket_enabled && !self.state.disable_websockets.swap(true, Ordering::Relaxed);
+         if activated {
++            crate::symphony_boundary::record_fallback();
+             warn!("falling back to HTTP");
+             session_telemetry.counter(
+                 "codex.transport.fallback_to_http",
+@@ -1042,6 +1043,9 @@ impl ModelClient {
      /// This centralizes setup used by both prewarm and normal request paths so they stay in
      /// lockstep when auth/provider resolution changes.
      async fn current_client_setup(&self, routing: ClientRouting) -> Result<CurrentClientSetup> {
 +        if crate::symphony_boundary::is_selected() {
-+            return Err(CodexErr::InvalidRequest(
-+                "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE".to_string(),
-+            ));
++            return Err(crate::symphony_boundary::provider_boundary_unavailable());
 +        }
          // Capture before resolving credentials so an account switch during setup cannot label
          // an old connection with the new owner's revision.
          let auth_owner_generation = self.auth_owner_generation();
-@@ -1204,6 +1209,11 @@ impl ModelClient {
+@@ -1052,6 +1056,7 @@ impl ModelClient {
+             .map(|manager| manager.auth_change_receiver());
+         loop {
+             let revision = auth_changes.as_ref().map(|changes| *changes.borrow());
++            crate::symphony_boundary::record_auth();
+             let auth = self.state.provider.auth().await;
+             let (api_provider, redirect_policy) = match routing {
+                 ClientRouting::Workspace => {
+@@ -1185,6 +1190,7 @@ impl ModelClient {
+         endpoint: &str,
+         redirect_policy: ClientRedirectPolicy,
+     ) -> Result<ReqwestTransport> {
++        crate::symphony_boundary::record_http();
+         let redirect_policy = if api_provider
+             .headers
+             .contains_key(codex_model_provider::ACCOUNT_ROUTING_HEADER)
+@@ -1204,6 +1210,9 @@ impl ModelClient {
      }
 
      pub(crate) async fn prewarm_auth(&self) -> Result<()> {
 +        if crate::symphony_boundary::is_selected() {
-+            return Err(CodexErr::InvalidRequest(
-+                "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE".to_string(),
-+            ));
++            return Err(crate::symphony_boundary::provider_boundary_unavailable());
 +        }
          self.current_client_setup(ClientRouting::Workspace)
              .await
              .map(|_| ())
-@@ -1472,6 +1482,11 @@ impl ModelClientSession {
+@@ -1224,6 +1233,7 @@ impl ModelClient {
+         request_route_telemetry: RequestRouteTelemetry,
+         responses_headers: &ApiHeaderMap,
+     ) -> std::result::Result<ApiWebSocketConnection, ApiError> {
++        crate::symphony_boundary::record_websocket();
+         let mut headers = self.build_websocket_headers(responses_metadata).await;
+         headers.extend(responses_headers.clone());
+         let websocket_telemetry = ModelClientSession::build_websocket_telemetry(
+@@ -1472,6 +1482,9 @@ impl ModelClientSession {
          session_telemetry: &SessionTelemetry,
          responses_metadata: &CodexResponsesMetadata,
      ) -> Result<()> {
 +        if crate::symphony_boundary::is_selected() {
-+            return Err(CodexErr::InvalidRequest(
-+                "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE".to_string(),
-+            ));
++            return Err(crate::symphony_boundary::provider_boundary_unavailable());
 +        }
          if !self.client.responses_websocket_enabled() {
              return Ok(());
          }
-@@ -2245,6 +2260,11 @@ impl ModelClientSession {
+@@ -1529,6 +1542,7 @@ impl ModelClientSession {
+                 Err(ApiError::Transport(unauthorized_transport))
+                     if provider.is_recoverable_auth_error(&unauthorized_transport) =>
+                 {
++                    crate::symphony_boundary::record_retry();
+                     pending_retry = PendingUnauthorizedRetry::from_recovery(
+                         handle_unauthorized(
+                             unauthorized_transport,
+@@ -1779,6 +1793,7 @@ impl ModelClientSession {
+                 client_setup.api_auth,
+             )
+             .with_telemetry(Some(request_telemetry), Some(sse_telemetry));
++            crate::symphony_boundary::record_responses();
+             let stream_result = client.stream_request(request, options).await;
+
+             match stream_result {
+@@ -1799,6 +1814,7 @@ impl ModelClientSession {
+                         .provider
+                         .is_recoverable_auth_error(&unauthorized_transport) =>
+                 {
++                    crate::symphony_boundary::record_retry();
+                     let response_debug_context =
+                         extract_response_debug_context(&unauthorized_transport);
+                     inference_trace_attempt.record_failed(
+@@ -1945,6 +1961,7 @@ impl ModelClientSession {
+                 Err(ApiError::Transport(unauthorized_transport))
+                     if provider.is_recoverable_auth_error(&unauthorized_transport) =>
+                 {
++                    crate::symphony_boundary::record_retry();
+                     pending_retry = PendingUnauthorizedRetry::from_recovery(
+                         handle_unauthorized(
+                             unauthorized_transport,
+@@ -2089,6 +2106,7 @@ impl ModelClientSession {
+                     ),
+                 ],
+             );
++            crate::symphony_boundary::record_responses();
+             let stream_result = websocket_connection
+                 .stream_request(
+                     ws_request,
+@@ -2245,6 +2263,9 @@ impl ModelClientSession {
          responses_metadata: &CodexResponsesMetadata,
          inference_trace: &InferenceTraceContext,
      ) -> Result<ResponseStream> {
 +        if crate::symphony_boundary::is_selected() {
-+            return Err(CodexErr::InvalidRequest(
-+                "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE".to_string(),
-+            ));
++            return Err(crate::symphony_boundary::provider_boundary_unavailable());
 +        }
          let wire_api = self.client.state.provider.info().wire_api;
          match wire_api {
              WireApi::Responses => {
-@@ -2298,6 +2318,9 @@ impl ModelClientSession {
+@@ -2298,6 +2319,9 @@ impl ModelClientSession {
          session_telemetry: &SessionTelemetry,
          model_info: &ModelInfo,
      ) -> bool {
@@ -2008,10 +2642,10 @@ index 24f2964ffe566faa7a9de34636e11a528123c6c1..c9af895a6afb2a3a522b60c8cff7dc80
              .client
              .force_http_fallback(session_telemetry, model_info);
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 1eb2cdf83fe8dd52cb06ca9de494b194a1bc0179..1930ccc18efe1f468a6862eadaa1341344949ae6 100644
+index 1eb2cdf83fe8dd52cb06ca9de494b194a1bc0179..816af34872bfba8f401c613595a93281599a792e 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -1587,6 +1587,39 @@ async fn config_toml_from_layers(layers: &ConfigLayerStack) -> std::io::Result<C
+@@ -1587,6 +1587,44 @@ async fn config_toml_from_layers(layers: &ConfigLayerStack) -> std::io::Result<C
  }
 
  impl Config {
@@ -2024,6 +2658,8 @@ index 1eb2cdf83fe8dd52cb06ca9de494b194a1bc0179..1930ccc18efe1f468a6862eadaa13413
 +        let cwd = AbsolutePathBuf::from_absolute_path_checked(&context.workspace)?;
 +        let mut typed_config = ConfigToml::default();
 +        typed_config.model = Some(context.model_slug.clone());
++        typed_config.sandbox_mode = Some(SandboxMode::ReadOnly);
++        typed_config.approval_policy = Some(AskForApproval::Never);
 +        typed_config.developer_instructions = Some(context.prompt_text.clone());
 +        let mut config = Self::load_config_with_layer_stack(
 +            LOCAL_FS.as_ref(),
@@ -2038,6 +2674,9 @@ index 1eb2cdf83fe8dd52cb06ca9de494b194a1bc0179..1930ccc18efe1f468a6862eadaa13413
 +        )
 +        .await?;
 +        config.workspace_roots = vec![config.cwd.clone()];
++        config.model_provider.env_http_headers = None;
++        config.model_provider.supports_websockets = false;
++        config.model_provider.supports_standalone_web_search = false;
 +        config.model = Some(context.model_slug.clone());
 +        config.base_instructions = Some(context.policy_text.clone());
 +        config.developer_instructions = Some(context.prompt_text.clone());
@@ -2064,10 +2703,21 @@ index a2b44e3f1fb6b8c3ede999ec306f5592b9a5a0b9..ba5174990dc89550794b86a80d8024f3
  pub use codex_protocol::turn_input::RecoverTurnRequest;
  pub use codex_protocol::turn_input::StartIfIdleSubmission;
 diff --git a/codex-rs/core/src/session/handlers.rs b/codex-rs/core/src/session/handlers.rs
-index c569b04ec95770768385fcafcaeee5f1aa2fc26e..db6150c76208225473201c21bdf26b17c4038b11 100644
+index c569b04ec95770768385fcafcaeee5f1aa2fc26e..7d1f644bdb44efc0ba3d2dedb0f6ca4ad18fcfaf 100644
 --- a/codex-rs/core/src/session/handlers.rs
 +++ b/codex-rs/core/src/session/handlers.rs
-@@ -288,6 +288,15 @@ pub async fn set_thread_memory_mode(sess: &Arc<Session>, sub_id: String, mode: T
+@@ -44,6 +44,10 @@ use codex_protocol::protocol::TurnAbortReason;
+ use codex_protocol::protocol::WarningEvent;
+ use codex_protocol::request_permissions::RequestPermissionsResponse;
+ use codex_protocol::request_user_input::RequestUserInputResponse;
++use codex_protocol::turn_input::TurnInput;
++use codex_protocol::turn_input::TurnInputMode;
++use codex_protocol::turn_input::TurnInputRequest;
++use codex_protocol::user_input::UserInput;
+ use codex_thread_store::PersistContext;
+
+ use crate::context_manager::is_user_turn_boundary;
+@@ -288,6 +292,15 @@ pub async fn set_thread_memory_mode(sess: &Arc<Session>, sub_id: String, mode: T
  }
 
  pub(super) async fn shutdown_session_runtime(sess: &Arc<Session>) {
@@ -2083,8 +2733,306 @@ index c569b04ec95770768385fcafcaeee5f1aa2fc26e..db6150c76208225473201c21bdf26b17
      let startup_prewarm = {
          let mut state = sess.state.lock().await;
          // Stop admission and take the current warmup together so resume cannot replace it.
+@@ -347,6 +360,18 @@ async fn emit_thread_stop_lifecycle(sess: &Session) {
+ }
+
+ pub async fn shutdown(sess: &Arc<Session>, sub_id: String) -> bool {
++    if crate::symphony_boundary::is_selected() {
++        shutdown_session_runtime(sess).await;
++        if crate::symphony_boundary::stop_unconfirmed() {
++            return false;
++        }
++        sess.send_event_raw(Event {
++            id: sub_id,
++            msg: EventMsg::ShutdownComplete,
++        })
++        .await;
++        return true;
++    }
+     shutdown_session_runtime(sess).await;
+     info!("Shutting down Codex instance");
+     let history = sess.clone_history().await;
+@@ -450,7 +475,19 @@ pub(super) async fn submission_loop(
+     loop {
+         let sub = tokio::select! {
+             biased;
+-            _ = sess.services.local_agent_runtime.shutdown.cancelled() => {
++            _ = async {
++                if crate::symphony_boundary::is_selected() {
++                    std::future::pending::<()>().await;
++                } else {
++                    sess.services
++                        .standard_services()
++                        .expect("ordinary submission loop requires standard services")
++                        .local_agent_runtime
++                        .shutdown
++                        .cancelled()
++                        .await;
++                }
++            } => {
+                 shutdown_received = shutdown(&sess, super::new_submission_id()).await;
+                 break;
+             }
+@@ -477,15 +514,36 @@ pub(super) async fn submission_loop(
+                 continue;
+             }
+         };
+-        debug!(
+-            thread_id = %sess.thread_id(),
+-            submission_id = %sub.id,
+-            operation = sub.op.kind(),
+-            parent_turn_id = ?sub.parent_turn_id,
+-            root_turn_id = ?sub.root_turn_id,
+-            op = ?sub.op,
+-            "Submission"
+-        );
++        if crate::symphony_boundary::is_selected() {
++            if !matches!(&sub.op, Op::TurnInput { .. } | Op::Shutdown | Op::Interrupt) {
++                sess.send_event_raw(Event {
++                    id: sub.id.clone(),
++                    msg: EventMsg::Error(ErrorEvent {
++                        misalignment: None,
++                        message: "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE".to_string(),
++                        codex_error_info: Some(CodexErrorInfo::Other),
++                    }),
++                })
++                .await;
++                continue;
++            }
++            debug!(
++                thread_id = %sess.thread_id(),
++                submission_id = %sub.id,
++                operation = sub.op.kind(),
++                "strict submission"
++            );
++        } else {
++            debug!(
++                thread_id = %sess.thread_id(),
++                submission_id = %sub.id,
++                operation = sub.op.kind(),
++                parent_turn_id = ?sub.parent_turn_id,
++                root_turn_id = ?sub.root_turn_id,
++                op = ?sub.op,
++                "Submission"
++            );
++        }
+         let dispatch_span = submission_dispatch_span(&sub);
+         let should_exit = async {
+             match sub.op {
+@@ -543,11 +601,22 @@ pub(super) async fn submission_loop(
+                     mode,
+                     reply,
+                 } => {
+-                    let request = WithTurnExtensionData {
+-                        request: *request,
+-                        turn_extension_init: sub.turn_extension_init,
++                    let result = if crate::symphony_boundary::is_selected()
++                        && !strict_turn_request_is_valid(
++                            &request,
++                            &mode,
++                            sub.turn_extension_init.is_some(),
++                        ) {
++                        Err(CodexErr::InvalidRequest(
++                            "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE".to_string(),
++                        ))
++                    } else {
++                        let request = WithTurnExtensionData {
++                            request: *request,
++                            turn_extension_init: sub.turn_extension_init,
++                        };
++                        turn_input::handle(&sess, request, mode, sub.id.clone()).await
+                     };
+-                    let result = turn_input::handle(&sess, request, mode, sub.id.clone()).await;
+                     let _ = reply.send(result);
+                     false
+                 }
+@@ -693,7 +762,13 @@ pub(super) async fn submission_loop(
+                         .await;
+                     false
+                 }
+-                Op::Shutdown => shutdown(&sess, sub.id.clone()).await,
++                Op::Shutdown => {
++                    if crate::symphony_boundary::is_selected() {
++                        true
++                    } else {
++                        shutdown(&sess, sub.id.clone()).await
++                    }
++                }
+                 Op::Review { review_request } => {
+                     review(&sess, &config, sub.id.clone(), review_request).await;
+                     false
+@@ -716,24 +791,63 @@ pub(super) async fn submission_loop(
+     // If the submission loop exits because the channel closed without an
+     // explicit shutdown op, still run session teardown.
+     if !shutdown_received {
+-        shutdown_session_runtime(&sess).await;
+-        if let Some(live_thread) = sess.live_thread()
+-            && let Err(err) = live_thread.shutdown().await
+-        {
+-            sess.services.local_agent_runtime.record_shutdown_failure(
+-                AgentTreeShutdownFailure::operation_failed(
+-                    "session_shutdown",
+-                    "close_persistence_after_channel_closed",
+-                    Some(sess.thread_id),
+-                    thread_store_error_kind(&err),
+-                ),
+-            );
+-            warn!("failed to shutdown thread persistence after submission channel closed: {err}");
++        if !crate::symphony_boundary::is_selected() {
++            shutdown_session_runtime(&sess).await;
++            if let Some(live_thread) = sess.live_thread()
++                && let Err(err) = live_thread.shutdown().await
++            {
++                sess.services
++                    .standard_services()
++                    .expect("ordinary shutdown requires standard services")
++                    .local_agent_runtime
++                    .record_shutdown_failure(AgentTreeShutdownFailure::operation_failed(
++                        "session_shutdown",
++                        "close_persistence_after_channel_closed",
++                        Some(sess.thread_id),
++                        thread_store_error_kind(&err),
++                    ));
++                warn!(
++                    "failed to shutdown thread persistence after submission channel closed: {err}"
++                );
++            }
+         }
+     }
+     debug!("Agent loop exited");
+ }
+
++fn strict_turn_request_is_valid(
++    request: &TurnInputRequest,
++    mode: &TurnInputMode,
++    has_turn_extension_init: bool,
++) -> bool {
++    let Some(context) = crate::symphony_boundary::context() else {
++        return false;
++    };
++    if context.deadline <= std::time::Instant::now()
++        || has_turn_extension_init
++        || *mode != TurnInputMode::StartIfIdle
++        || request.thread_settings != Default::default()
++        || request.start.turn_trigger.is_some()
++        || request.start.final_output_json_schema.is_some()
++        || request.start.service_tier.is_some()
++        || request.start.parent_turn_id.is_some()
++        || request.start.initiating_agent_path.is_some()
++        || request.start.root_turn_id.is_some()
++        || request.start.cyber_access_program.is_some()
++        || !request.additional_context.is_empty()
++        || request.responsesapi_client_metadata.is_some()
++        || request.trace.is_some()
++    {
++        return false;
++    }
++    match &request.input {
++        TurnInput::UserInput { content, client_id } if client_id.is_none() => {
++            matches!(content.as_slice(), [UserInput::Text { text, text_elements }] if text == &context.prompt_text && text_elements.is_empty())
++        }
++        _ => false,
++    }
++}
++
+ async fn approve_guardian_denied_action(sess: &Arc<Session>, event: GuardianAssessmentEvent) {
+     if event.status != GuardianAssessmentStatus::Denied {
+         warn!(
+diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
+index bc086f8661f32ca94cdac8fc161c8ff86f5aaf38..f34b8d55afa78d037124e85b3d029859519d71f2 100644
+--- a/codex-rs/core/src/session/mod.rs
++++ b/codex-rs/core/src/session/mod.rs
+@@ -517,6 +517,40 @@ const CYBER_VERIFY_URL: &str = "https://chatgpt.com/cyber";
+ const CYBER_SAFETY_URL: &str = "https://developers.openai.com/codex/concepts/cyber-safety";
+
+ impl Session {
++    /// Spawn the existing core submission loop with the selected service-free Session.
++    pub(crate) async fn spawn_strict(
++        context: Arc<crate::symphony_boundary::SymphonyContext>,
++        config: Config,
++    ) -> CodexResult<(Arc<Self>, SessionIo, SessionConfiguredEvent)> {
++        let config = Arc::new(config);
++        let (tx_sub, rx_sub) = async_channel::bounded(16);
++        let (tx_event, rx_event) = async_channel::bounded(64);
++        let (status_tx, status_rx) = watch::channel(AgentStatus::PendingInit);
++        let (session, _) =
++            Self::new_strict(context, Arc::clone(&config), tx_event, status_tx).await?;
++        let first = rx_event
++            .recv()
++            .await
++            .map_err(|_| CodexErr::Fatal("SYMPHONY_CONFIGURED_EVENT_MISSING".into()))?;
++        let EventMsg::SessionConfigured(configured) = first.msg else {
++            return Err(CodexErr::Fatal("SYMPHONY_CONFIGURED_EVENT_INVALID".into()));
++        };
++        let for_loop = Arc::clone(&session);
++        let handle = tokio::spawn(async move {
++            submission_loop(for_loop, config, rx_sub).await;
++        });
++        Ok((
++            session,
++            SessionIo {
++                tx_sub,
++                rx_event,
++                agent_status: status_rx,
++                session_loop_termination: session_loop_termination_from_handle(handle),
++            },
++            configured,
++        ))
++    }
++
+     /// Spawn and initialize a new session.
+     /// Hide the concrete startup future from callers while keeping initialization lazy.
+     #[inline(never)]
+@@ -2275,6 +2309,10 @@ impl Session {
+             .trusted_guardian_reviewer
+     }
+
++    pub(crate) fn set_agent_status(&self, status: AgentStatus) {
++        self.agent_status.send_replace(status);
++    }
++
+     pub(crate) async fn emit_turn_started(&self, turn_context: &TurnContext, task_kind: TaskKind) {
+         let event = TurnStartedEvent {
+             turn_attribution: (task_kind == TaskKind::Regular).then(|| turn_context.attribution()),
+@@ -2304,6 +2342,14 @@ impl Session {
+                 .await
+                 .replace(error.clone());
+         }
++        if self.services.strict_context().is_ok() {
++            self.send_event_raw(Event {
++                id: turn_context.sub_id.clone(),
++                msg,
++            })
++            .await;
++            return;
++        }
+         self.services
+             .rollout_thread_trace
+             .record_codex_turn_event(&turn_context.sub_id, &legacy_source);
+@@ -2503,6 +2549,10 @@ impl Session {
+     }
+
+     async fn send_event_raw_with_persistence(&self, event: Event, persist: bool) {
++        if self.services.strict_context().is_ok() {
++            let _ = self.tx_event.send(event).await;
++            return;
++        }
+         let flush_guardian_completion = persist
+             && matches!(event.msg, EventMsg::TurnComplete(_))
+             && self.is_private_guardian_reviewer().await;
+@@ -5003,6 +5053,10 @@ impl Session {
+     }
+
+     pub async fn interrupt_task(self: &Arc<Self>) {
++        if crate::symphony_boundary::is_selected() {
++            self.abort_all_tasks(TurnAbortReason::Interrupted).await;
++            return;
++        }
+         info!("interrupt received: abort current task, if any");
+         let had_active_turn = self.active_turn.lock().await.is_some();
+         self.abort_all_tasks(TurnAbortReason::Interrupted).await;
 diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
-index 263f08f2f1ea43b283406c0200bcbccfa5e022a1..66866ac99445b2305c7d5b8646e6b6460d91eafc 100644
+index 263f08f2f1ea43b283406c0200bcbccfa5e022a1..372f20454a8d25315c6616861b9233a7e25cbc0c 100644
 --- a/codex-rs/core/src/session/session.rs
 +++ b/codex-rs/core/src/session/session.rs
 @@ -21,6 +21,7 @@ use crate::responses_metadata::CompactionTurnMetadata;
@@ -2095,7 +3043,171 @@ index 263f08f2f1ea43b283406c0200bcbccfa5e022a1..66866ac99445b2305c7d5b8646e6b646
  use crate::turn_metadata::ExecutionMetadata;
  use codex_analytics::ThreadProductUpdate;
  use codex_attachment_store::AttachmentStore;
-@@ -1708,7 +1709,7 @@ impl Session {
+@@ -659,6 +660,153 @@ async fn warm_plugins_and_skills_for_session_init(
+ }
+
+ impl Session {
++    /// Build the selected real Session from fixed data and empty core state.
++    /// No standard services, discovery, clients, or service workers are created.
++    pub(super) async fn new_strict(
++        context: Arc<crate::symphony_boundary::SymphonyContext>,
++        config: Arc<Config>,
++        tx_event: Sender<Event>,
++        agent_status: watch::Sender<AgentStatus>,
++    ) -> CodexResult<(Arc<Self>, SessionConfiguredEvent)> {
++        let refuse = || CodexErr::InvalidRequest("SYMPHONY_STRICT_SERVICES_UNAVAILABLE".into());
++        let provider = &config.model_provider;
++        if !crate::symphony_boundary::is_selected()
++            || context.deadline <= std::time::Instant::now()
++            || config.model.as_deref() != Some(context.model_slug.as_str())
++            || config.cwd.as_path() != context.workspace.as_path()
++            || config.base_instructions.as_deref() != Some(context.policy_text.as_str())
++            || provider.auth.is_some()
++            || provider.gateway_oauth.is_some()
++            || provider.aws.is_some()
++            || provider.env_key.is_some()
++            || provider.experimental_bearer_token.is_some()
++            || provider.env_http_headers.is_some()
++            || provider.model_catalog_url.is_some()
++            || codex_otel::global().is_some()
++        {
++            return Err(refuse());
++        }
++        let thread_id = ThreadId::new();
++        let session_configuration = SessionConfiguration {
++            provider: codex_model_provider::create_model_provider(provider.clone(), None),
++            step_settings: Arc::new(StepSettings {
++                collaboration_mode: codex_protocol::config_types::CollaborationMode {
++                    mode: codex_protocol::config_types::ModeKind::Default,
++                    settings: codex_protocol::config_types::Settings {
++                        model: context.model_slug.clone(),
++                        reasoning_effort: None,
++                        developer_instructions: None,
++                    },
++                },
++                reasoning_summary: None,
++                service_tier: None,
++                personality: None,
++                approval_policy: config.permissions.approval_policy.clone(),
++                approvals_reviewer: config.approvals_reviewer,
++            }),
++            turn_extension_init: Default::default(),
++            environments: Vec::new(),
++            model_info_overrides: config.to_models_manager_config().into(),
++            developer_instructions: Some(context.prompt_text.clone()),
++            base_instructions: context.policy_text.clone(),
++            permission_profile_state: config.permissions.permission_profile_state().clone(),
++            allow_login_shell: false,
++            shell_environment_policy: config.permissions.shell_environment_policy.clone(),
++            windows_sandbox_level: WindowsSandboxLevel::from_config(&config),
++            windows_sandbox_type: config.permissions.windows_sandbox_type,
++            use_legacy_landlock: config.features.use_legacy_landlock(),
++            legacy_fallback_cwd: config.cwd.clone(),
++            runtime_workspace_roots: vec![config.cwd.clone()],
++            codex_home: config.codex_home.clone(),
++            thread_name: None,
++            disabled_plugin_ids: Vec::new(),
++            original_config_do_not_use: Arc::clone(&config),
++            metrics_service_name: None,
++            app_server_client_name: None,
++            app_server_client_version: None,
++            trusted_guardian_reviewer: false,
++            session_source: SessionSource::Exec,
++            history_mode: Default::default(),
++            forked_from_thread_id: None,
++            parent_thread_id: None,
++            thread_source: None,
++            originator: "symphony-protected-synthetic".into(),
++            dynamic_tools: Vec::new(),
++            user_shell_override: None,
++        };
++        let snapshot = session_configuration.thread_config_snapshot(Vec::new());
++        let configured = SessionConfiguredEvent {
++            session_id: SessionId::from(thread_id),
++            thread_id,
++            cwd: snapshot.cwd().clone(),
++            forked_from_id: None,
++            parent_thread_id: None,
++            thread_source: None,
++            thread_name: None,
++            model: snapshot.model,
++            model_provider_id: snapshot.model_provider_id,
++            service_tier: None,
++            approval_policy: snapshot.approval_policy,
++            approvals_reviewer: snapshot.approvals_reviewer,
++            network_proxy: None,
++            permission_profile: snapshot.permission_profile,
++            active_permission_profile: snapshot.active_permission_profile,
++            reasoning_effort: None,
++            rollout_path: None,
++        };
++        let state = SessionState::new_with_auto_compact_window_ids(
++            session_configuration,
++            crate::state::AutoCompactWindowIds::new_initial(),
++            ContextManager::new(),
++        );
++        let (_hook_tx, async_hook_results) = async_channel::bounded(1);
++        let session = Arc::new(Self {
++            thread_id,
++            installation_id: context.host_identity.clone(),
++            tx_event,
++            agent_status,
++            state: Mutex::new(state),
++            thread_settings_persistence: Semaphore::new(1),
++            code_mode_message_tasks: Default::default(),
++            managed_network_proxy_refresh_lock: Semaphore::new(1),
++            features: config.features.clone(),
++            isolation: codex_extension_api::SessionIsolation::Isolated,
++            tool_policy: Arc::new(codex_extension_api::ToolPolicy {
++                allowed_tools: Some(Vec::new()),
++                ..Default::default()
++            }),
++            windows_sandbox_proxy_settings_mode:
++                codex_sandboxing::WindowsSandboxProxySettingsMode::Reconcile,
++            multi_agent_version: OnceLock::from(MultiAgentVersion::Disabled),
++            mcp_refresh: McpRefresh::new(),
++            mcp_tool_approval_metadata: Default::default(),
++            mcp_elicitation_reviewer_handle: OnceLock::new(),
++            mcp_elicitation_lifecycle_handle: OnceLock::new(),
++            mcp_prewarm_tx: async_channel::bounded(1).0,
++            mcp_prewarm_shutdown: CancellationToken::new(),
++            mcp_prewarm_task: std::sync::Mutex::new(None),
++            // This constructor stores only a mutex containing conversation=None.
++            // It creates no realtime client, service, task, or transport.
++            conversation: Arc::new(RealtimeConversationManager::new()),
++            realtime_history: None,
++            active_turn: Mutex::new(None),
++            async_hook_results,
++            input_queue: InputQueue::new(),
++            services: SessionServices::strict(context),
++            git_enrichment_policy: GitEnrichmentPolicy::Skip,
++            fork_persistence: ForkPersistence::Copied,
++            forked_from_ordinal_exclusive: None,
++            next_internal_sub_id: AtomicU64::new(0),
++        });
++        session
++            .send_event_raw(Event {
++                id: INITIAL_SUBMIT_ID.into(),
++                msg: EventMsg::SessionConfigured(configured.clone()),
++            })
++            .await;
++        Ok((session, configured))
++    }
++
+     /// Returns the concrete identity for this thread.
+     pub(crate) fn thread_id(&self) -> ThreadId {
+         self.thread_id
+@@ -666,6 +814,9 @@ impl Session {
+
+     /// Returns the identity shared by the root thread and all descendant threads.
+     pub(crate) fn session_id(&self) -> SessionId {
++        if matches!(&self.services, SessionServices::Strict(_)) {
++            return SessionId::from(self.thread_id);
++        }
+         self.services.agent_control.identity()
+     }
+
+@@ -1708,7 +1859,7 @@ impl Session {
              );
              let reasoning_effort_override_enabled =
                  config.features.enabled(Feature::ReasoningEffortOverride) && !title_request;
@@ -2104,7 +3216,7 @@ index 263f08f2f1ea43b283406c0200bcbccfa5e022a1..66866ac99445b2305c7d5b8646e6b646
                  // Start with an empty connection set. The initialized set is
                  // published after SessionConfigured so MCP events follow it.
                  mcp_runtime,
-@@ -1809,7 +1810,7 @@ impl Session {
+@@ -1809,7 +1960,7 @@ impl Session {
                  ),
                  tool_search_handler_cache: Default::default(),
                  turn_environments: Arc::clone(&turn_environments),
@@ -2113,8 +3225,48 @@ index 263f08f2f1ea43b283406c0200bcbccfa5e022a1..66866ac99445b2305c7d5b8646e6b646
              let (mcp_prewarm_tx, mcp_prewarm_rx) = async_channel::bounded(1);
              let sess = Arc::new(Session {
                  thread_id,
+diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
+index 496114a113a6d8474343c887b9d244dad4b5b1be..01b6a763bb8257745a164b88f8c25a5f039bc37c 100644
+--- a/codex-rs/core/src/session/tests.rs
++++ b/codex-rs/core/src/session/tests.rs
+@@ -6970,7 +6970,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
+         }),
+     )
+     .expect("initialize test hooks");
+-    let services = SessionServices {
++    let services = SessionServices::standard(crate::state::StandardSessionServices {
+         mcp_runtime,
+         mcp_handler_cache: Default::default(),
+         unified_exec_manager: UnifiedExecProcessManager::new(
+@@ -7059,7 +7059,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
+         ),
+         tool_search_handler_cache: Default::default(),
+         turn_environments: Arc::clone(&turn_environments),
+-    };
++    });
+
+     let session = Session {
+         thread_id,
+@@ -9238,7 +9238,7 @@ where
+         }),
+     )
+     .expect("initialize test hooks");
+-    let services = SessionServices {
++    let services = SessionServices::standard(crate::state::StandardSessionServices {
+         mcp_runtime,
+         mcp_handler_cache: Default::default(),
+         unified_exec_manager: UnifiedExecProcessManager::new(
+@@ -9327,7 +9327,7 @@ where
+         ),
+         tool_search_handler_cache: Default::default(),
+         turn_environments: Arc::clone(&turn_environments),
+-    };
++    });
+
+     let session = Arc::new(Session {
+         thread_id,
 diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
-index 64e8786a15b48e68a4ad60e95790069c90b7d3a1..69dd7b48be5c03e27766dc4992c685f7943b8f39 100644
+index 64e8786a15b48e68a4ad60e95790069c90b7d3a1..d0122a03691579a1710ae389e09ca2ebceb22ab7 100644
 --- a/codex-rs/core/src/session/turn.rs
 +++ b/codex-rs/core/src/session/turn.rs
 @@ -168,6 +168,19 @@ pub(crate) async fn run_turn(
@@ -2122,53 +3274,183 @@ index 64e8786a15b48e68a4ad60e95790069c90b7d3a1..69dd7b48be5c03e27766dc4992c685f7
      cancellation_token: CancellationToken,
  ) -> CodexResult<Option<String>> {
 +    if crate::symphony_boundary::is_selected() {
-+        let admitted = crate::symphony_boundary::context()
-+            .is_some_and(|context| context.deadline > std::time::Instant::now())
-+            && crate::symphony_boundary::admit_turn();
-+        if !admitted {
++        let context = crate::symphony_boundary::context()
++            .ok_or_else(|| CodexErr::InvalidRequest("SYMPHONY_CONTEXT_UNAVAILABLE".into()))?;
++        if context.deadline <= std::time::Instant::now() || cancellation_token.is_cancelled() {
++            return Err(CodexErr::TurnAborted);
++        }
++        if !crate::symphony_boundary::is_turn_admitted() {
 +            return Err(CodexErr::InvalidRequest(
-+                "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE".to_string(),
++                "SYMPHONY_TURN_NOT_ADMITTED".into(),
 +            ));
 +        }
-+        return Err(CodexErr::InvalidRequest(
-+            "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE".to_string(),
-+        ));
++        return Err(crate::symphony_boundary::provider_boundary_unavailable());
 +    }
      if crate::guardian::is_basic_session_source(&turn_context.session_source) {
          crate::guardian::check_pending_guardian_input(&sess, &turn_context).await?;
      }
 diff --git a/codex-rs/core/src/session/turn_context.rs b/codex-rs/core/src/session/turn_context.rs
-index f74f5558ca87a10b9503822f208cfd43082f75c0..93bf796d7ae731e8794365ef1133b07eee47bed6 100644
+index f74f5558ca87a10b9503822f208cfd43082f75c0..b7bc4583e76f5f1bd54edba7ec898236e49a1690 100644
 --- a/codex-rs/core/src/session/turn_context.rs
 +++ b/codex-rs/core/src/session/turn_context.rs
-@@ -1153,6 +1153,25 @@ impl Session {
+@@ -1153,6 +1153,133 @@ impl Session {
          updates: SessionSettingsUpdate,
          options: NewTurnContextOptions,
      ) -> CodexResult<(Arc<TurnContext>, ThreadSettingsSnapshot)> {
 +        if crate::symphony_boundary::is_selected() {
-+            let result = self.services.strict_context().map(|context| {
-+                let _ = context;
-+            });
-+            let message = result
-+                .err()
-+                .unwrap_or("SYMPHONY_STRICT_TURN_CONSTRUCTION_UNAVAILABLE")
-+                .to_string();
-+            self.send_event_raw(Event {
-+                id: sub_id,
-+                msg: EventMsg::Error(ErrorEvent {
-+                    misalignment: None,
-+                    message: message.clone(),
-+                    codex_error_info: Some(CodexErrorInfo::Other),
-+                }),
-+            })
-+            .await;
-+            return Err(CodexErr::InvalidRequest(message));
++            let refuse = || CodexErr::InvalidRequest("SYMPHONY_STRICT_TURN_REFUSED".into());
++            let context = self.services.strict_context().map_err(|_| refuse())?;
++            if context.deadline <= std::time::Instant::now()
++                || updates.step_settings != super::step_settings::StepSettingsUpdate::default()
++                || updates.turn_extension_init.is_some()
++                || updates.environments.is_some()
++                || updates.runtime_workspace_roots.is_some()
++                || updates.profile_workspace_roots.is_some()
++                || updates.sandbox_policy.is_some()
++                || updates.permission_profile.is_some()
++                || updates.active_permission_profile.is_some()
++                || updates.windows_sandbox_level.is_some()
++                || updates.service_tier_for_turn.is_some()
++                || updates.app_server_client_name.is_some()
++                || updates.app_server_client_version.is_some()
++                || updates.disabled_plugin_ids.is_some()
++                || options.final_output_json_schema.is_some()
++                || options.cyber_access_program.is_some()
++                || codex_otel::global().is_some()
++            {
++                return Err(refuse());
++            }
++            let configuration = self.state.lock().await.session_configuration.clone();
++            let config = Arc::clone(&configuration.original_config_do_not_use);
++            let catalog = config.model_catalog.as_ref().ok_or_else(refuse)?;
++            if catalog.models.len() != 1
++                || catalog.models[0].slug != context.model_slug
++                || configuration.step_settings.collaboration_mode.model() != context.model_slug
++                || configuration.base_instructions != context.policy_text
++                || config.cwd.as_path() != context.workspace.as_path()
++            {
++                return Err(refuse());
++            }
++            // Consume before scheduling a task. Failure never reopens this latch.
++            if !crate::symphony_boundary::admit_turn() {
++                return Err(refuse());
++            }
++            let model_info = Arc::new(catalog.models[0].clone());
++            let step_settings = Arc::new(ResolvedStepSettings::new(
++                Arc::clone(&configuration.step_settings),
++                Arc::clone(&model_info),
++                &config.features,
++            ));
++            let permission_profile = config.permissions.effective_permission_profile();
++            let turn_metadata_state = Arc::new(TurnMetadataState::new(
++                self.session_id().to_string(),
++                self.thread_id().to_string(),
++                None,
++                None,
++                &configuration.session_source,
++                None,
++                sub_id.clone(),
++                config.cwd.clone(),
++                &permission_profile,
++                configured_windows_sandbox_selection(
++                    configuration.windows_sandbox_type,
++                    configuration.windows_sandbox_level,
++                    &PathUri::from_abs_path(&config.cwd),
++                ),
++                false,
++                false,
++                &model_info,
++            ));
++            let extension_data = Arc::new(codex_extension_api::ExtensionData::new_with_init(
++                sub_id.clone(),
++                Default::default(),
++            ));
++            // SessionTelemetry::new stores metadata and reads the existing global
++            // handle only. We refused above if any exporter handle was installed.
++            let metadata = SessionTelemetry::new(
++                self.thread_id(),
++                &context.model_slug,
++                &context.model_slug,
++                None,
++                None,
++                None,
++                configuration.originator.clone(),
++                false,
++                "protected-synthetic".into(),
++                configuration.session_source.clone(),
++            );
++            let turn = TurnContext {
++                sub_id,
++                trace_id: None,
++                realtime_active: false,
++                code_mode_available: false,
++                config: Arc::clone(&config),
++                configured_token_budget: None,
++                use_model_token_budget_defaults: false,
++                auth_manager: None,
++                initial_settings: Arc::clone(&step_settings),
++                disabled_plugin_ids: Vec::new(),
++                active_host_plugin_identities: None,
++                next_step_settings: ArcSwap::from(step_settings),
++                session_telemetry: metadata,
++                provider: configuration.provider.clone(),
++                session_source: configuration.session_source.clone(),
++                history_mode: configuration.history_mode,
++                parent_thread_id: None,
++                originator: configuration.originator.clone(),
++                initial_environments: TurnEnvironmentSnapshot::default(),
++                #[allow(deprecated)]
++                cwd: config.cwd.clone(),
++                current_date: None,
++                timezone: None,
++                app_server_client_name: None,
++                developer_instructions: Some(context.prompt_text.clone()),
++                multi_agent_version: MultiAgentVersion::Disabled,
++                network: None,
++                windows_sandbox_level: configuration.windows_sandbox_level,
++                available_models: Vec::new(),
++                unified_exec_shell_mode: UnifiedExecShellMode::Direct,
++                final_output_json_schema: None,
++                dynamic_tools: Vec::new(),
++                turn_metadata_state,
++                extension_data,
++                turn_timing_state: Arc::new(TurnTimingState::default()),
++                terminal_error: Arc::new(Mutex::new(None)),
++                session_grants: Arc::default(),
++                turn_grants: Arc::default(),
++                server_model_warning_emitted: AtomicBool::new(false),
++                model_verification_emitted: AtomicBool::new(false),
++                cyber_access_program: None,
++            };
++            return Ok((Arc::new(turn), configuration.thread_settings_snapshot(&[])));
 +        }
          let Some((turn_context, snapshot)) = self
              .new_turn_with_sub_id_if(sub_id, updates, options, |_, _| true)
              .await?
+@@ -1404,6 +1531,9 @@ impl Session {
+     }
+
+     pub(crate) async fn maybe_emit_model_warnings_for_turn(&self, tc: &TurnContext) {
++        if crate::symphony_boundary::is_selected() {
++            return;
++        }
+         if tc.model_info().used_fallback_model_metadata {
+             self.send_event(
+                 tc,
+diff --git a/codex-rs/core/src/state/mod.rs b/codex-rs/core/src/state/mod.rs
+index 07ce5c366f1bf3695a1e7969dbbcff0ada0bf739..b16542d8b79a2650cdcaf32c9c13b2b4918eb5b8 100644
+--- a/codex-rs/core/src/state/mod.rs
++++ b/codex-rs/core/src/state/mod.rs
+@@ -10,6 +10,7 @@ pub(crate) use additional_context::AdditionalContextStore;
+ pub(crate) use auto_compact_window::AutoCompactWindowIds;
+ pub(crate) use auto_compact_window::AutoCompactWindowSnapshot;
+ pub(crate) use service::SessionServices;
++pub(crate) use service::StandardSessionServices;
+ pub(crate) use session::ReasoningEffortPin;
+ pub(crate) use session::SessionState;
+ pub(crate) use turn::AcceptedUserInputResponse;
 diff --git a/codex-rs/core/src/state/service.rs b/codex-rs/core/src/state/service.rs
-index bd723c453f1a466c39dcdba229a777d8c1c846a9..e07bbc0bf197923a0972c762392d51ce483df998 100644
+index bd723c453f1a466c39dcdba229a777d8c1c846a9..e5eb5d32df8a95f1c7e3f6c7003d1547c96559eb 100644
 --- a/codex-rs/core/src/state/service.rs
 +++ b/codex-rs/core/src/state/service.rs
 @@ -49,7 +49,15 @@ use codex_utils_git_discovery::GitRootDiscovery;
@@ -2188,7 +3470,7 @@ index bd723c453f1a466c39dcdba229a777d8c1c846a9..e07bbc0bf197923a0972c762392d51ce
      /// The single owner of live MCP connections for this thread.
      pub(crate) mcp_runtime: Arc<McpRuntime>,
      /// Immutable MCP handlers scoped to this thread's current binding.
-@@ -110,7 +118,39 @@ pub(crate) struct SessionServices {
+@@ -110,7 +118,46 @@ pub(crate) struct SessionServices {
      pub(crate) turn_environments: Arc<ThreadEnvironments>,
  }
 
@@ -2203,9 +3485,7 @@ index bd723c453f1a466c39dcdba229a777d8c1c846a9..e07bbc0bf197923a0972c762392d51ce
 +        Self::Standard(services)
 +    }
 +
-+    pub(crate) fn strict(
-+        context: Arc<crate::symphony_boundary::SymphonyContext>,
-+    ) -> Self {
++    pub(crate) fn strict(context: Arc<crate::symphony_boundary::SymphonyContext>) -> Self {
 +        Self::Strict(StrictSessionServices { context })
 +    }
 +
@@ -2225,10 +3505,19 @@ index bd723c453f1a466c39dcdba229a777d8c1c846a9..e07bbc0bf197923a0972c762392d51ce
 +        }
 +    }
 +
++    pub(crate) fn standard_services_mut(
++        &mut self,
++    ) -> Result<&mut StandardSessionServices, &'static str> {
++        match self {
++            Self::Standard(services) => Ok(services),
++            Self::Strict(_) => Err("SYMPHONY_STANDARD_SERVICES_UNAVAILABLE"),
++        }
++    }
++
      #[expect(
          clippy::expect_used,
          reason = "poisoned grant state must not authorize further operations"
-@@ -120,7 +160,10 @@ impl SessionServices {
+@@ -120,7 +167,10 @@ impl SessionServices {
          environment_id: &str,
          permissions: AdditionalPermissionProfile,
      ) {
@@ -2240,7 +3529,7 @@ index bd723c453f1a466c39dcdba229a777d8c1c846a9..e07bbc0bf197923a0972c762392d51ce
              .granted_permissions_by_environment_id
              .lock()
              .expect("session permission grants lock poisoned");
-@@ -131,3 +174,14 @@ impl SessionServices {
+@@ -131,3 +181,25 @@ impl SessionServices {
          }
      }
  }
@@ -2249,6 +3538,17 @@ index bd723c453f1a466c39dcdba229a777d8c1c846a9..e07bbc0bf197923a0972c762392d51ce
 +    type Target = StandardSessionServices;
 +
 +    fn deref(&self) -> &Self::Target {
++        match self {
++            Self::Standard(services) => services,
++            Self::Strict(_) => panic!("standard session service accessed by strict session"),
++        }
++    }
++}
++
++// Compatibility for ordinary session callers. This is not a strict-session
++// admission guard; selected execution must use checked service access instead.
++impl std::ops::DerefMut for SessionServices {
++    fn deref_mut(&mut self) -> &mut Self::Target {
 +        match self {
 +            Self::Standard(services) => services,
 +            Self::Strict(_) => panic!("standard session service accessed by strict session"),
@@ -2271,10 +3571,10 @@ index 0000000000000000000000000000000000000000..34b0b1f93eb7d5fb7d3565511df56e70
 +}
 diff --git a/codex-rs/core/src/symphony_boundary/mod.rs b/codex-rs/core/src/symphony_boundary/mod.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..45f96f7007d6542525ddbeb06500c143d5323061
+index 0000000000000000000000000000000000000000..72ebb3226d4625661dea595a95f60f79f9375583
 --- /dev/null
 +++ b/codex-rs/core/src/symphony_boundary/mod.rs
-@@ -0,0 +1,202 @@
+@@ -0,0 +1,259 @@
 +//! Immutable, process-local boundary for the protected synthetic session.
 +//!
 +//! This module contains no provider transport. Installing a context selects the
@@ -2343,6 +3643,7 @@ index 0000000000000000000000000000000000000000..45f96f7007d6542525ddbeb06500c143
 +static FALLBACK_CALLS: AtomicU64 = AtomicU64::new(0);
 +static DISCOVERY_CALLS: AtomicU64 = AtomicU64::new(0);
 +static PROCESS_CALLS: AtomicU64 = AtomicU64::new(0);
++static PROVIDER_REFUSALS: AtomicU64 = AtomicU64::new(0);
 +
 +fn digest(value: &str) -> bool {
 +    value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit())
@@ -2452,9 +3753,18 @@ index 0000000000000000000000000000000000000000..45f96f7007d6542525ddbeb06500c143
 +    PROCESS_CALLS.fetch_add(1, Ordering::Relaxed);
 +}
 +
++/// Build the shared strict refusal and count the observed refusal boundary.
++pub(crate) fn provider_boundary_unavailable() -> codex_protocol::error::CodexErr {
++    PROVIDER_REFUSALS.fetch_add(1, Ordering::Relaxed);
++    codex_protocol::error::CodexErr::InvalidRequest(
++        "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE".to_string(),
++    )
++}
++
 +/// Non-secret effect counts captured by synthetic tests.
 +#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 +pub struct EffectCounts {
++    pub provider_refusals: u64,
 +    pub auth: u64,
 +    pub http: u64,
 +    pub websocket: u64,
@@ -2467,6 +3777,7 @@ index 0000000000000000000000000000000000000000..45f96f7007d6542525ddbeb06500c143
 +
 +pub fn effect_counts() -> EffectCounts {
 +    EffectCounts {
++        provider_refusals: PROVIDER_REFUSALS.load(Ordering::Relaxed),
 +        auth: AUTH_CALLS.load(Ordering::Relaxed),
 +        http: HTTP_CALLS.load(Ordering::Relaxed),
 +        websocket: WEBSOCKET_CALLS.load(Ordering::Relaxed),
@@ -2477,6 +3788,297 @@ index 0000000000000000000000000000000000000000..45f96f7007d6542525ddbeb06500c143
 +        process: PROCESS_CALLS.load(Ordering::Relaxed),
 +    }
 +}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn positive_control_observes_provider_refusal_counter() {
++        let before = effect_counts().provider_refusals;
++        let error = provider_boundary_unavailable();
++        assert_eq!(error.to_string(), "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE");
++        assert_eq!(effect_counts().provider_refusals, before + 1);
++    }
++
++    #[test]
++    fn positive_control_observes_each_provider_effect_counter() {
++        let before = effect_counts();
++        record_auth();
++        record_http();
++        record_websocket();
++        record_responses();
++        record_retry();
++        record_fallback();
++        let after = effect_counts();
++        assert_eq!(after.auth, before.auth + 1);
++        assert_eq!(after.http, before.http + 1);
++        assert_eq!(after.websocket, before.websocket + 1);
++        assert_eq!(after.responses, before.responses + 1);
++        assert_eq!(after.retry, before.retry + 1);
++        assert_eq!(after.fallback, before.fallback + 1);
++    }
++}
++
++/// Observe irreversible admission without consuming another entitlement.
++pub(crate) fn is_turn_admitted() -> bool {
++    TURN_STARTED.load(Ordering::Acquire)
++}
++
++// Component uncertainty is sticky for this same installed attempt. The native
++// owner still decides the final stop disposition from independent observations.
++static STOP_UNCONFIRMED: AtomicBool = AtomicBool::new(false);
++pub(crate) fn mark_stop_unconfirmed() {
++    STOP_UNCONFIRMED.store(true, Ordering::Release);
++}
++pub fn stop_unconfirmed() -> bool {
++    STOP_UNCONFIRMED.load(Ordering::Acquire)
++}
+diff --git a/codex-rs/core/src/tasks/mod.rs b/codex-rs/core/src/tasks/mod.rs
+index bfc9c13415be9fb6c25f19910bbdf4969e24483b..5067881f79d814f0cc4f5c7c386e0096b790c3f3 100644
+--- a/codex-rs/core/src/tasks/mod.rs
++++ b/codex-rs/core/src/tasks/mod.rs
+@@ -48,6 +48,7 @@ use codex_otel::TURN_TOOL_CALL_METRIC;
+ use codex_otel::TURN_UNIFIED_EXEC_RUNNING_PROCESSES_METRIC;
+ use codex_otel::auth_storage::AuthStorageOriginator;
+ use codex_protocol::models::ResponseItem;
++use codex_protocol::protocol::AgentStatus;
+ use codex_protocol::protocol::ErrorEvent;
+ use codex_protocol::protocol::EventMsg;
+ use codex_protocol::protocol::MultiAgentVersion;
+@@ -275,6 +276,10 @@ impl Session {
+         input: Vec<TurnInput>,
+         task: T,
+     ) {
++        if crate::symphony_boundary::is_selected() {
++            self.start_strict_task(turn_context, input, task).await;
++            return;
++        }
+         self.abort_all_tasks(TurnAbortReason::Replaced).await;
+         self.clear_connector_selection().await;
+         self.start_task(turn_context, input, task).await;
+@@ -290,6 +295,10 @@ impl Session {
+         input: Vec<TurnInput>,
+         task: T,
+     ) {
++        if crate::symphony_boundary::is_selected() {
++            self.start_strict_task(turn_context, input, task).await;
++            return;
++        }
+         self.activate_plugin_selection(&turn_context).await;
+         // Inherited or recovered roots are applied before task start. Otherwise this
+         // task owns its turn, including background work. Later mail cannot change it.
+@@ -424,6 +433,76 @@ impl Session {
+         turn.task = Some(running_task);
+     }
+
++    async fn start_strict_task<T: SessionTask>(
++        self: &Arc<Self>,
++        turn_context: Arc<TurnContext>,
++        input: Vec<TurnInput>,
++        task: T,
++    ) {
++        if task.kind() != TaskKind::Regular
++            || self.services.strict_context().is_err()
++            || task.kind() != TaskKind::Regular
++            || turn_context.sub_id.is_empty()
++            || !crate::symphony_boundary::is_selected()
++        {
++            return;
++        }
++        let started_at = Instant::now();
++        let started_at_unix_ms = turn_context
++            .turn_timing_state
++            .mark_turn_started(started_at)
++            .await;
++        turn_context
++            .turn_metadata_state
++            .set_turn_started_at_unix_ms(started_at_unix_ms);
++        let (start_tx, start_rx) = tokio::sync::oneshot::channel();
++        let done = Arc::new(Notify::new());
++        let cancellation_token = CancellationToken::new();
++        let task: Arc<dyn AnySessionTask> = Arc::new(task);
++        let task_for_run = Arc::clone(&task);
++        let session = Arc::clone(self);
++        let context = Arc::clone(&turn_context);
++        let done_for_run = Arc::clone(&done);
++        let task_cancellation_token = cancellation_token.child_token();
++        let handle = tokio::spawn(async move {
++            if start_rx.await.is_err() {
++                return;
++            }
++            let result = task_for_run
++                .run(
++                    Arc::clone(&session),
++                    Arc::clone(&context),
++                    input,
++                    task_cancellation_token,
++                )
++                .await;
++            session.on_task_finished(context, result).await;
++            done_for_run.notify_waiters();
++        });
++        let running_task = RunningTask {
++            done,
++            kind: TaskKind::Regular,
++            task,
++            cancellation_token,
++            handle: AbortOnDropHandle::new(handle),
++            turn_context,
++            _agent_execution_guard: None,
++            _diagnostics_guard: ACTIVE_TURNS.track(),
++            _timer: None,
++        };
++        let mut active = self.active_turn.lock().await;
++        if active.is_some() {
++            return;
++        }
++        *active = Some(ActiveTurn {
++            task: Some(running_task),
++            turn_state: Arc::new(Mutex::new(TurnState::default())),
++        });
++        drop(active);
++        self.set_agent_status(AgentStatus::Running);
++        let _ = start_tx.send(());
++    }
++
+     /// Returns whether an extension has marked this thread as durably asleep.
+     pub(crate) fn has_outstanding_durable_sleep(&self) -> bool {
+         self.services
+@@ -547,6 +626,29 @@ impl Session {
+     }
+
+     pub async fn abort_all_tasks(self: &Arc<Self>, reason: TurnAbortReason) {
++        if crate::symphony_boundary::is_selected() {
++            let active = self.active_turn.lock().await.take();
++            if let Some(mut active) = active
++                && let Some(task) = active.task.take()
++            {
++                task.cancellation_token.cancel();
++                let remaining = self
++                    .services
++                    .strict_context()
++                    .ok()
++                    .map(|context| context.deadline.saturating_duration_since(Instant::now()))
++                    .unwrap_or(Duration::ZERO);
++                let mut handle = task.handle.detach();
++                match tokio::time::timeout(remaining, &mut handle).await {
++                    Ok(Ok(())) => {}
++                    _ => {
++                        handle.abort();
++                        crate::symphony_boundary::mark_stop_unconfirmed();
++                    }
++                }
++            }
++            return;
++        }
+         let mut aborted_turn = false;
+         let mut active_turn_to_clear = None;
+         if let Some(mut active_turn) = self.take_active_turn(&reason).await {
+@@ -633,6 +735,11 @@ impl Session {
+         turn_context: Arc<TurnContext>,
+         task_result: SessionTaskResult,
+     ) {
++        if self.services.strict_context().is_ok() {
++            self.on_strict_task_finished(turn_context, task_result)
++                .await;
++            return;
++        }
+         let (last_agent_message, abort_reason) = match task_result {
+             Ok(last_agent_message) => (last_agent_message, None),
+             Err(err) if matches!(err.details(), CodexErrorDetails::TurnAborted) => {
+@@ -890,6 +997,91 @@ impl Session {
+         }
+     }
+
++    async fn on_strict_task_finished(
++        &self,
++        turn_context: Arc<TurnContext>,
++        task_result: SessionTaskResult,
++    ) {
++        let error = match task_result {
++            Ok(_) => {
++                self.clear_strict_active_turn().await;
++                return;
++            }
++            Err(err) if matches!(err.details(), CodexErrorDetails::TurnAborted) => {
++                turn_context
++                    .turn_metadata_state
++                    .cancel_git_enrichment_task();
++                let (completed_at, duration_ms, _) = turn_context
++                    .turn_timing_state
++                    .complete_profile_and_duration_ms()
++                    .await;
++                self.send_event(
++                    turn_context.as_ref(),
++                    EventMsg::TurnAborted(TurnAbortedEvent {
++                        root_turn_id: Some(turn_context.root_turn_id()),
++                        turn_id: Some(turn_context.sub_id.clone()),
++                        reason: TurnAbortReason::Interrupted,
++                        error: None,
++                        started_at: turn_context.turn_timing_state.started_at_unix_secs().await,
++                        completed_at,
++                        duration_ms,
++                    }),
++                )
++                .await;
++                self.clear_strict_active_turn().await;
++                self.set_agent_status(AgentStatus::Interrupted);
++                return;
++            }
++            Err(err) => Some(err),
++        };
++
++        let Some(error) = error else {
++            return;
++        };
++        turn_context
++            .turn_metadata_state
++            .cancel_git_enrichment_task();
++        self.send_event(
++            turn_context.as_ref(),
++            EventMsg::Error(error.to_error_event(/*message_prefix*/ None)),
++        )
++        .await;
++        self.clear_strict_active_turn().await;
++        let (completed_at, duration_ms, _) = turn_context
++            .turn_timing_state
++            .complete_profile_and_duration_ms()
++            .await;
++        let terminal_error = turn_context.terminal_error.lock().await.clone();
++        self.send_event(
++            turn_context.as_ref(),
++            EventMsg::TurnComplete(TurnCompleteEvent {
++                root_turn_id: Some(turn_context.root_turn_id()),
++                turn_id: turn_context.sub_id.clone(),
++                last_agent_message: None,
++                error: terminal_error,
++                started_at: turn_context.turn_timing_state.started_at_unix_secs().await,
++                completed_at,
++                duration_ms,
++                time_to_first_token_ms: turn_context
++                    .turn_timing_state
++                    .time_to_first_token_ms()
++                    .await,
++            }),
++        )
++        .await;
++        self.set_agent_status(AgentStatus::Errored(error.to_string()));
++    }
++
++    async fn clear_strict_active_turn(&self) {
++        let active_turn = self.active_turn.lock().await.take();
++        if let Some(mut active_turn) = active_turn
++            && let Some(task) = active_turn.task.take()
++        {
++            task.handle.detach();
++            task.done.notify_waiters();
++        }
++    }
++
+     async fn take_active_turn(&self, reason: &TurnAbortReason) -> Option<ActiveTurn> {
+         let mut active = self.active_turn.lock().await;
+         if matches!(
 diff --git a/codex-rs/core/src/tasks/regular.rs b/codex-rs/core/src/tasks/regular.rs
 index 0eca40f3d42fa5528ec4623d3309c80de6f08155..ef73e7107f161458c465db046646886b05c4a34f 100644
 --- a/codex-rs/core/src/tasks/regular.rs
@@ -2502,10 +4104,438 @@ index 0eca40f3d42fa5528ec4623d3309c80de6f08155..ef73e7107f161458c465db046646886b
          // Regular turns emit `TurnStarted` inline so first-turn lifecycle does
          // not wait on startup prewarm resolution.
 diff --git a/codex-rs/core/src/thread_manager.rs b/codex-rs/core/src/thread_manager.rs
-index ea4dee313edd2bdeb17aad8fb763719f7b6861c9..e3ccaf07993fbabbcfb09bb78b73162ecb47f63d 100644
+index ea4dee313edd2bdeb17aad8fb763719f7b6861c9..a2940c04c2c20998a519e49473f70f9f9356de7b 100644
 --- a/codex-rs/core/src/thread_manager.rs
 +++ b/codex-rs/core/src/thread_manager.rs
-@@ -1047,6 +1047,24 @@ impl ThreadManager {
+@@ -247,6 +247,8 @@ enum ShutdownOutcome {
+ /// them in memory.
+ pub struct ThreadManager {
+     state: Arc<ThreadManagerState>,
++    strict_context: Option<Arc<crate::symphony_boundary::SymphonyContext>>,
++    strict_config: Option<Config>,
+     _test_codex_home_guard: Option<TempCodexHomeGuard>,
+ }
+
+@@ -419,24 +421,24 @@ pub(crate) struct ThreadManagerState {
+     thread_created_tx: broadcast::Sender<ThreadId>,
+     thread_id_generator: ThreadIdGenerator,
+     agent_control_factory: Option<AgentControlFactory>,
+-    auth_manager: Arc<AuthManager>,
+-    models_manager: SharedModelsManager,
+-    git_root_discovery: Arc<GitRootDiscovery>,
+-    environment_manager: Arc<EnvironmentManager>,
++    auth_manager: Option<Arc<AuthManager>>,
++    models_manager: Option<SharedModelsManager>,
++    git_root_discovery: Option<Arc<GitRootDiscovery>>,
++    environment_manager: Option<Arc<EnvironmentManager>>,
+     starting_mcp_runtimes: std::sync::Mutex<Vec<std::sync::Weak<AtomicBool>>>,
+-    skills_service: Arc<HostSkillsService>,
+-    plugins_manager: Arc<PluginsManager>,
+-    mcp_manager: Arc<McpManager>,
+-    code_mode_session_provider: Arc<dyn CodeModeSessionProvider>,
+-    extensions: Arc<ExtensionRegistry<Config>>,
+-    user_instructions_provider: Arc<dyn UserInstructionsProvider>,
+-    image_store: Arc<dyn AttachmentStore>,
+-    thread_store: Arc<dyn ThreadStore>,
++    skills_service: Option<Arc<HostSkillsService>>,
++    plugins_manager: Option<Arc<PluginsManager>>,
++    mcp_manager: Option<Arc<McpManager>>,
++    code_mode_session_provider: Option<Arc<dyn CodeModeSessionProvider>>,
++    extensions: Option<Arc<ExtensionRegistry<Config>>>,
++    user_instructions_provider: Option<Arc<dyn UserInstructionsProvider>>,
++    image_store: Option<Arc<dyn AttachmentStore>>,
++    thread_store: Option<Arc<dyn ThreadStore>>,
+     agent_graph_store: Option<Arc<dyn AgentGraphStore>>,
+     attestation_provider: Option<Arc<dyn AttestationProvider>>,
+     external_time_provider: Option<Arc<dyn TimeProvider>>,
+-    session_source: SessionSource,
+-    installation_id: String,
++    session_source: Option<SessionSource>,
++    installation_id: Option<String>,
+     analytics_events_client: Option<AnalyticsEventsClient>,
+     // Captures submitted ops for testing purpose when test mode is enabled.
+     ops_log: Option<SharedCapturedOps>,
+@@ -530,6 +532,102 @@ pub fn local_agent_graph_store_from_state_db(
+ }
+
+ impl ThreadManager {
++    /// Create a manager that owns no ordinary provider, auth, plugin, MCP, or
++    /// discovery services. The selected immutable context owns the one attempt.
++    pub fn new_strict(
++        context: Arc<crate::symphony_boundary::SymphonyContext>,
++        config: Config,
++    ) -> CodexResult<Self> {
++        if !crate::symphony_boundary::is_selected()
++            || crate::symphony_boundary::context()
++                .as_ref()
++                .is_none_or(|selected| !Arc::ptr_eq(selected, &context))
++            || config.model.as_deref() != Some(context.model_slug.as_str())
++            || config.cwd.as_path() != context.workspace.as_path()
++        {
++            return Err(CodexErr::InvalidRequest(
++                "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE".to_string(),
++            ));
++        }
++        let (thread_created_tx, _) = broadcast::channel(THREAD_CREATED_CHANNEL_CAPACITY);
++        Ok(Self {
++            state: Arc::new(ThreadManagerState {
++                threads: Arc::new(RwLock::new(HashMap::new())),
++                shared_thread_instructions: Default::default(),
++                thread_created_tx,
++                thread_id_generator: default_thread_id_generator(),
++                agent_control_factory: None,
++                auth_manager: None,
++                models_manager: None,
++                git_root_discovery: None,
++                environment_manager: None,
++                starting_mcp_runtimes: std::sync::Mutex::new(Vec::new()),
++                skills_service: None,
++                plugins_manager: None,
++                mcp_manager: None,
++                code_mode_session_provider: None,
++                extensions: None,
++                user_instructions_provider: None,
++                image_store: None,
++                thread_store: None,
++                agent_graph_store: None,
++                attestation_provider: None,
++                external_time_provider: None,
++                session_source: None,
++                installation_id: None,
++                analytics_events_client: None,
++                ops_log: None,
++            }),
++            strict_context: Some(context),
++            strict_config: Some(config),
++            _test_codex_home_guard: None,
++        })
++    }
++
++    /// Start the single real thread admitted by the selected protected context.
++    pub async fn start_strict_thread(&self) -> CodexResult<NewThread> {
++        let context = self.strict_context()?;
++        if !crate::symphony_boundary::is_selected()
++            || context.deadline <= std::time::Instant::now()
++            || !crate::symphony_boundary::admit_thread()
++        {
++            return Err(CodexErr::InvalidRequest(
++                "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE".to_string(),
++            ));
++        }
++        let config = self.strict_config.clone().ok_or_else(|| {
++            CodexErr::InvalidRequest("SYMPHONY_STRICT_CONFIG_UNAVAILABLE".to_string())
++        })?;
++        let (session, io, session_configured) =
++            crate::session::session::Session::spawn_strict(context, config).await?;
++        let thread_id = session.thread_id();
++        let startup_metadata = ThreadStartupMetadata::from(&session_configured);
++        let thread = Arc::new(CodexThread::new(
++            Arc::clone(&session),
++            io,
++            startup_metadata,
++            None,
++            SessionSource::Exec,
++        ));
++        self.state
++            .threads
++            .write()
++            .await
++            .insert(thread_id, Arc::clone(&thread));
++        let _ = self.state.thread_created_tx.send(thread_id);
++        Ok(NewThread {
++            thread_id,
++            session_configured,
++            thread,
++        })
++    }
++
++    fn strict_context(&self) -> CodexResult<Arc<crate::symphony_boundary::SymphonyContext>> {
++        self.strict_context.clone().ok_or_else(|| {
++            CodexErr::InvalidRequest("SYMPHONY_STRICT_MANAGER_UNAVAILABLE".to_string())
++        })
++    }
++
+     #[allow(clippy::too_many_arguments)]
+     pub fn new(
+         config: &Config,
+@@ -582,28 +680,30 @@ impl ThreadManager {
+                 thread_created_tx,
+                 thread_id_generator: default_thread_id_generator(),
+                 agent_control_factory: None,
+-                models_manager,
+-                git_root_discovery: Arc::default(),
+-                environment_manager,
++                models_manager: Some(models_manager),
++                git_root_discovery: Some(Arc::default()),
++                environment_manager: Some(environment_manager),
+                 starting_mcp_runtimes: std::sync::Mutex::new(Vec::new()),
+-                skills_service,
+-                plugins_manager,
+-                mcp_manager,
+-                code_mode_session_provider,
+-                extensions,
+-                user_instructions_provider,
+-                image_store,
+-                thread_store,
++                skills_service: Some(skills_service),
++                plugins_manager: Some(plugins_manager),
++                mcp_manager: Some(mcp_manager),
++                code_mode_session_provider: Some(code_mode_session_provider),
++                extensions: Some(extensions),
++                user_instructions_provider: Some(user_instructions_provider),
++                image_store: Some(image_store),
++                thread_store: Some(thread_store),
+                 agent_graph_store,
+                 attestation_provider,
+                 external_time_provider,
+-                auth_manager,
+-                session_source,
+-                installation_id,
++                auth_manager: Some(auth_manager),
++                session_source: Some(session_source),
++                installation_id: Some(installation_id),
+                 analytics_events_client,
+                 ops_log: should_use_test_thread_manager_behavior()
+                     .then(|| Arc::new(std::sync::Mutex::new(Vec::new()))),
+             }),
++            strict_context: None,
++            strict_config: None,
+             _test_codex_home_guard: None,
+         }
+     }
+@@ -650,7 +750,7 @@ impl ThreadManager {
+         let Some(state) = Arc::get_mut(&mut self.state) else {
+             unreachable!("code-mode session provider must be set before thread manager is shared");
+         };
+-        state.code_mode_session_provider = provider;
++        state.code_mode_session_provider = Some(provider);
+         self
+     }
+
+@@ -662,9 +762,9 @@ impl ThreadManager {
+         let Some(state) = Arc::get_mut(&mut self.state) else {
+             unreachable!("new thread manager state should not be shared");
+         };
+-        state.code_mode_session_provider = Arc::new(
++        state.code_mode_session_provider = Some(Arc::new(
+             ProcessOwnedCodeModeSessionProvider::with_host_program(host_program),
+-        );
++        ));
+         self
+     }
+
+@@ -754,61 +854,95 @@ impl ThreadManager {
+                 thread_created_tx,
+                 thread_id_generator: default_thread_id_generator(),
+                 agent_control_factory: None,
+-                models_manager: create_model_provider(provider, Some(auth_manager.clone()))
+-                    .models_manager(codex_home, /*config_model_catalog*/ None),
+-                git_root_discovery: Arc::default(),
+-                environment_manager,
++                models_manager: Some(
++                    create_model_provider(provider, Some(auth_manager.clone()))
++                        .models_manager(codex_home, /*config_model_catalog*/ None),
++                ),
++                git_root_discovery: Some(Arc::default()),
++                environment_manager: Some(environment_manager),
+                 starting_mcp_runtimes: std::sync::Mutex::new(Vec::new()),
+-                skills_service,
+-                plugins_manager,
+-                mcp_manager,
+-                code_mode_session_provider: Arc::new(DisabledCodeModeSessionProvider),
+-                extensions: empty_extension_registry(),
+-                user_instructions_provider: Arc::new(
++                skills_service: Some(skills_service),
++                plugins_manager: Some(plugins_manager),
++                mcp_manager: Some(mcp_manager),
++                code_mode_session_provider: Some(Arc::new(DisabledCodeModeSessionProvider)),
++                extensions: Some(empty_extension_registry()),
++                user_instructions_provider: Some(Arc::new(
+                     crate::test_support::EmptyUserInstructionsProvider,
+-                ),
+-                image_store: passthrough_image_store(),
+-                thread_store,
++                )),
++                image_store: Some(passthrough_image_store()),
++                thread_store: Some(thread_store),
+                 agent_graph_store,
+                 attestation_provider: None,
+                 external_time_provider: None,
+-                auth_manager,
+-                session_source: SessionSource::Exec,
+-                installation_id,
++                auth_manager: Some(auth_manager),
++                session_source: Some(SessionSource::Exec),
++                installation_id: Some(installation_id),
+                 analytics_events_client: None,
+                 ops_log: should_use_test_thread_manager_behavior()
+                     .then(|| Arc::new(std::sync::Mutex::new(Vec::new()))),
+             }),
++            strict_context: None,
++            strict_config: None,
+             _test_codex_home_guard: None,
+         }
+     }
+
+     pub fn session_source(&self) -> SessionSource {
+-        self.state.session_source.clone()
++        self.state
++            .session_source
++            .as_ref()
++            .expect("standard services are unavailable in strict mode")
++            .clone()
+     }
+
+     pub fn auth_manager(&self) -> Arc<AuthManager> {
+-        self.state.auth_manager.clone()
++        self.state
++            .auth_manager
++            .as_ref()
++            .expect("standard services are unavailable in strict mode")
++            .clone()
+     }
+
+     pub fn skills_service(&self) -> Arc<HostSkillsService> {
+-        self.state.skills_service.clone()
++        self.state
++            .skills_service
++            .as_ref()
++            .expect("standard services are unavailable in strict mode")
++            .clone()
+     }
+
+     pub fn plugins_manager(&self) -> Arc<PluginsManager> {
+-        self.state.plugins_manager.clone()
++        self.state
++            .plugins_manager
++            .as_ref()
++            .expect("standard services are unavailable in strict mode")
++            .clone()
+     }
+
+     pub fn mcp_manager(&self) -> Arc<McpManager> {
+-        self.state.mcp_manager.clone()
++        self.state
++            .mcp_manager
++            .as_ref()
++            .expect("standard services are unavailable in strict mode")
++            .clone()
+     }
+
+     pub fn environment_manager(&self) -> Arc<EnvironmentManager> {
+-        self.state.environment_manager.clone()
++        self.state
++            .environment_manager
++            .as_ref()
++            .expect("standard services are unavailable in strict mode")
++            .clone()
+     }
+
+     pub fn image_store(&self) -> Arc<dyn AttachmentStore> {
+-        Arc::clone(&self.state.image_store)
++        Arc::clone(
++            &self
++                .state
++                .image_store
++                .as_ref()
++                .expect("standard services are unavailable in strict mode"),
++        )
+     }
+
+     /// Starts the local rollout migration path after a runtime feature enablement.
+@@ -819,6 +953,8 @@ impl ThreadManager {
+         let Some(store) = self
+             .state
+             .thread_store
++            .as_ref()
++            .expect("standard services are unavailable in strict mode")
+             .as_any()
+             .downcast_ref::<LocalThreadStore>()
+         else {
+@@ -885,18 +1021,32 @@ impl ThreadManager {
+         workspace_roots: &[AbsolutePathBuf],
+     ) -> Vec<TurnEnvironmentRequest> {
+         default_thread_environment_requests(
+-            self.state.environment_manager.as_ref(),
++            self.state
++                .environment_manager
++                .as_ref()
++                .expect("standard services are unavailable in strict mode")
++                .as_ref(),
+             cwd,
+             workspace_roots,
+         )
+     }
+
+     pub(crate) fn git_root_discovery(&self) -> Arc<GitRootDiscovery> {
+-        Arc::clone(&self.state.git_root_discovery)
++        Arc::clone(
++            &self
++                .state
++                .git_root_discovery
++                .as_ref()
++                .expect("standard services are unavailable in strict mode"),
++        )
+     }
+
+     pub fn get_models_manager(&self) -> SharedModelsManager {
+-        self.state.models_manager.clone()
++        self.state
++            .models_manager
++            .as_ref()
++            .expect("standard services are unavailable in strict mode")
++            .clone()
+     }
+
+     pub async fn list_models(
+@@ -906,12 +1056,18 @@ impl ThreadManager {
+     ) -> Vec<ModelPreset> {
+         self.state
+             .models_manager
++            .as_ref()
++            .expect("standard services are unavailable in strict mode")
+             .list_models(refresh_strategy, http_client_factory)
+             .await
+     }
+
+     pub fn list_collaboration_modes(&self) -> Vec<CollaborationModeMask> {
+-        self.state.models_manager.list_collaboration_modes()
++        self.state
++            .models_manager
++            .as_ref()
++            .expect("standard services are unavailable in strict mode")
++            .list_collaboration_modes()
+     }
+
+     pub async fn list_thread_ids(&self) -> Vec<ThreadId> {
+@@ -952,6 +1108,8 @@ impl ThreadManager {
+         let updated = self
+             .state
+             .thread_store
++            .as_ref()
++            .expect("standard services are unavailable in strict mode")
+             .update_thread_metadata(UpdateThreadMetadataParams {
+                 thread_id,
+                 patch,
+@@ -969,6 +1127,8 @@ impl ThreadManager {
+             None => self
+                 .state
+                 .thread_store
++                .as_ref()
++                .expect("standard services are unavailable in strict mode")
+                 .read_thread(ReadThreadParams {
+                     thread_id,
+                     include_archived,
+@@ -999,6 +1159,8 @@ impl ThreadManager {
+
+         self.state
+             .thread_store
++            .as_ref()
++            .expect("standard services are unavailable in strict mode")
+             .move_thread_to_section(MoveThreadToSectionParams {
+                 thread_id,
+                 section: section.map(ToOwned::to_owned),
+@@ -1047,6 +1209,21 @@ impl ThreadManager {
      }
 
      pub async fn start_thread(&self, options: StartThreadOptions) -> CodexResult<NewThread> {
@@ -2515,21 +4545,443 @@ index ea4dee313edd2bdeb17aad8fb763719f7b6861c9..e3ccaf07993fbabbcfb09bb78b73162e
 +            })?;
 +            if options.config.model.as_deref() != Some(context.model_slug.as_str())
 +                || options.config.cwd.as_path() != context.workspace.as_path()
-+                || !crate::symphony_boundary::admit_thread()
 +            {
 +                return Err(CodexErr::InvalidRequest(
 +                    "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE".to_string(),
 +                ));
 +            }
-+            // Strict service construction is not yet available. Preserve refusal
-+            // rather than entering ordinary startup under selected authority.
 +            return Err(CodexErr::InvalidRequest(
-+                "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE".to_string(),
++                "SYMPHONY_STRICT_START_REQUIRES_STRICT_MANAGER_API".to_string(),
 +            ));
 +        }
          Box::pin(self.start_thread_inner(
              options, /*forked_from_thread_id*/ None, /*startup*/ None,
          ))
+@@ -1128,7 +1305,16 @@ impl ThreadManager {
+         let (resumed_session_source, resumed_thread_source) = options
+             .initial_history
+             .get_resumed_session_sources()
+-            .unwrap_or_else(|| (self.state.session_source.clone(), None));
++            .unwrap_or_else(|| {
++                (
++                    self.state
++                        .session_source
++                        .as_ref()
++                        .expect("standard services are unavailable in strict mode")
++                        .clone(),
++                    None,
++                )
++            });
+         options.session_source = Some(
+             options
+                 .session_source
+@@ -1157,7 +1343,13 @@ impl ThreadManager {
+             let agent_control = self.agent_control_for_config(&options.config);
+             let mut request = ThreadSpawnRequest::new(
+                 options,
+-                Arc::clone(&self.state.auth_manager),
++                Arc::clone(
++                    &self
++                        .state
++                        .auth_manager
++                        .as_ref()
++                        .expect("standard services are unavailable in strict mode"),
++                ),
+                 agent_control,
+             );
+             request.forked_from_thread_id = forked_from_thread_id;
+@@ -1279,7 +1471,16 @@ impl ThreadManager {
+         let agent_control = self.agent_control_for_config(&config);
+         let (session_source, thread_source) = initial_history
+             .get_resumed_session_sources()
+-            .unwrap_or_else(|| (self.state.session_source.clone(), None));
++            .unwrap_or_else(|| {
++                (
++                    self.state
++                        .session_source
++                        .as_ref()
++                        .expect("standard services are unavailable in strict mode")
++                        .clone(),
++                    None,
++                )
++            });
+         let options = StartThreadOptions {
+             initial_history,
+             session_source: Some(session_source),
+@@ -1307,8 +1508,17 @@ impl ThreadManager {
+             client_mcp_extensions,
+             ..StartThreadOptions::new(config)
+         };
+-        let mut request =
+-            ThreadSpawnRequest::new(options, Arc::clone(&self.state.auth_manager), agent_control);
++        let mut request = ThreadSpawnRequest::new(
++            options,
++            Arc::clone(
++                &self
++                    .state
++                    .auth_manager
++                    .as_ref()
++                    .expect("standard services are unavailable in strict mode"),
++            ),
++            agent_control,
++        );
+         request.user_shell_override = Some(user_shell_override);
+         Box::pin(self.state.spawn_thread(request)).await
+     }
+@@ -1327,7 +1537,16 @@ impl ThreadManager {
+             .await?;
+         let (session_source, thread_source) = initial_history
+             .get_resumed_session_sources()
+-            .unwrap_or_else(|| (self.state.session_source.clone(), None));
++            .unwrap_or_else(|| {
++                (
++                    self.state
++                        .session_source
++                        .as_ref()
++                        .expect("standard services are unavailable in strict mode")
++                        .clone(),
++                    None,
++                )
++            });
+         let options = StartThreadOptions {
+             initial_history,
+             session_source: Some(session_source),
+@@ -1467,6 +1686,8 @@ impl ThreadManager {
+         let stored_thread = self
+             .state
+             .thread_store
++            .as_ref()
++            .expect("standard services are unavailable in strict mode")
+             .read_thread_by_rollout_path(ReadThreadByRolloutPathParams {
+                 rollout_path,
+                 include_archived: true,
+@@ -1550,10 +1771,13 @@ impl ThreadManager {
+         let instructions = self
+             .state
+             .instructions_for_spawn(
+-                options
+-                    .session_source
+-                    .as_ref()
+-                    .unwrap_or(&self.state.session_source),
++                options.session_source.as_ref().unwrap_or(
++                    &self
++                        .state
++                        .session_source
++                        .as_ref()
++                        .expect("standard services are unavailable in strict mode"),
++                ),
+                 /*parent_thread_id*/ None,
+                 source_thread_id,
+                 options.thread_instructions_provider.clone(),
+@@ -1575,8 +1799,17 @@ impl ThreadManager {
+         );
+         options.initial_history = fork_history_from_snapshot(snapshot, history, interrupted_marker);
+         let agent_control = self.agent_control_for_config(&options.config);
+-        let mut request =
+-            ThreadSpawnRequest::new(options, Arc::clone(&self.state.auth_manager), agent_control);
++        let mut request = ThreadSpawnRequest::new(
++            options,
++            Arc::clone(
++                &self
++                    .state
++                    .auth_manager
++                    .as_ref()
++                    .expect("standard services are unavailable in strict mode"),
++            ),
++            agent_control,
++        );
+         request.forked_from_thread_id = source_thread_id;
+         request.fork_persistence = fork_persistence;
+         request.inherited_instructions = Some(instructions);
+@@ -1677,7 +1910,7 @@ impl ThreadManagerState {
+         params: ReadThreadParams,
+     ) -> CodexResult<StoredThread> {
+         let thread_id = params.thread_id;
+-        self.thread_store
++        self.thread_store.as_ref().expect("standard services are unavailable in strict mode")
+             .read_thread(params)
+             .await
+             .map_err(|err| match err {
+@@ -1703,6 +1936,8 @@ impl ThreadManagerState {
+     ) -> CodexResult<StoredModelContext> {
+         let thread_id = params.thread_id;
+         self.thread_store
++            .as_ref()
++            .expect("standard services are unavailable in strict mode")
+             .load_latest_model_context(params)
+             .await
+             .map_err(|err| match err {
+@@ -1839,7 +2074,12 @@ impl ThreadManagerState {
+             inherited
+         } else {
+             SessionInstructions {
+-                user_provider: Some(Arc::clone(&self.user_instructions_provider)),
++                user_provider: Some(Arc::clone(
++                    &self
++                        .user_instructions_provider
++                        .as_ref()
++                        .expect("standard services are unavailable in strict mode"),
++                )),
+                 thread_provider,
+                 thread: inherited.thread,
+                 ..Default::default()
+@@ -1912,20 +2152,25 @@ impl ThreadManagerState {
+         config: Config,
+         agent_control: LocalAgentControl,
+     ) -> CodexResult<NewThread> {
+-        Box::pin(self.spawn_new_thread_with_source(
+-            config,
+-            agent_control,
+-            self.session_source.clone(),
+-            /*history_mode*/ None,
+-            /*dynamic_tools*/ Vec::new(),
+-            /*parent_thread_id*/ None,
+-            /*forked_from_thread_id*/ None,
+-            /*thread_source*/ None,
+-            /*metrics_service_name*/ None,
+-            /*inherited_environments*/ None,
+-            /*inherited_exec_policy*/ None,
+-            /*environments*/ None,
+-        ))
++        Box::pin(
++            self.spawn_new_thread_with_source(
++                config,
++                agent_control,
++                self.session_source
++                    .as_ref()
++                    .expect("standard services are unavailable in strict mode")
++                    .clone(),
++                /*history_mode*/ None,
++                /*dynamic_tools*/ Vec::new(),
++                /*parent_thread_id*/ None,
++                /*forked_from_thread_id*/ None,
++                /*thread_source*/ None,
++                /*metrics_service_name*/ None,
++                /*inherited_environments*/ None,
++                /*inherited_exec_policy*/ None,
++                /*environments*/ None,
++            ),
++        )
+         .await
+     }
+
+@@ -1961,8 +2206,16 @@ impl ThreadManagerState {
+             dynamic_tools,
+             ..StartThreadOptions::new(config)
+         };
+-        let mut request =
+-            ThreadSpawnRequest::new(options, Arc::clone(&self.auth_manager), agent_control);
++        let mut request = ThreadSpawnRequest::new(
++            options,
++            Arc::clone(
++                &self
++                    .auth_manager
++                    .as_ref()
++                    .expect("standard services are unavailable in strict mode"),
++            ),
++            agent_control,
++        );
+         request.parent_thread_id = parent_thread_id;
+         request.forked_from_thread_id = forked_from_thread_id;
+         request.inherited_environments = inherited_environments;
+@@ -2004,8 +2257,16 @@ impl ThreadManagerState {
+             client_mcp_extensions,
+             ..StartThreadOptions::new(config)
+         };
+-        let mut request =
+-            ThreadSpawnRequest::new(options, Arc::clone(&self.auth_manager), agent_control);
++        let mut request = ThreadSpawnRequest::new(
++            options,
++            Arc::clone(
++                &self
++                    .auth_manager
++                    .as_ref()
++                    .expect("standard services are unavailable in strict mode"),
++            ),
++            agent_control,
++        );
+         request.parent_thread_id = parent_thread_id;
+         request.inherited_environments = inherited_environments;
+         request.inherited_instructions = inherited_instructions;
+@@ -2045,8 +2306,16 @@ impl ThreadManagerState {
+             client_mcp_extensions,
+             ..StartThreadOptions::new(config)
+         };
+-        let mut request =
+-            ThreadSpawnRequest::new(options, Arc::clone(&self.auth_manager), agent_control);
++        let mut request = ThreadSpawnRequest::new(
++            options,
++            Arc::clone(
++                &self
++                    .auth_manager
++                    .as_ref()
++                    .expect("standard services are unavailable in strict mode"),
++            ),
++            agent_control,
++        );
+         request.fork_persistence = ForkPersistence::CopiedDeferred;
+         request.parent_thread_id = parent_thread_id;
+         request.forked_from_thread_id = forked_from_thread_id;
+@@ -2117,7 +2386,12 @@ impl ThreadManagerState {
+             disabled_plugin_ids,
+         } = options;
+         let inherited_environments = captured_environments.or(inherited_environments);
+-        let session_source = session_source.unwrap_or_else(|| self.session_source.clone());
++        let session_source = session_source.unwrap_or_else(|| {
++            self.session_source
++                .as_ref()
++                .expect("standard services are unavailable in strict mode")
++                .clone()
++        });
+         // Older callers and saved reviewers identify isolation through their source.
+         // New internal callers supply an explicit runtime policy before startup.
+         let isolation = thread_extension_init
+@@ -2147,7 +2421,10 @@ impl ThreadManagerState {
+             })
+             .unwrap_or_else(|| {
+                 default_thread_environment_requests(
+-                    self.environment_manager.as_ref(),
++                    self.environment_manager
++                        .as_ref()
++                        .expect("standard services are unavailable in strict mode")
++                        .as_ref(),
+                     &config.cwd,
+                     &config.workspace_roots,
+                 )
+@@ -2241,7 +2518,12 @@ impl ThreadManagerState {
+                     .map(|extensions| Arc::clone(&extensions.0))
+                     .unwrap_or_else(empty_extension_registry);
+                 let mcp_manager = McpManager::new_with_extensions(
+-                    Arc::clone(&self.plugins_manager),
++                    Arc::clone(
++                        &self
++                            .plugins_manager
++                            .as_ref()
++                            .expect("standard services are unavailable in strict mode"),
++                    ),
+                     Arc::clone(&extensions),
+                     CodexAppsToolsCache::default(),
+                 );
+@@ -2267,8 +2549,18 @@ impl ThreadManagerState {
+                         }
+                     },
+                     inherited_exec_policy,
+-                    Arc::clone(&self.extensions),
+-                    Arc::clone(&self.mcp_manager),
++                    Arc::clone(
++                        &self
++                            .extensions
++                            .as_ref()
++                            .expect("standard services are unavailable in strict mode"),
++                    ),
++                    Arc::clone(
++                        &self
++                            .mcp_manager
++                            .as_ref()
++                            .expect("standard services are unavailable in strict mode"),
++                    ),
+                     self.initial_multi_agent_version_for_spawn(
+                         &initial_history,
+                         Some(&session_source),
+@@ -2322,15 +2614,49 @@ impl ThreadManagerState {
+             config,
+             allow_provider_model_fallback,
+             instructions,
+-            installation_id: self.installation_id.clone(),
++            installation_id: self
++                .installation_id
++                .as_ref()
++                .expect("standard services are unavailable in strict mode")
++                .clone(),
+             auth_manager,
+-            models_manager: Arc::clone(&self.models_manager),
+-            git_root_discovery: Arc::clone(&self.git_root_discovery),
+-            environment_manager: Arc::clone(&self.environment_manager),
+-            skills_service: Arc::clone(&self.skills_service),
+-            plugins_manager: Arc::clone(&self.plugins_manager),
++            models_manager: Arc::clone(
++                &self
++                    .models_manager
++                    .as_ref()
++                    .expect("standard services are unavailable in strict mode"),
++            ),
++            git_root_discovery: Arc::clone(
++                &self
++                    .git_root_discovery
++                    .as_ref()
++                    .expect("standard services are unavailable in strict mode"),
++            ),
++            environment_manager: Arc::clone(
++                &self
++                    .environment_manager
++                    .as_ref()
++                    .expect("standard services are unavailable in strict mode"),
++            ),
++            skills_service: Arc::clone(
++                &self
++                    .skills_service
++                    .as_ref()
++                    .expect("standard services are unavailable in strict mode"),
++            ),
++            plugins_manager: Arc::clone(
++                &self
++                    .plugins_manager
++                    .as_ref()
++                    .expect("standard services are unavailable in strict mode"),
++            ),
+             mcp_manager,
+-            code_mode_session_provider: Arc::clone(&self.code_mode_session_provider),
++            code_mode_session_provider: Arc::clone(
++                &self
++                    .code_mode_session_provider
++                    .as_ref()
++                    .expect("standard services are unavailable in strict mode"),
++            ),
+             extensions,
+             conversation_history: initial_history,
+             disabled_plugin_ids,
+@@ -2364,8 +2690,18 @@ impl ThreadManagerState {
+             client_mcp_extensions,
+             reserved_thread_id,
+             analytics_events_client: self.analytics_events_client.clone(),
+-            image_store: Arc::clone(&self.image_store),
+-            thread_store: Arc::clone(&self.thread_store),
++            image_store: Arc::clone(
++                &self
++                    .image_store
++                    .as_ref()
++                    .expect("standard services are unavailable in strict mode"),
++            ),
++            thread_store: Arc::clone(
++                &self
++                    .thread_store
++                    .as_ref()
++                    .expect("standard services are unavailable in strict mode"),
++            ),
+             attestation_provider: self.attestation_provider.clone(),
+             external_time_provider: self.external_time_provider.clone(),
+             inherited_multi_agent_version: multi_agent_version,
+@@ -2391,13 +2727,19 @@ impl ThreadManagerState {
+         };
+         if let Some(source_thread_id) = attachment_source
+             && session.live_thread().is_some()
+-            && self.thread_store.supports_thread_attachments()
++            && self
++                .thread_store
++                .as_ref()
++                .expect("standard services are unavailable in strict mode")
++                .supports_thread_attachments()
+         {
+             // Fork initialization already handles persistence. Copy current membership before
+             // registration, but do not fail the conversation fork for attachment metadata errors.
+             let thread_id = session.thread_id();
+             if let Err(error) = self
+                 .thread_store
++                .as_ref()
++                .expect("standard services are unavailable in strict mode")
+                 .copy_thread_attachments(source_thread_id, thread_id)
+                 .await
+             {
 diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec_plan.rs
 index 7e2213456dcb0e5b2784f848c0fca061e7c2e677..8de180095680374ee635c58348f2251acb975c5b 100644
 --- a/codex-rs/core/src/tools/spec_plan.rs

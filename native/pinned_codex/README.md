@@ -6,26 +6,26 @@ This patch builds the actual `codex-app-server` target from Codex 0.162.1, commi
 ordinary entry path. It is a partial protected holder, not operational SIWC custody.
 Production Symphony C02 still refuses execution until its host dependencies qualify.
 
-## Blocked Slice A draft
+## Slice A compilation checkpoint
 
-The local Slice A patch adds draft context, configuration, authentication and
-provider-refusal guards. It does not implement schema2 admission, strict service
-construction or a functional native thread/turn session. The new
-`test_functional_session.py` is a retained failing acceptance test. A passing
-schema1 test does not establish Slice A completion.
+The 39-entry offline source authority includes strict session construction and
+its service consumers. The patch has an explicit schema2 synthetic feature,
+immutable context validation, a real ThreadManager thread constructor and a
+bridge to the existing core turn-input operation. Standard services are absent,
+not constructed and shut down. Schema1 retains its earlier refusal contract.
 
-The approved 33-entry inventory omits `core/src/session/session.rs`, which owns
-the actual `Session::new` constructor, and `core/src/state/service.rs`, which
-requires concrete MCP, hook, plugin and skill services. A strict constructor
-needs selected or absent service representations before excluded startup work.
-Those two files are the apparent minimum scope extension for review; they have
-not been changed. The selected draft thread guard refuses before ordinary
-thread startup while that construction boundary is unavailable.
+Compilation and thread creation do not establish a functioning turn. The actual
+turn-input implementation still unconditionally accesses the standard extension
+registry in `core/src/session/turn_input.rs`. That file is outside the approved
+39-entry inventory. The strict representation cannot satisfy this access. The
+candidate must remain blocked until an independently authorized correction and
+actual failed-terminal/stop regressions close this consumer dependency. No dummy
+registry or duplicate turn-admission path is supplied to conceal it.
 
 The previously accepted patch SHA-256 is
 `59a9d0ebabd18de96f7f6552b307183fb11bc091b1152b04aef2c34f1255148a`, with patched
 tree `39d3926e6c2a528c3039c2ff9368c1858b1d7f78`. Preserve those historical bytes.
-The current `upstream.json` identifies the distinct blocked draft patch.
+The current `upstream.json` identifies the distinct Slice A draft patch.
 
 A delegated formatter in this task invoked rustup outside the required denial
 wrapper. It reported downloading seven Rust 1.95.0 components, and toolchain
@@ -60,7 +60,7 @@ synthetic launch form is `--symphony-pilot-holder BINDING ATTEMPT`.
    host, authentication or inference readiness. The existing guard journals it only
    after independently observing credential-channel closure.
 6. Initialize uses the pinned upstream InitializeParams/InitializeResponse types.
-   Every other request returns `SYMPHONY_HOST_UNQUALIFIED` and stops. There is no
+   In schema1, every other request returns `SYMPHONY_HOST_UNQUALIFIED` and stops. There is no
    provider, tool broker, auth refresh, local Child, hook, MCP, nested agent, snapshot,
    installer or model-refresh service in this selected branch. No denied request
    can reach generic startup. Configuration is immutable for the process lifetime.
@@ -74,8 +74,9 @@ synthetic launch form is `--symphony-pilot-holder BINDING ATTEMPT`.
    retains consumption, evidence and quarantine. Restart cannot materialize again.
 
 The manifest is generated from the synthetic permit by the development guard.
-It is not an authenticated qualified host manifest. The standalone entry only
-runs a refusal path. Neither it nor its test manifest can authorize a real turn.
+It is not an authenticated qualified host manifest. The schema1 entry only
+runs its earlier refusal path. Schema2 selects an offline synthetic lifecycle;
+neither profile nor its test manifest authorizes live execution.
 The existing C02 full binding, C01 one-use allowance and C04 terminal persistence
 remain the attempt authority. No second RuntimeAttempt is allocated.
 
@@ -151,25 +152,38 @@ remain unqualified. C03's operational PID-namespace proof is unchanged; these
 synthetic tests do not substitute for it. Swap/core-collector/hibernation host
 qualification is also not established by this build.
 
-The selected branch refuses before thread/turn execution and cannot enable provider
-egress. The installed ordinary Codex CLI is untouched. No signing, installation,
+The schema1 branch refuses before thread/turn execution. Schema2 does not enable
+provider egress and remains blocked before the required core terminal outcome. The installed ordinary Codex CLI is untouched. No signing, installation,
 enrollment, publication, resource adoption, Gate2 activation or live pilot is implied.
 
 
-### Consumer extension draft, 2026-11-20
+### Reproduction and evidence limits
 
-The continued Slice A draft adds mutually exclusive standard/strict service
-representations and provisional selected turn/shutdown guards. It remains
-unbuildable. The constructor cannot name the standard service payload through
-the private state module. Existing session test fixtures also use the former
-struct literal. These consumers are outside the approved 37-entry inventory.
-No strict Session constructor, functional schema2 bridge, real thread/turn or
-core failed-turn evidence has been qualified. The provisional turn guard refuses
-before the required actual core task; it is not acceptance evidence.
+`build.py --source /absolute/clean/pinned/source --synthetic-functional` selects
+the schema2 feature only after the same source-byte and patched-tree checks.
+Use the explicit existing compiler, offline cache and outbound-denial wrapper
+recorded in the retained command evidence. The standalone protected runtime uses
+the pinned upstream 16 MiB worker stack budget. A prior default-stack binary
+aborted on turn submission; its failed output and identity remain evidence.
 
-The explicit `--synthetic-functional` build option forwards the selected Cargo
-feature only after the unchanged source verification. The feature declaration
-alone supplies no runtime capability. Its source-admission regressions passed
-24 tests after two retained red failures. The draft also fails formatting.
-No newly compiled executable corresponds to this source tree. The earlier
-schema1 executable and its evidence retain their original identities.
+`test_functional_session.py` executes the actual binary selected explicitly by
+`PINNED_CODEX_BINARY`. Every case creates a new disposable source, binding and
+attempt. Positive assertions require real thread and turn identifiers, a core
+error, failed terminal status, no final answer and positive pidfd stop evidence.
+Negative cases cover context drift, unsupported schema, expiry and protocol
+mutation/replay. Missing deterministic cancellation coverage and an absent
+feature-disabled executable are reported as blocked checks, never passing proof.
+
+The schema2 direct-binary fixture does not exercise native host materialization
+or C01 dispatch consumption. Schema1 native tests remain compatibility evidence.
+Full schema2 bootstrap/host integration, retained C01 consumption and namespace
+stop proof remain outstanding. Counter unit controls prove recorder wiring only;
+zero counters on a path that never reaches the client do not prove client-entry
+coverage or authenticated inference.
+
+The crate-private state re-export and two standard-service test-fixture migrations
+preserve the existing fixture assertions. Normal non-selected behavior retains
+standard service construction. `Deref`/`DerefMut` compatibility may still panic
+if strict execution touches standard fields; that is a known defect, not an
+accepted guard. No functional Slice A acceptance or operational qualification is
+claimed by this checkpoint.
