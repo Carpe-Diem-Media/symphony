@@ -182,7 +182,18 @@ zero counters on a path that never reaches the client do not prove client-entry
 coverage or authenticated inference.
 
 The crate-private state re-export and two standard-service test-fixture migrations
-preserve the existing fixture assertions. Normal non-selected behavior retains
+preserve the existing fixture assertions. The production app-server builds,
+but the final core lib-test compilation reports nine type errors in the unchanged
+`core/src/thread_manager_tests.rs`. Its ordinary fixture code still expects
+concrete manager services rather than the selected optional representation.
+That test file is also outside the approved inventory. The focused counter and
+fixture tests cannot execute on this final candidate until a separately
+approved fixture migration preserves their original assertions. Clippy stops
+at two unchanged upstream `path-uri` warnings under the development compiler;
+no lint rule is relaxed. Native schema1 compatibility and the 125 focused Elixir
+regressions pass, while the actual Slice A module has ten passes, three failed
+turn cases and one blocked cancellation case. None constitutes Slice A acceptance.
+ Normal non-selected behavior retains
 standard service construction. `Deref`/`DerefMut` compatibility may still panic
 if strict execution touches standard fields; that is a known defect, not an
 accepted guard. No functional Slice A acceptance or operational qualification is
