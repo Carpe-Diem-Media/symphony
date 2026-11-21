@@ -1,0 +1,80 @@
+{
+  "original_inventory_sha256": "847b7a5d828dc45a71836b86a2637973ebb32dc5fb1066171114cc832e864a61",
+  "original_inventory_records": 266,
+  "download_sha256": {
+    "devvm.SHA256SUMS": "9f703c06b2ab3a4b8c9e8963952e024f64964aa0ec9de09bfceefbf8b65df73a",
+    "devvm.SHA256SUMS.minisig": "329cafe0b6659f60d36e3ccb320388276ecf061a411162deddb713864d1a3246",
+    "devvm-0.1.0-linux-amd64.tar.gz": "fc939a651614917404766c8bf1c7f64aed8c136605e133e0602c55101a82284c",
+    "lima.SHA256SUMS": "4805ceeb791229ecaddcde32bf04b14742f4d036b343ad5d8c478ba5d220fff2",
+    "lima.SHA256SUMS.asc": "cc974212784876111d1a1d4ab2539e5c7fe2058de04e6c64c60d3887c8cabf2c",
+    "lima-2.2.1-Linux-x86_64.tar.gz": "b391ac7fcac2b2a5a1628107756463188ded4d18d3104a40a66a8bb6fec01bcb",
+    "lima-key.asc": "74d7c5d29b78a5967b0da91a2e9330b8a805fd1ea2c8a375dfae634ff85a6da0"
+  },
+  "minisign_manifest": "PASS",
+  "minisign_trusted_comment": "PASS",
+  "lima_openpgp_exit": 0,
+  "lima_signer": "C020EA876CE4E06C7AB95AEF49524C6F9F638F1A",
+  "archives": {
+    "devvm": {
+      "file": 4,
+      "directory": 0,
+      "symlink": 0
+    },
+    "lima": {
+      "file": 198,
+      "directory": 14,
+      "symlink": 1
+    }
+  },
+  "payload_bytes_compared": true,
+  "ownership_and_modes": "PASS",
+  "original_inventory_coverage": "PASS",
+  "stage_child_commands": [
+    {
+      "record": "get-devvm-0.1.0-linux-amd64.tar.gz.command.json",
+      "executable": "/usr/bin/curl",
+      "exit": 0
+    },
+    {
+      "record": "get-devvm.SHA256SUMS.command.json",
+      "executable": "/usr/bin/curl",
+      "exit": 0
+    },
+    {
+      "record": "get-devvm.SHA256SUMS.minisig.command.json",
+      "executable": "/usr/bin/curl",
+      "exit": 0
+    },
+    {
+      "record": "get-lima-2.2.1-Linux-x86_64.tar.gz.command.json",
+      "executable": "/usr/bin/curl",
+      "exit": 0
+    },
+    {
+      "record": "get-lima-key.asc.command.json",
+      "executable": "/usr/bin/curl",
+      "exit": 0
+    },
+    {
+      "record": "get-lima.SHA256SUMS.asc.command.json",
+      "executable": "/usr/bin/curl",
+      "exit": 0
+    },
+    {
+      "record": "get-lima.SHA256SUMS.command.json",
+      "executable": "/usr/bin/curl",
+      "exit": 0
+    },
+    {
+      "record": "lima-dearmor.command.json",
+      "executable": "/usr/bin/gpg",
+      "exit": 0
+    },
+    {
+      "record": "lima-signature.command.json",
+      "executable": "/usr/bin/gpgv",
+      "exit": 0
+    }
+  ],
+  "downloaded_binary_invocations": 0
+}

@@ -1,0 +1,50 @@
+{
+  "time": "2026-11-12T05:30:06.176123+00:00",
+  "failed_checks": [
+    {
+      "purpose": "initial final-inventory mode check",
+      "exit": 1,
+      "stderr": "AssertionError"
+    },
+    {
+      "purpose": "first correction guard incorrectly expected 0644",
+      "exit": 1,
+      "stderr": "AssertionError; no files modified"
+    },
+    {
+      "purpose": "premature repeat inventory mode check",
+      "exit": 1,
+      "stderr": "AssertionError"
+    }
+  ],
+  "root_cause": "Audit process inherited umask 002; its five new evidence files were 0664",
+  "scope": "Only supplemental audit evidence; original staged payloads and inventory unaffected",
+  "changes": [
+    {
+      "path": "evidence/independent-review/devvm-actual-archive-members.json",
+      "before": "0o664",
+      "after": "0o600"
+    },
+    {
+      "path": "evidence/independent-review/gpgv.stderr",
+      "before": "0o664",
+      "after": "0o600"
+    },
+    {
+      "path": "evidence/independent-review/gpgv.stdout",
+      "before": "0o664",
+      "after": "0o600"
+    },
+    {
+      "path": "evidence/independent-review/lima-actual-archive-members.json",
+      "before": "0o664",
+      "after": "0o600"
+    },
+    {
+      "path": "evidence/independent-review/verification.json",
+      "before": "0o664",
+      "after": "0o600"
+    }
+  ],
+  "staging_rerun": false
+}

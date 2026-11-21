@@ -1,0 +1,2554 @@
+[
+  {
+    "path": ".",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "downloads",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "downloads/devvm-0.1.0-linux-amd64.tar.gz",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o400",
+    "type": "file",
+    "size": 6619175,
+    "sha256": "fc939a651614917404766c8bf1c7f64aed8c136605e133e0602c55101a82284c"
+  },
+  {
+    "path": "downloads/devvm.SHA256SUMS",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o400",
+    "type": "file",
+    "size": 552,
+    "sha256": "9f703c06b2ab3a4b8c9e8963952e024f64964aa0ec9de09bfceefbf8b65df73a"
+  },
+  {
+    "path": "downloads/devvm.SHA256SUMS.minisig",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o400",
+    "type": "file",
+    "size": 273,
+    "sha256": "329cafe0b6659f60d36e3ccb320388276ecf061a411162deddb713864d1a3246"
+  },
+  {
+    "path": "downloads/lima-2.2.1-Linux-x86_64.tar.gz",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o400",
+    "type": "file",
+    "size": 24498098,
+    "sha256": "b391ac7fcac2b2a5a1628107756463188ded4d18d3104a40a66a8bb6fec01bcb"
+  },
+  {
+    "path": "downloads/lima-key.asc",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o400",
+    "type": "file",
+    "size": 3158,
+    "sha256": "74d7c5d29b78a5967b0da91a2e9330b8a805fd1ea2c8a375dfae634ff85a6da0"
+  },
+  {
+    "path": "downloads/lima.SHA256SUMS",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o400",
+    "type": "file",
+    "size": 1396,
+    "sha256": "4805ceeb791229ecaddcde32bf04b14742f4d036b343ad5d8c478ba5d220fff2"
+  },
+  {
+    "path": "downloads/lima.SHA256SUMS.asc",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o400",
+    "type": "file",
+    "size": 699,
+    "sha256": "cc974212784876111d1a1d4ab2539e5c7fe2058de04e6c64c60d3887c8cabf2c"
+  },
+  {
+    "path": "evidence",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "evidence/devvm-signature.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 135,
+    "sha256": "09e93061f6272c95152b1828aeb735f83aa9f4ed9e6562ca0f5d5b7792cc3548"
+  },
+  {
+    "path": "evidence/devvm-validated-members.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 596,
+    "sha256": "3a16b16483a3a47b3e27c3b1bc958fb7747d775bbf535f7b758790ebdb059adb"
+  },
+  {
+    "path": "evidence/get-devvm-0.1.0-linux-amd64.tar.gz.command.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 593,
+    "sha256": "3cf50070138e53ff5d0c1e8706b58f5c7408a376b4cc17883cbf8e8fb7dac59c"
+  },
+  {
+    "path": "evidence/get-devvm-0.1.0-linux-amd64.tar.gz.stderr",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "evidence/get-devvm-0.1.0-linux-amd64.tar.gz.stdout",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "evidence/get-devvm.SHA256SUMS.command.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 556,
+    "sha256": "04f2a79eadd0507bd55d9a28c8591891f7d379e18908a8cadd88911ab540fd25"
+  },
+  {
+    "path": "evidence/get-devvm.SHA256SUMS.minisig.command.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 572,
+    "sha256": "a8b6254156e47e1b6242532aa80e7cca08a7427df9ce844306ac982e31c460c4"
+  },
+  {
+    "path": "evidence/get-devvm.SHA256SUMS.minisig.stderr",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "evidence/get-devvm.SHA256SUMS.minisig.stdout",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "evidence/get-devvm.SHA256SUMS.stderr",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "evidence/get-devvm.SHA256SUMS.stdout",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "evidence/get-lima-2.2.1-Linux-x86_64.tar.gz.command.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 592,
+    "sha256": "b5d6674abc16fe74b038ea242ca2971cdbce0d6b23fdf9e79b1a72c4e77b1cf1"
+  },
+  {
+    "path": "evidence/get-lima-2.2.1-Linux-x86_64.tar.gz.stderr",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "evidence/get-lima-2.2.1-Linux-x86_64.tar.gz.stdout",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "evidence/get-lima-key.asc.command.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 518,
+    "sha256": "fc2470794cf8ec5bc392f5914d788ba5e3c6f2162d7825ab43a971d4eee28be6"
+  },
+  {
+    "path": "evidence/get-lima-key.asc.stderr",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "evidence/get-lima-key.asc.stdout",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "evidence/get-lima.SHA256SUMS.asc.command.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 562,
+    "sha256": "0df98a970467d424d611031a808d27cc9210cc99adfac743c732325e6c78df0b"
+  },
+  {
+    "path": "evidence/get-lima.SHA256SUMS.asc.stderr",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "evidence/get-lima.SHA256SUMS.asc.stdout",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "evidence/get-lima.SHA256SUMS.command.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 554,
+    "sha256": "11aefdc0465ffae76af8ebb541d6731fafd84807a01acf2221414dfcc53665ce"
+  },
+  {
+    "path": "evidence/get-lima.SHA256SUMS.stderr",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "evidence/get-lima.SHA256SUMS.stdout",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "evidence/independent-review",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "evidence/independent-review/authorization.txt",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 256,
+    "sha256": "c87c21b2c886ab0ac3eaec33e796b7e33e6a64e525e91a3a4afb3f72dbc64d3b"
+  },
+  {
+    "path": "evidence/independent-review/devvm-actual-archive-members.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1457,
+    "sha256": "405cf64115744915c40c93a120049308e74cc1981e4d2477b956cc1247c05ceb"
+  },
+  {
+    "path": "evidence/independent-review/entry-checks.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1932,
+    "sha256": "650e1b72394084da118c278f8fd1990d44b40171a912837bfe1d677a5db39333"
+  },
+  {
+    "path": "evidence/independent-review/executed-checkpoint-b.sh",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 21233,
+    "sha256": "e3963737564282b6c0265c380a0609e1121704ee159ef46687511feb12860863"
+  },
+  {
+    "path": "evidence/independent-review/gpgv.stderr",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 264,
+    "sha256": "6e8affa883ec1fc3f42eca1e16296959e791e3bb4a71f2ed093c100c1fd5e2e9"
+  },
+  {
+    "path": "evidence/independent-review/gpgv.stdout",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 457,
+    "sha256": "724d6734f90e6ec374f0a4880e4d0b593009567a802d7a849d7ef7c663c5eace"
+  },
+  {
+    "path": "evidence/independent-review/host-after.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 655,
+    "sha256": "56bd5f694c9ad01890ecad4dc8c1b847831453db71fb5ce5ca723960777cc405"
+  },
+  {
+    "path": "evidence/independent-review/host-before.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 654,
+    "sha256": "afc644eea050726eee4e5d7a98cd185c085bf0b88df2930aa138074e9f094758"
+  },
+  {
+    "path": "evidence/independent-review/independent-audit.py",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 8289,
+    "sha256": "9fba817d5ab771f23a05e1c74b573f880b01ffbf5c07c27bcbdb3b76af63dbb1"
+  },
+  {
+    "path": "evidence/independent-review/lima-actual-archive-members.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 78364,
+    "sha256": "3beba1629b6dfbd0531a11bdcfc2c11b00e7393323d2a811d3cae9850b0c9209"
+  },
+  {
+    "path": "evidence/independent-review/preservation.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 313,
+    "sha256": "975abde0d4a23c6f4e5730ec8580ae5c0bb255109b41b5185545715173bbbbef"
+  },
+  {
+    "path": "evidence/independent-review/repository-after.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1232,
+    "sha256": "87b4b1f5e03891a0f6644abc76a14798183419d15f71411dddeedd6532bb6963"
+  },
+  {
+    "path": "evidence/independent-review/reviewed-r1.sh",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 21195,
+    "sha256": "7bb1f92021f84523122edc216715c37e2094a32b92c9bdf2fd31428786e3727b"
+  },
+  {
+    "path": "evidence/independent-review/source-baseline.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 532,
+    "sha256": "fbcfc8d705b5018b6cf4f433aa0277fabc1e8bfa0719a2c34dbd8b99e82d0a2c"
+  },
+  {
+    "path": "evidence/independent-review/stage-process.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 742,
+    "sha256": "d797ffad47b46cf6a88208922e3c6ef7b4ca93932d3387dad066e418d6d7d566"
+  },
+  {
+    "path": "evidence/independent-review/supplemental-evidence-mode-correction.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1338,
+    "sha256": "4fbb7656655d0cae750bd004e392c1a63d6bd5af6ee30f6e44688fa8d23b9e8d"
+  },
+  {
+    "path": "evidence/independent-review/synthetic-test-command.sh",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 21237,
+    "sha256": "93451fb019b83dfe1e96ae4f8d3f5a9d00d827314c27a21c60eb016a58e67ab8"
+  },
+  {
+    "path": "evidence/independent-review/synthetic-tests.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 23158,
+    "sha256": "c05eab984aee3b29b91043e95e0ff4f336ce22e4857fcd3d7b8bf390394de358"
+  },
+  {
+    "path": "evidence/independent-review/verification.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 2450,
+    "sha256": "13cbb51a19d66452930448849ac577f481eab9df53c697f2c00ea5631cd0c7ff"
+  },
+  {
+    "path": "evidence/inventory.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 59690,
+    "sha256": "847b7a5d828dc45a71836b86a2637973ebb32dc5fb1066171114cc832e864a61"
+  },
+  {
+    "path": "evidence/inventory.sha256",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 81,
+    "sha256": "46b2e897a4fe0f243dc79d8c40f67dab4e29a3a89d5e3ce37a1eea5df46fa54a"
+  },
+  {
+    "path": "evidence/lima-dearmor.command.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 379,
+    "sha256": "875eefee839cd2331b94c6da6a300e788c5d0a7585c68f622e94868806d7ada1"
+  },
+  {
+    "path": "evidence/lima-dearmor.stderr",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "evidence/lima-dearmor.stdout",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "evidence/lima-signature.command.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 422,
+    "sha256": "3ab1ccd6601134f6993bc9bd9f372231e1572ac7856346480d7fba97e12c89ee"
+  },
+  {
+    "path": "evidence/lima-signature.stderr",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 264,
+    "sha256": "6e8affa883ec1fc3f42eca1e16296959e791e3bb4a71f2ed093c100c1fd5e2e9"
+  },
+  {
+    "path": "evidence/lima-signature.stdout",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 457,
+    "sha256": "724d6734f90e6ec374f0a4880e4d0b593009567a802d7a849d7ef7c663c5eace"
+  },
+  {
+    "path": "evidence/lima-validated-members.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 32710,
+    "sha256": "1193a0b90e2ecd6129bac27c861a15955057013973ef6ca43e200a9bddeaa424"
+  },
+  {
+    "path": "evidence/scope.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1005,
+    "sha256": "70890f60906a159c4b54ca942b245fb6ac8cf7f3eb591e2d2fb3268f5da723ef"
+  },
+  {
+    "path": "evidence/status.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 133,
+    "sha256": "81606d12fb85375e3578df9fc608c688a1c204541938e514632df0a917cce054"
+  },
+  {
+    "path": "evidence/validation.json",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 38,
+    "sha256": "35cfd17836e99d16d35e89cbf0d408267e54badb660054497af527d465d4aee8"
+  },
+  {
+    "path": "home",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "software",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "software/devvm-0.1.0",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "software/devvm-0.1.0/devvm-0.1.0-linux-amd64",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "software/devvm-0.1.0/devvm-0.1.0-linux-amd64/CHANGELOG.md",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 3372,
+    "sha256": "f67608528871b8fe626db30bde92aad86c514fee4a6d34901c1b3b9ac6c774d5"
+  },
+  {
+    "path": "software/devvm-0.1.0/devvm-0.1.0-linux-amd64/LICENSE",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1061,
+    "sha256": "6a2b097737f1bcad8866ae95af710b9417176f848080bb675b4ef394646eee56"
+  },
+  {
+    "path": "software/devvm-0.1.0/devvm-0.1.0-linux-amd64/README.md",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 6669,
+    "sha256": "7ccd950090447f44d47e6defe6ae64def74f181c30e136d96b2acd7721450b9f"
+  },
+  {
+    "path": "software/devvm-0.1.0/devvm-0.1.0-linux-amd64/devvm",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "file",
+    "size": 16838816,
+    "sha256": "76565db17a7866268f86bd82362f0bd6ce1bb8e2d930166bf3bb37f250974c2b"
+  },
+  {
+    "path": "software/lima-2.2.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "software/lima-2.2.1/bin",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "software/lima-2.2.1/bin/apptainer.lima",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "file",
+    "size": 762,
+    "sha256": "317231aa6c7c606032091c895a5ebe6c9cd3c21bdce39c80ca916a63b41529d1"
+  },
+  {
+    "path": "software/lima-2.2.1/bin/docker.lima",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "file",
+    "size": 898,
+    "sha256": "b27aa268cf41a6f9348f99da9376612a9d53ae31c0bceaef151b0b735569a367"
+  },
+  {
+    "path": "software/lima-2.2.1/bin/kubectl.lima",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "file",
+    "size": 1608,
+    "sha256": "1c8da7b909449d8e14c737cc8d3e799018ce10a83c75ca2499f63d266c5c8199"
+  },
+  {
+    "path": "software/lima-2.2.1/bin/lima",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "file",
+    "size": 1607,
+    "sha256": "88aeac60dbcb69ec675c0ce9af24d5f66255f4899fa73320402db57925500832"
+  },
+  {
+    "path": "software/lima-2.2.1/bin/limactl",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "file",
+    "size": 34405832,
+    "sha256": "172525ba852adbf1f151522123ed9fccf79267cdc020a39b23f77f1551843a25"
+  },
+  {
+    "path": "software/lima-2.2.1/bin/nerdctl.lima",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "file",
+    "size": 323,
+    "sha256": "3034baf0798ca7a9ed0cc98328658ba00785aff4a1f33055f02f8081a32ee70b"
+  },
+  {
+    "path": "software/lima-2.2.1/bin/podman.lima",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "file",
+    "size": 801,
+    "sha256": "be4d6158749e51bb6325de2f0c81ce29fea1e89a3c8668272e092512f74ed213"
+  },
+  {
+    "path": "software/lima-2.2.1/libexec",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "software/lima-2.2.1/libexec/lima",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "software/lima-2.2.1/libexec/lima/limactl-mcp",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "file",
+    "size": 7745799,
+    "sha256": "235d901e4e685b2ae1973eb55474fb3a61ce17554207d41c3bd064bf3850b1fc"
+  },
+  {
+    "path": "software/lima-2.2.1/libexec/lima/limactl-url-fedora-rawhide",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "file",
+    "size": 2024,
+    "sha256": "aaf3ba78520fffb520613d569a9fe9f1842c300b0d1f8d7ed559856e4f5cd220"
+  },
+  {
+    "path": "software/lima-2.2.1/share",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "software/lima-2.2.1/share/doc",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "software/lima-2.2.1/share/doc/lima",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "software/lima-2.2.1/share/doc/lima/ADOPTERS.md",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 508,
+    "sha256": "b39b423cde5fb57ebcb45ff8461c7408275f6f6efb9a3fb7bdb889f50bbee5fa"
+  },
+  {
+    "path": "software/lima-2.2.1/share/doc/lima/LICENSE",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 11358,
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  },
+  {
+    "path": "software/lima-2.2.1/share/doc/lima/MAINTAINERS.md",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 58,
+    "sha256": "74fe542c14c6c39492586a9c823131dfdb04cb8acb2e790762ec62e4ac1c280c"
+  },
+  {
+    "path": "software/lima-2.2.1/share/doc/lima/README.md",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 4243,
+    "sha256": "e96cd776e93872b74e493f308743db6ac1558507ebed5afa9b436f93f685274b"
+  },
+  {
+    "path": "software/lima-2.2.1/share/doc/lima/ROADMAP.md",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 55,
+    "sha256": "11be97b9d348f88d2ece3b6394cafb9f51aebb5049b60066174cf9c6624cab7c"
+  },
+  {
+    "path": "software/lima-2.2.1/share/doc/lima/SECURITY.md",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 66,
+    "sha256": "a636a2220abfc84f70694ef1ff676a5566ee0e6108f04c29cba9f8233b45f8e5"
+  },
+  {
+    "path": "software/lima-2.2.1/share/doc/lima/VERSION",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 7,
+    "sha256": "51a76904570dfd01d966325f09cddf7ecc5f7608a65d6f4bf11d135bbb88ba0d"
+  },
+  {
+    "path": "software/lima-2.2.1/share/doc/lima/templates",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o777",
+    "type": "symlink",
+    "target": "../../lima/templates"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/lima-guestagent.Linux-x86_64.gz",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 8274826,
+    "sha256": "4fe6604ddbed2616beeb08eb74208f7219b7b5991c639f88fdf4b669405f92bd"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/README.md",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 8622,
+    "sha256": "371bc5c825d55951807fb609f0256a841d2cf4c5c49c7195e1a6434f8cbd9418"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_default",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_default/mounts.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 171,
+    "sha256": "96e29b599c7a2277eb1b1f5e34e1a9527f03c649916bae3038e66049635ce647"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/almalinux-10.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1599,
+    "sha256": "d21bcc9be53505729fc2ab477e415c9914eb8dcb7a6c0014c32f9c192948f644"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/almalinux-8.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1922,
+    "sha256": "8a10916067a10df728eb8fab38080136e758867f6b84c0bb717992dfd72edbe0"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/almalinux-9.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1571,
+    "sha256": "8bb968adbd45a51965971e0125ea19c6f07404525db02c324922d461066df5b0"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/almalinux-kitten-10.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 2062,
+    "sha256": "67b8ad4381d670ef677441a3d3160cd411e1770130b66426d9b6dfeaee87493c"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/alpine-3.21.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 592,
+    "sha256": "7ff078869f4e3d972d19d1cbdd3437e6f9c6be585f7a21e396c1e3bd84b7ac23"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/alpine-3.22.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 592,
+    "sha256": "50de1b89aa3a6c91a588407547b76819271cb03a7591953f9debcaee8153d0ce"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/alpine-3.23.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 592,
+    "sha256": "2ee39eac2b8e2ca17733968cbe8940c834c3288e6bc0075a517072e1bd8c0e63"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/alpine-iso.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 646,
+    "sha256": "ed168816ab7b7390df97b316e2e4599458c103cd8130a5227619d5902b86d57d"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/archlinux.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 825,
+    "sha256": "d5a188eb132731606dbad3cc1827dd2a36bf9c33ed71491f0089b7e16d5668f3"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/centos-stream-10.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1809,
+    "sha256": "48ec015db12f3537d8e6e9201254ec0094596a74e45ad46f1c5169b0c455ecb1"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/centos-stream-9.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1792,
+    "sha256": "a65fa0da05cb991bc1133743d24d0faa9201bc425ee8bf9b727bcff2c10c7a36"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/debian-11.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1671,
+    "sha256": "2b126eda475b4a553f4f19a0300908d63abf7601f3e2eb247bf0351fcc9a3f43"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/debian-12.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 3015,
+    "sha256": "1b8c60de28408f2f8bc306684e1a2b1670654b606e7acb5c71a62c825cf3524e"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/debian-13.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 4513,
+    "sha256": "7f39ca32e4867f4ef64e7b8fe5214590ad384d3f2640e36e106686d5b29dd996"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/fedora-41.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 938,
+    "sha256": "f5ae388da0f372d6617e4a1eda9be2a08d638801e0ac3da5a6bdb4ebe77ab348"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/fedora-42.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 889,
+    "sha256": "17c5b4a85f67c982163a1962203484bc8787116db290f7fe34c14b4e3837f052"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/fedora-43.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1111,
+    "sha256": "598858ec53ddeb4227956f20fffe2bc5a5d14a382983ee4b76173c272efc6505"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/fedora-44.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 892,
+    "sha256": "20e5585a589803d4be686a682bf67c484a9c1b5178c394a96a7443f64000ab1b"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/fedora.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 892,
+    "sha256": "20e5585a589803d4be686a682bf67c484a9c1b5178c394a96a7443f64000ab1b"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/freebsd-15.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 710,
+    "sha256": "baeabbee290c3d4ff9e30f6f651159404480f46252036a006739209153e40a2f"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/freebsd.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 710,
+    "sha256": "baeabbee290c3d4ff9e30f6f651159404480f46252036a006739209153e40a2f"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/macos-15.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 509,
+    "sha256": "902a4675924f35eb4ee9c4fb5165de93c154c98a2113aa305c520bc2838428ae"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/macos-26.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 509,
+    "sha256": "b5f330f87e1636ef33c2bd9ab3e91bb6b887477ac3bee31a56646fc9dcb5402a"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/macos-27.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 485,
+    "sha256": "4ebe1fdc7c59ec7fee56b559655d207c9431fa6d47acb9ea05ebbec23306e42c"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/macos.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 485,
+    "sha256": "4ebe1fdc7c59ec7fee56b559655d207c9431fa6d47acb9ea05ebbec23306e42c"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/opensuse-leap-15.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 580,
+    "sha256": "598c299022cd3d45fde3259e7a4d5ea3595cb21380b87218f397930a763b09db"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/opensuse-leap-16.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 470,
+    "sha256": "7792005012f9d85b4e1b0ca9c8ca332041ee34273e5d0906e95dfcdf09f6ac99"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/opensuse-leap.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 470,
+    "sha256": "7792005012f9d85b4e1b0ca9c8ca332041ee34273e5d0906e95dfcdf09f6ac99"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/oraclelinux-10.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 613,
+    "sha256": "8bcc04100ebae6e63ff0735f4c3717678a777043779246108bc494663a508776"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/oraclelinux-8.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1017,
+    "sha256": "0aac1503ccb588d7cdc9ffdffb5e8d6cabee356e43732ec9697f5ae30986ca28"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/oraclelinux-9.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 609,
+    "sha256": "6134ef5b6ca5bfda4b01b6088a732a57d36101ebe7ecb86db7a2287d0f88f4a5"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/rocky-10.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1551,
+    "sha256": "0abc23e59d0fafb239239c2cbd3b5c8723f8a8896517dc21760e45a8aa5869d9"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/rocky-8.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1159,
+    "sha256": "97e22263db95da9ea02c6da943db2126af5876ff0f75c0b655fc8dba94d36764"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/rocky-9.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1511,
+    "sha256": "5e094249ce479df8bf0115ba71e14cfc5c56d3d07aa01cfd53eccdba766739ba"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/ubuntu-20.04.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1922,
+    "sha256": "08973a1184129c05865e9d227b73c05f0af7961e565dd41a0fb8cf1a4fcb2164"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/ubuntu-22.04.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 2997,
+    "sha256": "8f9224b4b9e0e1fe891e886368c0ec392d81e77b617b0e897b71a85e6650d76f"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/ubuntu-24.04.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 3403,
+    "sha256": "f523ea95c37d54ae51f4704337cd8d5ad56f5448da2765806ce049588d676ad4"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/ubuntu-24.10.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 2497,
+    "sha256": "c520c8ecd33996a257f5e586d0bc84816a27f9fc004ce5f18548dca44eff1f7d"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/ubuntu-25.04.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 2421,
+    "sha256": "20c004c346e9de7294747916b62786e236b30a5ac22769b928cbdb4f3e0a1c11"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/ubuntu-25.10.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 2445,
+    "sha256": "fdd85fb08b33fc6ebcb3d7c5a60a7bccfb911b46cef1654243aa5b436d847914"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/ubuntu-26.04.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 3855,
+    "sha256": "9470033b52b5f7bcc4ca3dc0daddd853e5e6362becef65b63fad5b4256d1e4c9"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/ubuntu-lts.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 3855,
+    "sha256": "9470033b52b5f7bcc4ca3dc0daddd853e5e6362becef65b63fad5b4256d1e4c9"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/_images/ubuntu.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 3855,
+    "sha256": "9470033b52b5f7bcc4ca3dc0daddd853e5e6362becef65b63fad5b4256d1e4c9"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/almalinux-10.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 92,
+    "sha256": "6d960b4284dd2633ec509e3b8ec66ac610d9617b1c7febda4c395f0501f49dc2"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/almalinux-8.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 91,
+    "sha256": "f231496dfe1cd12ee3c5ea1832fd37f1a1185bda028d51b310c61d47c8970809"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/almalinux-9.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 91,
+    "sha256": "6126b2957d549f5560c7c9defab1130401b5c348122bf1d6fa7c9b93a3e3f35c"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/almalinux.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 92,
+    "sha256": "6d960b4284dd2633ec509e3b8ec66ac610d9617b1c7febda4c395f0501f49dc2"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/alpine-3.21.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 437,
+    "sha256": "815d8456421d7b7b298a5dd732a21e0934ec8315d03bfe4cf32a5930f1325530"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/alpine-3.22.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 437,
+    "sha256": "5c1a5d6a47e368fadacc9d1cbfdfa606ad89342302c89835426a8bcc97f8236c"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/alpine-3.23.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 437,
+    "sha256": "a0e5edbbd40398db17b537c90e82a6dd06cac248b785cebfaa73fa15fcb3d258"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/alpine-iso.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 436,
+    "sha256": "b6b7b5fd328e11d66deeead98c2532093f7901e5f551326f0e29227c9a2473ba"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/alpine.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 437,
+    "sha256": "a0e5edbbd40398db17b537c90e82a6dd06cac248b785cebfaa73fa15fcb3d258"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/apptainer-rootful.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1212,
+    "sha256": "3039025efb6101f4967b8702fa29321ae17815e8a3de31a4e79b7264ca0cae0f"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/apptainer.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1191,
+    "sha256": "586227f754b848513abea48a03da3aa3358c7a0fa09b547f0eb11f386da765ee"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/archlinux.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 89,
+    "sha256": "dc37d10fbddba63feb1cab22306981105c8804914f3a45081a6a0cf94877897e"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/buildkit.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 695,
+    "sha256": "944061c5bae23e75369981e386fb9f71d28cfead8d3272aa7d6087a6076c7865"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/centos-stream-10.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 96,
+    "sha256": "0562476a532ef74fb5d398018fa0a1138dced12dcdc9b408f17ea28878afc037"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/centos-stream-9.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 95,
+    "sha256": "b982332554617169ada0c00e7b025adf0951cc8a971dc8a35ad22e948efa1c56"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/centos-stream.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 95,
+    "sha256": "b982332554617169ada0c00e7b025adf0951cc8a971dc8a35ad22e948efa1c56"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/debian-11.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 89,
+    "sha256": "c13a7e8dacefbb18fddfa700cb111f1a723ee44239a63bdda6570cbf82feb9d1"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/debian-12.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 89,
+    "sha256": "353b31ff0eb91caddbc1c0e1c5ab349000978a95519e7b3ff92eb5c0a8f99c87"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/debian-13.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 89,
+    "sha256": "62483b54fec217bae92ccf5e6939d0f079e127f3837b7cb45e84e0c3eb8b8d3e"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/debian.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 89,
+    "sha256": "62483b54fec217bae92ccf5e6939d0f079e127f3837b7cb45e84e0c3eb8b8d3e"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/default.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 34256,
+    "sha256": "9b36702315b0716108a64631faf62a664d94f8f4a57acf3174f80022b308f5a3"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/docker-rootful.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 3380,
+    "sha256": "30bd059d93bf3d3e3becb14c2e2e66aa22b3ed669f63cfa14c65d91b0b1804e8"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/docker.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 3804,
+    "sha256": "4577486ed36c6b5ac58e2cb6262a1e83e8a654fdaa702a0ac73763f132e103f5"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/experimental",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/experimental/almalinux-kitten-10.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 99,
+    "sha256": "dfd17c245143afcb04453c833f8fa37fda9e0607e8a64a9a465c2f54df3393b8"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/experimental/almalinux-kitten.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 99,
+    "sha256": "dfd17c245143afcb04453c833f8fa37fda9e0607e8a64a9a465c2f54df3393b8"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/experimental/alsa.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1071,
+    "sha256": "3d8f2b7567be9bb2c5658033a98cb6f0ff496bec270dafc27ecc8fa5b8721e97"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/experimental/debian-sid.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 711,
+    "sha256": "d460cf0799c390e98140e25393e7a75f02cf909a5c8c1871e157844a5e0decd5"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/experimental/fedora-rawhide.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 100,
+    "sha256": "e188937906f382a21fce08ff14d0df0734ebac188e44bf1ad6b3884bf3ac34d2"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/experimental/freebsd-16.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 439,
+    "sha256": "b039863f185b0ef2f77dba371829a0ba4d799efc00be7f1c66a7838f2fc6e4dc"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/experimental/freebsd-current.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 439,
+    "sha256": "b039863f185b0ef2f77dba371829a0ba4d799efc00be7f1c66a7838f2fc6e4dc"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/experimental/gentoo.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 339,
+    "sha256": "d04237a3af3ca93498f19f1dffad1b48a4677772e78c6fd683243990219bab7d"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/experimental/opensuse-tumbleweed.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 404,
+    "sha256": "dd2eb0adf5222fe837738ae1c2f8380cedeb4cc6eeabee9dc2fecaf48ab43ac1"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/experimental/rke2.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 2179,
+    "sha256": "4726d53971f993c3b4009f245afc735cfa79dcdf490e269c561854d3929fc55d"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/experimental/u7s.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 3837,
+    "sha256": "6c95026344c83191e905c4b1ecec8b9b8af44a0d2f7af533ee5aa562173aee79"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/experimental/ubuntu-26.10.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1401,
+    "sha256": "db8b63f5f4117a2bab89ed3a0b36652f1ab4476c9be7e79ece47ed50412e8a69"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/experimental/ubuntu-next.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1401,
+    "sha256": "db8b63f5f4117a2bab89ed3a0b36652f1ab4476c9be7e79ece47ed50412e8a69"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/experimental/vnc.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1486,
+    "sha256": "08f26461b82906b7a163904acdb09953ad27118f649d7a3e27492c0c9a253645"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/experimental/wsl2.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 704,
+    "sha256": "e01a2828332dd204d04d7853968e80255a39e1f9df00e6532b26229ba871de4d"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/faasd.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1630,
+    "sha256": "bbb9c8e61fb9c7b18038c2d9871c6d1819db8ac6fa33df312c957fd56aa13217"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/fedora-41.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 89,
+    "sha256": "711c8f8bce83ce4e824c8618f62c97f8b8077d591cf2bf72cab54dcc961e311b"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/fedora-42.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 89,
+    "sha256": "5b931416da67ee214eb2e6627b247c500a0174478416bd74a903177e0ca2048e"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/fedora-43.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 89,
+    "sha256": "9bf3bffd32fb4c0e5309df6533b6cdaccf54516748652a3546e1a019412b5152"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/fedora-44.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 89,
+    "sha256": "8f3232ec23d3186e7cefee02dcc48a357f1992b69845e4335f0e560742f834b9"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/fedora.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 89,
+    "sha256": "8f3232ec23d3186e7cefee02dcc48a357f1992b69845e4335f0e560742f834b9"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/freebsd-15.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 90,
+    "sha256": "705322efa6624a4849fea9b7c1eddc53220170c103177f05544b4605eacbe77f"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/freebsd.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 90,
+    "sha256": "705322efa6624a4849fea9b7c1eddc53220170c103177f05544b4605eacbe77f"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/homebrew-linux.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1023,
+    "sha256": "86c382f1fb2f28454c67d6190ad6dcc3b3e2b194ee83a98ea744d4361b6e80f6"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/homebrew-macos.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1314,
+    "sha256": "985a8a99f0d87fc9fd420322d65f7b55df87c2c2d64d83f44202dfc85d06309d"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/k0s.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1947,
+    "sha256": "682e2f6f1404d34969afb5d962c85951e9db21c7728d93afb75e393166d37817"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/k3s.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 2789,
+    "sha256": "506220f1e21c7dfbc80bfb1b63d273dcc707fe5adada2412d0146cb903b7cbd1"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/k8s.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 10066,
+    "sha256": "e8e5fad851e54db51553b3a16d9f2bc52fcdd033d1c4dafa0b6d1fbf17e60183"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/linuxbrew.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1023,
+    "sha256": "86c382f1fb2f28454c67d6190ad6dcc3b3e2b194ee83a98ea744d4361b6e80f6"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/macos-15.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 327,
+    "sha256": "b0ba9183b52c32515fbab9d372dbafa603f413358ced4bfffa84c0aa3ab41f88"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/macos-26.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 327,
+    "sha256": "bbe8ed38edcbd96fc50de54b28d735b4476acd01d41c6dc422d1eaf222f6ce29"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/macos-27.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 327,
+    "sha256": "03bfe24a484b1e8672fdcdd4083dce7a718a2506887359f4c3334bfae456983a"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/macos.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 327,
+    "sha256": "03bfe24a484b1e8672fdcdd4083dce7a718a2506887359f4c3334bfae456983a"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/opensuse-leap-15.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 96,
+    "sha256": "ab5daf58ea54a5f9cb3b3f1738ba2e268a16f2ed1ff72490c05cae85d42617a6"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/opensuse-leap-16.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 96,
+    "sha256": "e7057daa2f400fb0c87a39d8a590dd641961d9b7315f4672a1ae048b349f1021"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/opensuse-leap.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 96,
+    "sha256": "e7057daa2f400fb0c87a39d8a590dd641961d9b7315f4672a1ae048b349f1021"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/opensuse.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 96,
+    "sha256": "e7057daa2f400fb0c87a39d8a590dd641961d9b7315f4672a1ae048b349f1021"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/oraclelinux-10.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 94,
+    "sha256": "6113d9b481846a5ea3b5dbdb7dab8949ab76dd0c0a2465fba156220e19a708fb"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/oraclelinux-8.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 93,
+    "sha256": "12ffe1b1463107031d8b3e1fd983e31269dbffaa395cd489bd0bdc26c6610f92"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/oraclelinux-9.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 93,
+    "sha256": "907758c19aa8c71e711aa574f1b14abe1182f0e08c5c023214f697fdd23563f4"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/oraclelinux.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 94,
+    "sha256": "6113d9b481846a5ea3b5dbdb7dab8949ab76dd0c0a2465fba156220e19a708fb"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/podman-rootful.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 2149,
+    "sha256": "577601b2b36cbe349813995c4127d35393c925140a8e70ab1f1ddb5189f1a537"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/podman.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1712,
+    "sha256": "c1eda96ec59e1144e6ed6fa893e9f1a703280a1ea2d71a80ad5e280e89c313bc"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/rocky-10.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 88,
+    "sha256": "8b329bb268d71b7b6290617c40f3646d505adad1cd03a42185dd486e41f25882"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/rocky-8.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 87,
+    "sha256": "ec9be57ac7895490589d8d4d571f122947e92e1f40a0faa17a2d405630d69183"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/rocky-9.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 87,
+    "sha256": "46f68996054fc6d39604ead72f89dc42aee37fd749af877d7771d77e1ecb76a7"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/rocky.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 88,
+    "sha256": "8b329bb268d71b7b6290617c40f3646d505adad1cd03a42185dd486e41f25882"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/ubuntu-20.04.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 92,
+    "sha256": "3e75e01bebf917004785ee68401098bd74c993b63bb48dc9f76f261e6fa6ec00"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/ubuntu-22.04.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 92,
+    "sha256": "fd2ce55fdb0462cd7ca67e6a1a60fc9f80d7dde700cca529ed44b6297a758b02"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/ubuntu-24.04.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 92,
+    "sha256": "84ec4177f7f8ddd4ebb12ee23e50f556ec70ce71f753cb0c6c790cd5d05c7b72"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/ubuntu-24.10.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 92,
+    "sha256": "d2b8923fb448a846e63dc6270917d48f53e3fe1944e2bc2ad015e2af09e75a6c"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/ubuntu-25.04.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 92,
+    "sha256": "56e3eb602b5590d047bb32cafa30bb3fd9aba077eaab58b333ad130293d3080b"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/ubuntu-25.10.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 92,
+    "sha256": "78adc1ba19ce9036e77a4c29136ce92a9d20dc71479502f2bd94774b6315c0ab"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/ubuntu-26.04.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 92,
+    "sha256": "b01daf4e906f1ba71fca9a5f3b0c3f2b9a820ac71787409ef8eb0cc578b56036"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/ubuntu-lts.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 92,
+    "sha256": "b01daf4e906f1ba71fca9a5f3b0c3f2b9a820ac71787409ef8eb0cc578b56036"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/ubuntu.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 92,
+    "sha256": "b01daf4e906f1ba71fca9a5f3b0c3f2b9a820ac71787409ef8eb0cc578b56036"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/windows-11.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1770,
+    "sha256": "dca7eb7bb007cbcdbc797966154f9a030e0f8a6c3dea64bac9c33dc1774badc9"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/windows-2025.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1108,
+    "sha256": "d62bf545d16c3f0bd6d09a8f71337148277feda87867febc06ba951fd376e9c6"
+  },
+  {
+    "path": "software/lima-2.2.1/share/lima/templates/windows.yaml",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1770,
+    "sha256": "dca7eb7bb007cbcdbc797966154f9a030e0f8a6c3dea64bac9c33dc1774badc9"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/lima.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 387,
+    "sha256": "0cc36304307e231f05d00294c4e9ad19c056afe38315127a650973c3a99e90ce"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-autostart-disable.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 822,
+    "sha256": "264ed26a4341681403dea956500178f7b49ea0ee178a68756e4a7c16dab317e4"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-autostart-enable.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1033,
+    "sha256": "6aefea5e2f15ab5879056ac0b7fc1aed313ae89d202bbee8c40940a333da820e"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-autostart.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 854,
+    "sha256": "190afa27a55ecf02cb7a6385184085de57665a075e96a95995e588c95fb28359"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-clone.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 2532,
+    "sha256": "7a8a2afc557fd070d9e0524c4c41cede6f268cd8142adbba15137bc657628c54"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-completion-bash.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1419,
+    "sha256": "82f9703c1cc097f92f8d3ebcb8eabf5650f349ac4c3a2dc2bec3615af1986dee"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-completion-fish.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1190,
+    "sha256": "7a2abac98b72af5b7b55236e35ac0541cd7bb5cade71d273459f101726244f55"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-completion-powershell.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1144,
+    "sha256": "188d8aba93a16a2585d37ad61cd3f577746f42946c01fd8e02aeeef14d8d9166"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-completion-zsh.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1466,
+    "sha256": "bc8b5540d3915027af39f860af2369ac1bce11bee34d59d12301d8b6ee9f3842"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-completion.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1048,
+    "sha256": "f41376fe8132e8955beb63fc6e7ead7a7e16ec7145a8404eb901d3f93f162148"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-copy.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1845,
+    "sha256": "ffd343c160cfeb0dc569e70e2209a51a3ebb3177f4425ad002d24038c380020f"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-create.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 4133,
+    "sha256": "f7264364d8acd5af14f8878a6b1d163ce7ef893062aa38b8082f31d12ba2cc04"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-delete.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 833,
+    "sha256": "1d9d3cb9b1f632a28f16f1feecb40312c4ec0ff281fb5d1f0d7ac01d494cefd4"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-disk-create.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 947,
+    "sha256": "0d4c9a469ae77614d108858cf09a40832556a0dc57513c0a03c1309eea7e2aa3"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-disk-delete.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 965,
+    "sha256": "c7b809fe30191a9539d5ee2ae4f599d36f72d989ac205b6681dd17aedb6b5eb3"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-disk-import.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 852,
+    "sha256": "39451fc8ca5f02d02cacf250b7f1408f698e81633277cfc37b0c44c38d1fc6f1"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-disk-list.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 857,
+    "sha256": "c9daef07b47f59c6213d2f35b4bea9fc67e674345860c76bbea50a8f320c0fca"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-disk-resize.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 869,
+    "sha256": "0d3719a51517f8a0e3c9d097dc992ba54f10201544f77d0f7d108352a281e511"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-disk-unlock.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1024,
+    "sha256": "5dab343b4e447231f1e50aa0b168c875eb07dd79e0668a3639367bea47e5c17d"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-disk.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1149,
+    "sha256": "adb6671c3fb7aa548765294ac97f7cb31cc7db65ec3df534855f8dce6959c564"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-edit.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 2212,
+    "sha256": "86886b90c43c03b2125205c42916639c96e04ff982d1fb25e50066ab02b8dd8a"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-factory-reset.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 786,
+    "sha256": "1857617946d562e9dc291c5d1f05203d16bb2343b837c5554df35c5603f753f5"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-info.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 789,
+    "sha256": "e6d3b91d1612bf0e2177fd88da6ab1b55d2c8e352d3e6cb1dd65a6eda6903763"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-list.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 2238,
+    "sha256": "c5227ef56980bdbcb220ecf50e105ea416488b12286a0176b17bb3a110ad35ea"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-mcp.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 678,
+    "sha256": "c230deb1ca322798c2c63316b4889caa6add076528f04e7ac92fce9233c132e2"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-network-create.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1162,
+    "sha256": "e9abca5ddbd2c30ef3bb93b6bc15b278934373b7c65653e089f226cd2a8f1bbe"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-network-delete.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1034,
+    "sha256": "9f67a17129c1de733c633cc0cde60bc0571f86cbea08f0370b44fbabbbb320fd"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-network-list.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 910,
+    "sha256": "8aada40e3f28c9cf71223aa2e12090a4c662ff31840bbe3cac25baa026029a71"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-network.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1195,
+    "sha256": "9f700325010f0bab016845d1db8dc9af91bb55eb18c9c4242adae9cc4872531e"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-protect.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 932,
+    "sha256": "8e6f180d61012f808be625faebec7c9f5bdfdfc615b226d89812218058333ff1"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-prune.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 827,
+    "sha256": "39091432169752e4ee056009a27902c913ba80c06ebd9b84e0f22c1356546294"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-rename.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 2477,
+    "sha256": "8ca10d71452e989226cdc12dd684c7f13c6210753e6e1d3ad53b3f236dd4722b"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-restart.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 2289,
+    "sha256": "4079bbc7f3fd94f5656b682756a1e54ed206ee532f841b36d4b26f35e6dbe432"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-screenshot.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 900,
+    "sha256": "ed69926412daea766c86a59889d0c1402d0f49cccbccd0cfd2f71a6b872f2880"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-shell.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1876,
+    "sha256": "34e51648590754a7b6187f5b7d11915b70bb9c5bef79983a9b5fcc8d5fa29653"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-show-ssh.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 2036,
+    "sha256": "857ae24142948b567e4c4cb868538c7de0156071e1a81fed90ad8d08f8cdab05"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-snapshot-apply.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 911,
+    "sha256": "093117d98a224854d9fdb125b32ffde15b824017ef9996959fa9f8f871d2c8c1"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-snapshot-create.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 923,
+    "sha256": "ee20824c9540327cd7c6dd27cfc0d72a1e56bed496ab4a1a2add82c66260a989"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-snapshot-delete.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 906,
+    "sha256": "32d7d88dde0b62b1f56641425572c9e43329a79613c2fd979338da04198cb409"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-snapshot-list.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 983,
+    "sha256": "ecaa4a66bef3c18f7af3f3b9a868963c045b7089faf643a4e388897e766ba580"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-snapshot.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1191,
+    "sha256": "0ed3d23129e09943f9270eaa89d8253a4705bc994715530c643a2600b9869b2d"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-start.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 3934,
+    "sha256": "47a5d4973aa4f8eb114327230875d1c1091c4b484d3b97b096ad3579828eeea6"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-stop.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 787,
+    "sha256": "bab561b52a4c6ab728f5eb5d321141e6fa69b01cc939a5a8f9b8a07a43c8c4fd"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-sudoers.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1389,
+    "sha256": "2b13257f3ec2d9f5d4da8388fbc14791b8e1882db37e35c7bc0a2d10ae3c6572"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-template-copy.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1444,
+    "sha256": "0950549bb5fd188921ed9214d4fa9655799fe32fe517939434329af80f8e8c5c"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-template-url.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 839,
+    "sha256": "1433a1cc183903dfbb8a24e20c3ea9bb1372f7720a4966b9edf96b02b18c6650"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-template-validate.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 835,
+    "sha256": "76386a58c0c14f48885a36b826ef044bb85f4db8199b6a5b04cc45fd28d2cd81"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-template-yq.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1150,
+    "sha256": "48531125b3266c4de88984c2c7bcd4d48622e8888fdfe70166fbc2b29f43fbd1"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-template.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 903,
+    "sha256": "a94682b3f54c6515570e2dfb58bb3610f542eb09138c6ef767a73708a6e85458"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-tunnel.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 962,
+    "sha256": "3c6152fe50a04ad58bd5693f08fa483b9cb32305cf294e1b70592b4954ab1cad"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-unprotect.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 766,
+    "sha256": "1aa5ac0fd0fd84dab62aa122d0b02c548dc75e4f27c2b0ee9fdb2359c3204019"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-validate.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 808,
+    "sha256": "cc1f1167bcd6395725e157a2cb5d7cf7ba34f09b1919c237ea4cb35bd4da171a"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl-watch.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1639,
+    "sha256": "8ce0f0251854a41a3826da3d379114a62e6bf2e75bb25a7a8ca0bf2557f4519a"
+  },
+  {
+    "path": "software/lima-2.2.1/share/man/man1/limactl.1",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 1668,
+    "sha256": "0d86f267fedb1d620a072cd2b708fb2e0e2ccb66067647dd5910604b064eadd8"
+  },
+  {
+    "path": "tmp",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "verify",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o700",
+    "type": "directory"
+  },
+  {
+    "path": "verify/lima-release.gpg",
+    "uid": 1000,
+    "gid": 1000,
+    "mode": "0o600",
+    "type": "file",
+    "size": 2272,
+    "sha256": "4530d4ffd825c656d18624fe4091c2d28082b6af39e00b9085cec9b9b81afd2b"
+  }
+]

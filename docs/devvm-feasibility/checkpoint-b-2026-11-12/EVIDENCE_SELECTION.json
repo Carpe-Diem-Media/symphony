@@ -1,0 +1,255 @@
+{
+  "source_root": "/home/jcschoeman96/sdv02",
+  "retained_inventory_sha256": "840c380bddfa4c80bfbd5b70c9820a178a4c66046389d1568c531c209c489387",
+  "copied_file_count": 40,
+  "copied_files": [
+    {
+      "packet_path": "evidence/inventory.json",
+      "source_relative_path": "evidence/inventory.json",
+      "sha256": "847b7a5d828dc45a71836b86a2637973ebb32dc5fb1066171114cc832e864a61",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/inventory.sha256",
+      "source_relative_path": "evidence/inventory.sha256",
+      "sha256": "46b2e897a4fe0f243dc79d8c40f67dab4e29a3a89d5e3ce37a1eea5df46fa54a",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/checkpoint-b-inventory.json",
+      "source_relative_path": "evidence/checkpoint-b-inventory.json",
+      "sha256": "840c380bddfa4c80bfbd5b70c9820a178a4c66046389d1568c531c209c489387",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/checkpoint-b-inventory.sha256",
+      "source_relative_path": "evidence/checkpoint-b-inventory.sha256",
+      "sha256": "eec69c1fbf4c2b8f39e6d85e047a14dadb89b5fa1e216dba3d6b8c8db9b15bc2",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/scope.json",
+      "source_relative_path": "evidence/scope.json",
+      "sha256": "70890f60906a159c4b54ca942b245fb6ac8cf7f3eb591e2d2fb3268f5da723ef",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/status.json",
+      "source_relative_path": "evidence/status.json",
+      "sha256": "81606d12fb85375e3578df9fc608c688a1c204541938e514632df0a917cce054",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/validation.json",
+      "source_relative_path": "evidence/validation.json",
+      "sha256": "35cfd17836e99d16d35e89cbf0d408267e54badb660054497af527d465d4aee8",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/devvm-signature.json",
+      "source_relative_path": "evidence/devvm-signature.json",
+      "sha256": "09e93061f6272c95152b1828aeb735f83aa9f4ed9e6562ca0f5d5b7792cc3548",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/devvm-validated-members.json",
+      "source_relative_path": "evidence/devvm-validated-members.json",
+      "sha256": "3a16b16483a3a47b3e27c3b1bc958fb7747d775bbf535f7b758790ebdb059adb",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/lima-validated-members.json",
+      "source_relative_path": "evidence/lima-validated-members.json",
+      "sha256": "1193a0b90e2ecd6129bac27c861a15955057013973ef6ca43e200a9bddeaa424",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/lima-signature.command.json",
+      "source_relative_path": "evidence/lima-signature.command.json",
+      "sha256": "3ab1ccd6601134f6993bc9bd9f372231e1572ac7856346480d7fba97e12c89ee",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/lima-signature.stdout",
+      "source_relative_path": "evidence/lima-signature.stdout",
+      "sha256": "724d6734f90e6ec374f0a4880e4d0b593009567a802d7a849d7ef7c663c5eace",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/lima-signature.stderr",
+      "source_relative_path": "evidence/lima-signature.stderr",
+      "sha256": "6e8affa883ec1fc3f42eca1e16296959e791e3bb4a71f2ed093c100c1fd5e2e9",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/lima-dearmor.command.json",
+      "source_relative_path": "evidence/lima-dearmor.command.json",
+      "sha256": "875eefee839cd2331b94c6da6a300e788c5d0a7585c68f622e94868806d7ada1",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/independent-review/authorization.txt",
+      "source_relative_path": "evidence/independent-review/authorization.txt",
+      "sha256": "c87c21b2c886ab0ac3eaec33e796b7e33e6a64e525e91a3a4afb3f72dbc64d3b",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/independent-review/source-baseline.json",
+      "source_relative_path": "evidence/independent-review/source-baseline.json",
+      "sha256": "fbcfc8d705b5018b6cf4f433aa0277fabc1e8bfa0719a2c34dbd8b99e82d0a2c",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/independent-review/stage-process.json",
+      "source_relative_path": "evidence/independent-review/stage-process.json",
+      "sha256": "d797ffad47b46cf6a88208922e3c6ef7b4ca93932d3387dad066e418d6d7d566",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/independent-review/synthetic-tests.json",
+      "source_relative_path": "evidence/independent-review/synthetic-tests.json",
+      "sha256": "c05eab984aee3b29b91043e95e0ff4f336ce22e4857fcd3d7b8bf390394de358",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/independent-review/synthetic-test-command.sh",
+      "source_relative_path": "evidence/independent-review/synthetic-test-command.sh",
+      "sha256": "93451fb019b83dfe1e96ae4f8d3f5a9d00d827314c27a21c60eb016a58e67ab8",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/independent-review/reviewed-r1.sh",
+      "source_relative_path": "evidence/independent-review/reviewed-r1.sh",
+      "sha256": "7bb1f92021f84523122edc216715c37e2094a32b92c9bdf2fd31428786e3727b",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/independent-review/executed-checkpoint-b.sh",
+      "source_relative_path": "evidence/independent-review/executed-checkpoint-b.sh",
+      "sha256": "e3963737564282b6c0265c380a0609e1121704ee159ef46687511feb12860863",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/independent-review/independent-audit.py",
+      "source_relative_path": "evidence/independent-review/independent-audit.py",
+      "sha256": "9fba817d5ab771f23a05e1c74b573f880b01ffbf5c07c27bcbdb3b76af63dbb1",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/independent-review/verification.json",
+      "source_relative_path": "evidence/independent-review/verification.json",
+      "sha256": "13cbb51a19d66452930448849ac577f481eab9df53c697f2c00ea5631cd0c7ff",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/independent-review/devvm-actual-archive-members.json",
+      "source_relative_path": "evidence/independent-review/devvm-actual-archive-members.json",
+      "sha256": "405cf64115744915c40c93a120049308e74cc1981e4d2477b956cc1247c05ceb",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/independent-review/lima-actual-archive-members.json",
+      "source_relative_path": "evidence/independent-review/lima-actual-archive-members.json",
+      "sha256": "3beba1629b6dfbd0531a11bdcfc2c11b00e7393323d2a811d3cae9850b0c9209",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/independent-review/gpgv.stdout",
+      "source_relative_path": "evidence/independent-review/gpgv.stdout",
+      "sha256": "724d6734f90e6ec374f0a4880e4d0b593009567a802d7a849d7ef7c663c5eace",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/independent-review/gpgv.stderr",
+      "source_relative_path": "evidence/independent-review/gpgv.stderr",
+      "sha256": "6e8affa883ec1fc3f42eca1e16296959e791e3bb4a71f2ed093c100c1fd5e2e9",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/independent-review/supplemental-evidence-mode-correction.json",
+      "source_relative_path": "evidence/independent-review/supplemental-evidence-mode-correction.json",
+      "sha256": "4fbb7656655d0cae750bd004e392c1a63d6bd5af6ee30f6e44688fa8d23b9e8d",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "downloads/devvm.SHA256SUMS",
+      "source_relative_path": "downloads/devvm.SHA256SUMS",
+      "sha256": "9f703c06b2ab3a4b8c9e8963952e024f64964aa0ec9de09bfceefbf8b65df73a",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "downloads/devvm.SHA256SUMS.minisig",
+      "source_relative_path": "downloads/devvm.SHA256SUMS.minisig",
+      "sha256": "329cafe0b6659f60d36e3ccb320388276ecf061a411162deddb713864d1a3246",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "downloads/lima.SHA256SUMS",
+      "source_relative_path": "downloads/lima.SHA256SUMS",
+      "sha256": "4805ceeb791229ecaddcde32bf04b14742f4d036b343ad5d8c478ba5d220fff2",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "downloads/lima.SHA256SUMS.asc",
+      "source_relative_path": "downloads/lima.SHA256SUMS.asc",
+      "sha256": "cc974212784876111d1a1d4ab2539e5c7fe2058de04e6c64c60d3887c8cabf2c",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "downloads/lima-key.asc",
+      "source_relative_path": "downloads/lima-key.asc",
+      "sha256": "74d7c5d29b78a5967b0da91a2e9330b8a805fd1ea2c8a375dfae634ff85a6da0",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/get-devvm-0.1.0-linux-amd64.tar.gz.command.json",
+      "source_relative_path": "evidence/get-devvm-0.1.0-linux-amd64.tar.gz.command.json",
+      "sha256": "3cf50070138e53ff5d0c1e8706b58f5c7408a376b4cc17883cbf8e8fb7dac59c",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/get-devvm.SHA256SUMS.command.json",
+      "source_relative_path": "evidence/get-devvm.SHA256SUMS.command.json",
+      "sha256": "04f2a79eadd0507bd55d9a28c8591891f7d379e18908a8cadd88911ab540fd25",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/get-devvm.SHA256SUMS.minisig.command.json",
+      "source_relative_path": "evidence/get-devvm.SHA256SUMS.minisig.command.json",
+      "sha256": "a8b6254156e47e1b6242532aa80e7cca08a7427df9ce844306ac982e31c460c4",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/get-lima-2.2.1-Linux-x86_64.tar.gz.command.json",
+      "source_relative_path": "evidence/get-lima-2.2.1-Linux-x86_64.tar.gz.command.json",
+      "sha256": "b5d6674abc16fe74b038ea242ca2971cdbce0d6b23fdf9e79b1a72c4e77b1cf1",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/get-lima-key.asc.command.json",
+      "source_relative_path": "evidence/get-lima-key.asc.command.json",
+      "sha256": "fc2470794cf8ec5bc392f5914d788ba5e3c6f2162d7825ab43a971d4eee28be6",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/get-lima.SHA256SUMS.asc.command.json",
+      "source_relative_path": "evidence/get-lima.SHA256SUMS.asc.command.json",
+      "sha256": "0df98a970467d424d611031a808d27cc9210cc99adfac743c732325e6c78df0b",
+      "transformation": "NONE"
+    },
+    {
+      "packet_path": "evidence/get-lima.SHA256SUMS.command.json",
+      "source_relative_path": "evidence/get-lima.SHA256SUMS.command.json",
+      "sha256": "11aefdc0465ffae76af8ebb541d6731fafd84807a01acf2221414dfcc53665ce",
+      "transformation": "NONE"
+    }
+  ],
+  "excluded": [
+    "Release binary archives and extracted software",
+    "Public OpenPGP binary keyring; its armored public key is included",
+    "Raw host account/group output and SSH/shell configuration metadata",
+    "Unselected empty command streams and supplemental local metadata"
+  ],
+  "publication_scan": "UTF-8 text only; private-key headers, GitHub token formats and credential-bearing HTTP URLs rejected",
+  "limits": "No binary assets or credentials are published; copied evidence is byte-identical. Original host inventories describe a larger retained directory."
+}
