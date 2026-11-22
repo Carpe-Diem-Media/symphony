@@ -8,6 +8,6 @@
   "upstream_toolchain": "1.95.0",
   "development_toolchain": "stable 1.98.1",
   "qualification": "offline_slice_c_review_pending",
-  "patch_sha256": "af8e4d734f0a2a72aeb737eeb8321090a2b2d860d6e83165e053869b299b8163",
-  "patched_tree": "53e47b83083fcac8da2cd07656db3a27bb588b91"
+  "patch_sha256": "19c5491d4aeeea7f077667dbfc1a57993858c4a70a7bac7fc3f7d0ff6d2253e9",
+  "patched_tree": "ee9e5f5611ec8372abe327bf9fe70df0002415e8"
 }

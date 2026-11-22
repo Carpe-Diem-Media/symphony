@@ -5795,10 +5795,10 @@ index 0000000000000000000000000000000000000000..e8b161e8be310ba7fb77c48483eb5139
 +}
 diff --git a/codex-rs/core/src/symphony_boundary/transport.rs b/codex-rs/core/src/symphony_boundary/transport.rs
 new file mode 100644
-index 00000000..af6e5d7c
+index 00000000..8c0b9df0
 --- /dev/null
 +++ b/codex-rs/core/src/symphony_boundary/transport.rs
-@@ -0,0 +1,1271 @@
+@@ -0,0 +1,1421 @@
 +//! Fixed synthetic Responses transport for the selected holder.
 +//!
 +//! The transport accepts only prepared Responses POST requests. It never opens
@@ -7068,6 +7068,156 @@ index 00000000..af6e5d7c
 +            assert!(slot.get().unwrap().lock().unwrap().is_none());
 +            assert!(install_into(&slot, candidate(material())).is_err());
 +        }
++    }
++    fn request_with_tool(ordinal: u64, tool: Value) -> Request {
++        let mut input = vec![json!({"type":"message","role":"user","content":[]})];
++        if ordinal == 2 {
++            input.push(
++                json!({"type":"function_call_output","call_id":"call-1","output":"fixture result"}),
++            );
++        }
++        let mut request = Request::new(Method::POST, URL.into()).with_json(&json!({
++            "model": MODEL, "input": input, "tools": [tool], "tool_choice": "auto",
++            "parallel_tool_calls": false, "reasoning": null, "store": false,
++            "stream": true, "include": []
++        }));
++        request.headers.insert(
++            header::AUTHORIZATION,
++            HeaderValue::from_static("Bearer fixture"),
++        );
++        request.headers.insert(
++            header::ACCEPT,
++            HeaderValue::from_static("text/event-stream"),
++        );
++        request.headers.insert(
++            header::CONTENT_TYPE,
++            HeaderValue::from_static("application/json"),
++        );
++        request
++    }
++
++    fn schema_state(ordinal: u64) -> State {
++        let mut state = candidate(b"fixture".to_vec());
++        state.workspace = "/fixture/Planner workspace".into();
++        state.ordinal = ordinal - 1;
++        state.prior_terminal = ordinal == 2;
++        state.tool_call_id = (ordinal == 2).then(|| "call-1".into());
++        state.fixture_sha256 = "b".repeat(64);
++        state.thread_id = Some("thread".into());
++        state.turn_id = Some("turn".into());
++        state.deadline_ms = monotonic_ms().unwrap() + 2_000;
++        state
++    }
++
++    #[test]
++    fn prepared_tool_schema_refuses_before_ordinal_or_effect_frame() {
++        // Isolate fixed transport descriptors and global state from concurrent unit tests.
++        const CHILD: &str = "SYMPHONY_PREPARED_SCHEMA_PROBE_CHILD";
++        if std::env::var_os(CHILD).is_none() {
++            let name = format!(
++                "{}::prepared_tool_schema_refuses_before_ordinal_or_effect_frame",
++                module_path!().split_once("::").unwrap().1
++            );
++            let child = std::process::Command::new(std::env::current_exe().unwrap())
++                .args(["--exact", &name, "--test-threads=1"])
++                .env(CHILD, "1")
++                .output()
++                .unwrap();
++            assert!(
++                child.status.success() && child.stdout.windows(10).any(|x| x == b"1 passed; "),
++                "{}",
++                String::from_utf8_lossy(&child.stdout)
++            );
++            return;
++        }
++
++        use std::io::Read as _;
++        use std::os::fd::FromRawFd as _;
++
++        let pipe = || {
++            let mut fds = [-1; 2];
++            // SAFETY: pipe2 initializes both descriptors on success.
++            assert_eq!(
++                unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_NONBLOCK | libc::O_CLOEXEC) },
++                0
++            );
++            fds
++        };
++        let [effect_reader, effect_writer] = pipe();
++        let [reply_reader, reply_writer] = pipe();
++        // SAFETY: the test subprocess owns these descriptors. The reply is deliberately empty.
++        unsafe {
++            assert_eq!(libc::close(reply_writer), 0);
++            assert_eq!(libc::dup2(effect_writer, 7), 7);
++            assert_eq!(libc::dup2(reply_reader, 8), 8);
++        }
++        // SAFETY: the read descriptor is fresh and has one owner.
++        let mut observed = unsafe { std::fs::File::from_raw_fd(effect_reader) };
++        let reference = json!({
++            "type": "function", "name": "exec_command",
++            "description": "Read the one approved Planner input.", "strict": true,
++            "parameters": {"type":"object", "additionalProperties":false,
++                "required":["cmd","login","tty","workdir"], "properties": {
++                    "cmd":{"type":"string", "enum":[crate::symphony_boundary::BROKER_COMMAND]},
++                    "workdir":{"type":"string", "enum":["/fixture/Planner workspace"]},
++                    "login":{"type":"boolean"}, "tty":{"type":"boolean"}
++                }}
++        });
++        let state = STATE.get_or_init(|| Mutex::new(None));
++
++        for ordinal in [1, 2] {
++            let mut accepted = schema_state(ordinal);
++            assert!(
++                validate_request(
++                    &request_with_tool(ordinal, reference.clone()),
++                    &mut accepted
++                )
++                .is_ok()
++            );
++            assert_eq!(accepted.ordinal, ordinal);
++
++            for (pointer, replacement) in [
++                ("/parameters", json!("invalid")),
++                ("/parameters/properties/tty/type", json!("string")),
++                ("/parameters/required", json!(["cmd", "login", "workdir"])),
++                ("/parameters/additionalProperties", json!(true)),
++                ("/parameters/properties/cmd/enum", json!(["other"])),
++                ("/parameters/properties/workdir/enum", json!(["/other"])),
++                ("/description", json!("Other tool.")),
++                ("/strict", json!(false)),
++            ] {
++                let mut malformed = reference.clone();
++                *malformed.pointer_mut(pointer).unwrap() = replacement;
++                *state.lock().unwrap() = Some(schema_state(ordinal));
++                assert!(
++                    SyntheticTransport
++                        .stream_blocking(request_with_tool(ordinal, malformed))
++                        .is_err(),
++                    "{pointer}"
++                );
++                let actual = state.lock().unwrap().take().unwrap();
++                assert_eq!(actual.ordinal, ordinal - 1, "{pointer}");
++                assert_eq!(actual.sequence, 0, "{pointer}");
++                assert_eq!(
++                    observed.read(&mut [0]).unwrap_err().kind(),
++                    std::io::ErrorKind::WouldBlock,
++                    "{pointer}"
++                );
++            }
++        }
++
++        // The same observer must see the real first descriptor for a valid tool.
++        let valid = schema_state(1);
++        let deadline = valid.deadline_ms;
++        *state.lock().unwrap() = Some(valid);
++        assert!(
++            SyntheticTransport
++                .stream_blocking(request_with_tool(1, reference))
++                .is_err()
++        );
++        let frame = read_frame(&mut observed, deadline).unwrap();
++        assert_eq!(frame["kind"], "VALIDATE_DESCRIPTOR");
++        assert_eq!(frame["ordinal"], 1);
 +    }
 +}
 diff --git a/codex-rs/core/src/tasks/mod.rs b/codex-rs/core/src/tasks/mod.rs
