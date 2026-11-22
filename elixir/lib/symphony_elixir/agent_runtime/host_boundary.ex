@@ -58,23 +58,65 @@ if Code.ensure_loaded?(Mix) and Mix.env() == :test do
 
     @spec completed?(map()) :: :ok | {:error, atom()}
     def completed?(boundary) do
-      with {:ok, ledger} <- open_ledger(boundary),
-           [%{ordinal: 1, state: :terminal}, %{ordinal: 2, state: :terminal}] <- RequestLedger.records(ledger) do
-        :ok
-      else
-        _ -> {:error, :provider_effect_completion_unconfirmed}
+      case open_ledger(boundary) do
+        {:ok, ledger} -> confirm_records(ledger, boundary, :completed)
+        {:error, _} -> {:error, :provider_effect_completion_unconfirmed}
       end
     end
 
-    @spec close(map()) :: :ok
-    def close(boundary) do
+    @spec close(map(), :any | :completed) :: :ok | {:error, term()}
+    def close(boundary, requirement \\ :any) do
       with {:ok, ledger} <- open_ledger(boundary),
            :ok <- retain_ambiguous_effect(ledger),
-           {:ok, updated} <- open_ledger(boundary) do
-        RequestLedger.close_admission(updated)
+           :ok <- close_admission(ledger),
+           {:ok, %{closed?: true} = closed} <- open_ledger(boundary) do
+        confirm_records(closed, boundary, requirement)
+      else
+        {:ok, %{closed?: false}} -> {:error, :provider_effect_close_unconfirmed}
+        {:error, _} = error -> error
       end
+    end
 
-      :ok
+    defp close_admission(%{closed?: true}), do: :ok
+
+    defp close_admission(ledger) do
+      case RequestLedger.close_admission(ledger) do
+        {:ok, _} -> :ok
+        {:error, :ledger_closed} -> :ok
+        {:error, _} = error -> error
+      end
+    end
+
+    defp confirm_records(_ledger, _boundary, :any), do: :ok
+
+    defp confirm_records(ledger, boundary, :completed) do
+      %{thread: thread, turn: turn} = boundary
+      attempt = boundary.holder.binding.attempt.runtime_attempt_id
+
+      case RequestLedger.records(ledger) do
+        [
+          %{
+            ordinal: 1,
+            state: :terminal,
+            runtime_attempt_id: ^attempt,
+            thread_id: ^thread,
+            turn_id: ^turn,
+            request_id: first_id
+          },
+          %{
+            ordinal: 2,
+            state: :terminal,
+            runtime_attempt_id: ^attempt,
+            thread_id: ^thread,
+            turn_id: ^turn,
+            prior_request_id: first_id
+          }
+        ] ->
+          :ok
+
+        _ ->
+          {:error, :provider_effect_completion_unconfirmed}
+      end
     end
 
     defp retain_ambiguous_effect(ledger) do

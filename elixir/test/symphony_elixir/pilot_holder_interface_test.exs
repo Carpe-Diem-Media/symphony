@@ -613,12 +613,83 @@ defmodule SymphonyElixir.PilotHolderInterfaceTest do
       assert {:ok, %{state: :running, result: nil}} = AttemptLedger.pilot_status(ctx.ledger)
     end
 
-    test "AppServer returns a result only after both durable terminal observations", ctx do
+    test "AppServer publishes the actual completion only after journal closure", ctx do
       holder = functional_effect_fixture(ctx)
-      assert {:ok, %{turn_id: "turn-1", thread_id: "thread-1"}} = run_effect_port(ctx, holder, "complete")
+
+      on_message = fn
+        %{event: :turn_completed, payload: payload, raw: raw} ->
+          assert Jason.decode!(raw) == payload
+          send(self(), {:reported_completion, payload, read_effects(holder)})
+
+        _ ->
+          :ok
+      end
+
+      assert {:ok, %{turn_id: "turn-1", thread_id: "thread-1", result: payload}} =
+               run_effect_port(ctx, holder, "complete", on_message)
+
+      assert_received {:reported_completion, ^payload, {:ok, %{closed?: true} = at_notification}}
+      assert [%{ordinal: 1, state: :terminal}, %{ordinal: 2, state: :terminal}] = RequestLedger.records(at_notification)
       assert {:ok, %{closed?: true} = ledger} = read_effects(holder)
+      assert ledger == at_notification
       assert [%{ordinal: 1, state: :terminal}, %{ordinal: 2, state: :terminal}] = RequestLedger.records(ledger)
       assert {:ok, %{state: :running, result: nil}} = AttemptLedger.pilot_status(ctx.ledger)
+    end
+
+    test "HostBoundary confirms a valid closed journal without adding a second close", ctx do
+      holder = functional_effect_fixture(ctx)
+      assert {:ok, boundary} = HostBoundary.open(holder, "thread-1", "turn-1")
+      path = Path.join(holder.directory, "provider-effects.journal")
+      assert :ok = HostBoundary.close(boundary)
+      bytes = File.read!(path)
+      assert :ok = HostBoundary.close(boundary)
+      assert {:ok, %{closed?: true, events: [%{kind: :closed}]}} = read_effects(holder)
+      assert File.read!(path) == bytes
+
+      File.write!(path, bytes <> bytes)
+      assert {:error, :journal_corrupt} = HostBoundary.close(boundary)
+      assert File.read!(path) == bytes <> bytes
+    end
+
+    test "HostBoundary reports an unreadable bound journal", ctx do
+      holder = functional_effect_fixture(ctx)
+      assert {:ok, boundary} = HostBoundary.open(holder, "thread-1", "turn-1")
+      path = Path.join(holder.directory, "provider-effects.journal")
+      File.mkdir!(path)
+      assert {:error, :journal_not_regular} = HostBoundary.close(boundary)
+      assert File.ls!(path) == []
+    end
+
+    test "HostBoundary reports that ambiguity could not be recorded in an already closed journal", ctx do
+      holder = functional_effect_fixture(ctx)
+      assert {:ok, boundary} = HostBoundary.open(holder, "thread-1", "turn-1")
+      {intent, boundary} = prepare_effect(boundary)
+      {_, boundary} = allow_effect(boundary, intent)
+      assert {:ok, ledger} = read_effects(holder)
+      assert {:ok, closed} = RequestLedger.close_admission(ledger)
+      bytes = File.read!(closed.path)
+
+      assert {:error, :ledger_closed} = HostBoundary.close(boundary)
+      assert {:ok, ^closed} = read_effects(holder)
+      assert [%{ordinal: 1, state: :possible_send}] = RequestLedger.records(closed)
+      assert File.read!(closed.path) == bytes
+    end
+
+    test "AppServer retains an interrupted turn and records a separate close error", ctx do
+      holder = functional_effect_fixture(ctx)
+      path = Path.join(holder.directory, "provider-effects.journal")
+
+      on_message = fn
+        %{event: :session_started} -> File.mkdir!(path)
+        %{event: :turn_completed} -> flunk("interrupted turn reported completion")
+        _ -> :ok
+      end
+
+      {result, log} = ExUnit.CaptureLog.with_log(fn -> run_effect_port(ctx, holder, "interrupted", on_message) end)
+
+      assert {:error, :native_functional_turn_failed} = result
+      assert log =~ "request journal close failed reason=:journal_not_regular"
+      assert File.ls!(path) == []
     end
 
     test "AppServer expires an acknowledged effect while fresh messages keep arriving", ctx do
@@ -899,7 +970,7 @@ defmodule SymphonyElixir.PilotHolderInterfaceTest do
     |> Map.merge(%{"schema" => "H100-NATIVE-CONTROL-1", "kind" => "stopped", "guard_reaped" => true, "host_termination_observed" => true, "receipt_sha256" => effect_digest(bytes)})
   end
 
-  defp run_effect_port(ctx, holder, fault) do
+  defp run_effect_port(ctx, holder, fault, on_message \\ fn _ -> :ok end) do
     assert {:ok, boundary} = HostBoundary.open(holder, "thread-1", "turn-1")
 
     spec = %{
@@ -927,7 +998,11 @@ defmodule SymphonyElixir.PilotHolderInterfaceTest do
     }
 
     try do
-      AppServer.run_turn(session, @prompt, ctx.issue, model: holder.binding.profile.model, defer_runtime_stop: true)
+      AppServer.run_turn(session, @prompt, ctx.issue,
+        model: holder.binding.profile.model,
+        defer_runtime_stop: true,
+        on_message: on_message
+      )
     after
       if Port.info(port), do: Port.close(port)
     end

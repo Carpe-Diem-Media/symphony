@@ -1698,6 +1698,8 @@ defmodule SymphonyElixir.Codex.AppServer do
   end
 
   if @functional_test_build do
+    alias SymphonyElixir.AgentRuntime.HostBoundary
+
     defp start_functional_turn(port, thread_id, prompt, deadline) do
       send_message(port, %{
         "method" => "turn/start",
@@ -1713,22 +1715,51 @@ defmodule SymphonyElixir.Codex.AppServer do
     end
 
     defp await_functional_turn(port, holder, thread, turn, on_message) do
-      alias SymphonyElixir.AgentRuntime.HostBoundary
-
       with {:ok, boundary} <- HostBoundary.open(holder, thread, turn) do
-        try do
-          receive_functional_turn(port, boundary, holder.binding.absolute_deadline_ms, thread, turn, on_message, false)
-        after
-          HostBoundary.close(boundary)
-        end
+        deadline = holder.binding.absolute_deadline_ms
+
+        receive_functional_turn(port, boundary, deadline, thread, turn, on_message, false)
+        |> finalize_functional_turn(boundary, port, on_message)
+      end
+    end
+
+    defp finalize_functional_turn({:completed, message, raw}, boundary, port, on_message) do
+      with :ok <- close_functional_turn(boundary, :completed) do
+        emit_turn_event(on_message, :turn_completed, message, raw, port, message)
+        {:ok, message}
+      end
+    end
+
+    defp finalize_functional_turn({:error, _} = error, boundary, _port, _on_message) do
+      _ = close_functional_turn(boundary, :any)
+      error
+    end
+
+    defp close_functional_turn(boundary, requirement) do
+      case HostBoundary.close(boundary, requirement) do
+        :ok ->
+          :ok
+
+        {:error, reason} ->
+          Logger.warning("Codex pilot request journal close failed reason=#{inspect(reason)}")
+          {:error, {:provider_effect_close_unconfirmed, reason}}
       end
     end
 
     defp receive_functional_turn(port, boundary, deadline, thread, turn, on_message, final?) do
+      receive_functional_frames(port, boundary, deadline, thread, turn, on_message, final?)
+    catch
+      kind, reason ->
+        stacktrace = __STACKTRACE__
+        _ = close_functional_turn(boundary, :any)
+        :erlang.raise(kind, reason, stacktrace)
+    end
+
+    defp receive_functional_frames(port, boundary, deadline, thread, turn, on_message, final?) do
       with {:ok, message, raw} <- functional_frame(port, deadline, "") do
         case functional_turn_message(message, raw, port, boundary, thread, turn, on_message, final?) do
           {:continue, next, final?} ->
-            receive_functional_turn(port, next, deadline, thread, turn, on_message, final?)
+            receive_functional_frames(port, next, deadline, thread, turn, on_message, final?)
 
           result ->
             result
@@ -1737,8 +1768,6 @@ defmodule SymphonyElixir.Codex.AppServer do
     end
 
     defp functional_turn_message(%{"symphonyProviderEffect" => frame} = wrapper, _raw, port, boundary, _thread, _turn, _on_message, final?) when map_size(wrapper) == 1 and not final? do
-      alias SymphonyElixir.AgentRuntime.HostBoundary
-
       with {:ok, reply, next} <- HostBoundary.effect(boundary, frame) do
         send_message(port, %{"symphonyProviderEffect" => reply})
         {:continue, next, false}
@@ -1781,8 +1810,6 @@ defmodule SymphonyElixir.Codex.AppServer do
            false
          )
          when is_binary(id) and byte_size(id) in 1..128 and is_binary(answer) and byte_size(answer) in 1..16_384 do
-      alias SymphonyElixir.AgentRuntime.HostBoundary
-
       with :ok <- HostBoundary.completed?(boundary) do
         emit_turn_event(on_message, :notification, message, raw, port, message)
         {:continue, boundary, true}
@@ -1798,18 +1825,15 @@ defmodule SymphonyElixir.Codex.AppServer do
              }
            } = message,
            raw,
-           port,
+           _port,
            boundary,
            thread,
            turn,
-           on_message,
+           _on_message,
            true
          ) do
-      alias SymphonyElixir.AgentRuntime.HostBoundary
-
       with :ok <- HostBoundary.completed?(boundary) do
-        emit_turn_event(on_message, :turn_completed, message, raw, port, message)
-        {:ok, message}
+        {:completed, message, raw}
       end
     end
 

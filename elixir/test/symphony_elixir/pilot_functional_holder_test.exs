@@ -2,8 +2,9 @@ if binary = System.get_env("PINNED_CODEX_FUNCTIONAL_BINARY") do
   defmodule SymphonyElixir.PilotFunctionalHolderTest do
     use SymphonyElixir.TestSupport
 
-    alias SymphonyElixir.AgentRuntime.{AttemptLedger, Codex, Router}
+    alias SymphonyElixir.AgentRuntime.{AttemptLedger, Codex, Profile, Router}
     alias SymphonyElixir.AgentRuntime.RuntimeAttempt.Identity
+    alias SymphonyElixir.Codex.AppServer
     alias SymphonyElixir.Config.Schema
     alias SymphonyElixir.ProviderEffect.RequestLedger
     alias SymphonyElixir.WorkControl.{WorkflowLifecycle, WorkItem}
@@ -37,6 +38,9 @@ if binary = System.get_env("PINNED_CODEX_FUNCTIONAL_BINARY") do
 
             :c04 ->
               :ok
+
+            {:request_close, _arm} ->
+              :ok
           end
 
           {:ok, {session, Keyword.fetch!(opts, :attempt_ledger), fault}}
@@ -44,8 +48,38 @@ if binary = System.get_env("PINNED_CODEX_FUNCTIONAL_BINARY") do
       end
 
       @impl true
+      def run_turn({session, _ledger, {:request_close, arm}}, prompt, issue, opts) do
+        opts = Keyword.update!(opts, :on_message, &close_fault_callback(&1, arm))
+
+        try do
+          result = Codex.run_turn(session, prompt, issue, opts)
+          send(self(), {:fixture_close_turn_result, result})
+          result
+        after
+          File.rm(arm)
+        end
+      end
+
       def run_turn({session, _ledger, _fault}, prompt, issue, opts) do
         Codex.run_turn(session, prompt, issue, opts)
+      end
+
+      def close_fault_callback(on_message, arm) do
+        fn message ->
+          case message do
+            %{event: :notification, payload: %{"method" => "item/completed", "params" => %{"item" => %{"phase" => "final_answer"}}}} ->
+              File.write!(arm, "active", [:exclusive])
+              send(self(), :fixture_close_fault_armed)
+
+            %{event: :turn_completed} ->
+              send(self(), :fixture_successful_turn_event)
+
+            _ ->
+              :ok
+          end
+
+          on_message.(message)
+        end
       end
 
       @impl true
@@ -58,6 +92,7 @@ if binary = System.get_env("PINNED_CODEX_FUNCTIONAL_BINARY") do
       end
 
       def stop_session({session, _ledger, {:request_intent, _path}}), do: Codex.stop_session(session)
+      def stop_session({session, _ledger, {:request_close, _arm}}), do: Codex.stop_session(session)
     end
 
     setup_all do
@@ -180,12 +215,15 @@ if binary = System.get_env("PINNED_CODEX_FUNCTIONAL_BINARY") do
       identity = Identity.allocate(@item, route, record.lineage_id)
 
       identity =
-        case Map.fetch(context, :fixture_attempt_first_byte) do
-          {:ok, byte} ->
+        case context do
+          %{fixture_close_attempt_id: id} ->
+            %{identity | runtime_attempt_id: id}
+
+          %{fixture_attempt_first_byte: byte} ->
             suffix = :crypto.strong_rand_bytes(15)
             %{identity | runtime_attempt_id: Base.url_encode64(<<byte, suffix::binary>>, padding: false)}
 
-          :error ->
+          _ ->
             identity
         end
 
@@ -270,10 +308,14 @@ if binary = System.get_env("PINNED_CODEX_FUNCTIONAL_BINARY") do
 
       assert %{"binding" => ^binding, "attempt" => ^attempt} = stop
 
+      assert {:ok, %{closed?: true} = effects} = request_journal(ctx)
+
       assert [
                %{ordinal: 1, state: :terminal, runtime_attempt_id: ^attempt} = first,
                %{ordinal: 2, state: :terminal, runtime_attempt_id: ^attempt} = second
-             ] = request_records(ctx)
+             ] = RequestLedger.records(effects)
+
+      assert Enum.count(effects.events, &(&1.kind == :closed)) == 1
 
       assert first.request_id != second.request_id
       assert second.prior_request_id == first.request_id
@@ -284,6 +326,114 @@ if binary = System.get_env("PINNED_CODEX_FUNCTIONAL_BINARY") do
       assert_raise RuntimeError, "Pilot launch refused", fn -> AgentRunner.run(ctx.issue, self(), ctx.opts) end
       assert :ok = AttemptLedger.close(ctx.ledger)
       assert %{state: :stopverified, runtime_identity: ^identity, result: ^result} = fresh_pilot_status(ctx)
+      assert %{closed?: true, states: [{1, :terminal}, {2, :terminal}]} = fresh_request_status(ctx)
+    end
+
+    if close_fault = System.get_env("SLICE_C_CLOSE_FIXTURE") do
+      @tag fixture_close_attempt_id: System.fetch_env!("SLICE_C_CLOSE_ATTEMPT_ID")
+      @tag close_fault: close_fault
+      test "real stop remains mandatory when the completed Planner turn cannot confirm journal closure", ctx do
+        arm = System.fetch_env!("H100_FIXTURE_ARM")
+
+        opts =
+          Keyword.merge(ctx.opts,
+            runtime: FaultedStorage,
+            fixture_storage_fault: {:request_close, arm},
+            defer_runtime_stop: true
+          )
+
+        reason = if ctx.close_fault == "corrupt", do: :journal_corrupt, else: :journal_sync_failed
+        actual = capture_fault(ctx, opts)
+
+        assert_received :fixture_close_fault_armed
+        assert_received {:fixture_close_turn_result, turn_result}
+        assert {:error, {:turn_failed, {:provider_effect_close_unconfirmed, ^reason}}} = turn_result
+        assert {:raised, RuntimeError, "Pilot execution failed"} = actual
+        refute_received :fixture_successful_turn_event
+        assert_received {:runtime_attempt_lifecycle, @item, _, :stopping}
+        assert_received {:runtime_attempt_lifecycle, @item, _, :containment_proven_dead}
+        assert_functional_stop(ctx)
+        assert %{"events" => events} = fault_receipt(ctx, "functional-rpc-observations.json")
+        assert Enum.any?(events, &match?(%{"method" => "turn/completed", "status" => "completed"}, &1))
+        assert_one_finished_tool(ctx)
+        assert_failed_request_close(ctx, reason)
+
+        identity = ctx.opts[:runtime_attempt_identity]
+
+        assert {:ok, %{state: :stopverified, runtime_identity: ^identity, result: result}} =
+                 AttemptLedger.pilot_status(ctx.ledger)
+
+        assert %{outcome: :failed, model_state: :failed, stop_disposition: :verified} = result
+        assert_raise RuntimeError, "Pilot launch refused", fn -> AgentRunner.run(ctx.issue, self(), ctx.opts) end
+        assert :ok = AttemptLedger.close(ctx.ledger)
+        assert %{runtime_identity: ^identity, result: ^result} = fresh_pilot_status(ctx)
+      end
+
+      if close_fault == "write" do
+        @tag fixture_close_attempt_id: System.fetch_env!("SLICE_C_CLOSE_ATTEMPT_ID")
+        @tag :nondeferred_close_fault
+        test "direct AppServer turn stops before returning the journal close error", ctx do
+          arm = System.fetch_env!("H100_FIXTURE_ARM")
+          identity = ctx.opts[:runtime_attempt_identity]
+          assert :ok = AttemptLedger.claim_pilot_launch(ctx.ledger, ctx.grant, identity)
+          assert {:ok, workspace} = Workspace.create_for_issue(ctx.issue, nil, ctx.opts[:ownership_ledger])
+
+          opts =
+            ctx.opts
+            |> Keyword.merge(Profile.runtime_options(ctx.opts[:route].profile))
+            |> Keyword.put(:runtime_issue, ctx.issue)
+            |> Keyword.put(:absolute_deadline_ms, System.monotonic_time(:millisecond) + ctx.grant.deadline_ms)
+
+          assert {:ok, %{port: port} = session} = AppServer.start_session(workspace, opts)
+          monitor = Port.monitor(port)
+          prompt = PromptBuilder.build_prompt(ctx.issue, opts)
+
+          try do
+            assert {:error, {:provider_effect_close_unconfirmed, :journal_sync_failed}} =
+                     AppServer.run_turn(session, prompt, ctx.issue,
+                       model: opts[:model],
+                       defer_runtime_stop: false,
+                       on_message: FaultedStorage.close_fault_callback(fn _ -> :ok end, arm)
+                     )
+
+            assert_received :fixture_close_fault_armed
+            refute_received :fixture_successful_turn_event
+            assert_receive {:DOWN, ^monitor, :port, ^port, _}, 1_000
+            assert_functional_stop(ctx)
+            assert_one_finished_tool(ctx)
+          after
+            File.rm(arm)
+            if Process.demonitor(monitor, [:flush, :info]), do: AppServer.stop_session(session)
+          end
+        end
+      end
+
+      defp assert_functional_stop(ctx) do
+        assert %{"helper_stopped" => true, "tool_stopped" => true} = fault_receipt(ctx, "functional-broker-stop.json")
+        assert %{"pid1_stop_verified" => true, "port_down_observed" => true} = fault_receipt(ctx, "routed-stop-observation.json")
+      end
+
+      defp assert_one_finished_tool(ctx) do
+        states =
+          ctx.directory
+          |> Path.join("broker-events.jsonl")
+          |> File.stream!()
+          |> Enum.map(&Jason.decode!(&1)["state"])
+
+        assert Enum.count(states, &(&1 == "STARTED")) == 1
+        assert Enum.count(states, &(&1 == "STOP_VERIFIED")) == 1
+      end
+
+      defp assert_failed_request_close(ctx, :journal_corrupt) do
+        path = Path.join(ctx.directory, "provider-effects.journal")
+        assert File.read!(path) |> String.ends_with?("\n{")
+        assert {:error, :journal_corrupt} = fresh_request_status(ctx)
+      end
+
+      defp assert_failed_request_close(ctx, :journal_sync_failed) do
+        closed? = ctx.close_fault != "write"
+        assert %{closed?: ^closed?, states: [{1, :terminal}, {2, :terminal}]} = fresh_request_status(ctx)
+      end
     end
 
     test "real stop cannot turn an unavailable C04 result store into success", ctx do
@@ -505,10 +655,34 @@ if binary = System.get_env("PINNED_CODEX_FUNCTIONAL_BINARY") do
     end
 
     defp request_records(ctx) do
+      assert {:ok, ledger} = request_journal(ctx)
+      RequestLedger.records(ledger)
+    end
+
+    defp request_journal(ctx) do
       path = Path.join(ctx.directory, "provider-effects.journal")
       attempt = ctx.opts[:runtime_attempt_identity].runtime_attempt_id
-      assert {:ok, ledger} = RequestLedger.open(attempt, path: path)
-      RequestLedger.records(ledger)
+      RequestLedger.open(attempt, path: path)
+    end
+
+    defp fresh_request_status(ctx) do
+      path = Path.join(ctx.directory, "provider-effects.journal")
+      attempt = ctx.opts[:runtime_attempt_identity].runtime_attempt_id
+
+      code = """
+      alias SymphonyElixir.ProviderEffect.RequestLedger
+      [attempt, path] = System.argv()
+      result =
+        case RequestLedger.open(attempt, path: path) do
+          {:ok, ledger} ->
+            %{closed?: ledger.closed?, states: Enum.map(RequestLedger.records(ledger), &{&1.ordinal, &1.state})}
+          error ->
+            error
+        end
+      IO.write(Base.encode64(:erlang.term_to_binary(result)))
+      """
+
+      fresh_beam(code, [attempt, path])
     end
 
     defp fresh_pilot_status(ctx) do
@@ -518,10 +692,17 @@ if binary = System.get_env("PINNED_CODEX_FUNCTIONAL_BINARY") do
           "{:ok, state} = AttemptLedger.pilot_status(ledger); " <>
           ":ok = AttemptLedger.close(ledger); IO.puts(Base.encode64(:erlang.term_to_binary(state)))"
 
+      fresh_beam(code, [])
+    end
+
+    defp fresh_beam(code, arguments) do
       code_paths = Enum.flat_map(:code.get_path(), &["-pa", List.to_string(&1)])
 
       {output, 0} =
-        System.cmd(System.find_executable("elixir"), code_paths ++ ["-e", code], stderr_to_stdout: true, env: [{"ERL_FLAGS", "+S 2:2 +SDio 1 +SDcpu 1"}])
+        System.cmd(System.find_executable("elixir"), code_paths ++ ["-e", code, "--" | arguments],
+          stderr_to_stdout: true,
+          env: [{"ERL_FLAGS", "+S 2:2 +SDio 1 +SDcpu 1"}]
+        )
 
       output |> String.trim() |> Base.decode64!() |> :erlang.binary_to_term([:safe])
     end
