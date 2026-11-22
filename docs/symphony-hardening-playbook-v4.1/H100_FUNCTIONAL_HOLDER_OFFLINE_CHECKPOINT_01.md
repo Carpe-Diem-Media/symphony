@@ -12,6 +12,8 @@ This checkpoint records the offline Slice C implementation on top of the accepte
 - Corrected cumulative implementation diff SHA-256 `1ef343d28c63cdbebcfbbc22d506c7ed5ea1e255c5c3c14af80f9d982dc21034`.
 - Reviewed ledger correction commit `d72e03dc8ab423950c5dc99c227bad946eedacba`, tree `5cb1ec67f7f8e9fb9f1567224d3d0f995c81af78`.
 - Reviewed two-file correction SHA-256 `043682c200eea1ca89fd5460730d4e46c095c4f554ff7731c45a6d35ef6d87cd`.
+- Approved durable-close R2 implementation commit `1200fa1698645809918450221ea36304de04c8ca`, tree `c9a5c15a3a28f691a679ff127d321d79d100e901`.
+- Reviewed four-file correction SHA-256 `5ef8bedefea4eca2c3f8088b10ba667ab1093db39fa844139baba90a84bbd841` against the prior published head `3e1afd8773462e66b87e02d681c2860119589a6f`.
 - Pinned Codex 0.162.1 source commit `092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`, tree `572cdecd45cd985f0ad80b63d8b86ffcb345f47a`.
 - Current Codex patch SHA-256 `19c5491d4aeeea7f077667dbfc1a57993858c4a70a7bac7fc3f7d0ff6d2253e9`.
 - Current patched Codex source tree `ee9e5f5611ec8372abe327bf9fe70df0002415e8`.
@@ -37,8 +39,12 @@ The previous published head `09916f9` passed both required checks and reached 90
 
 The ledger correction refreshes the journal and validates it under the existing append lock. It preserves one durable close event across concurrent or stale handles, refuses record updates after closure and leaves invalid journal bytes intact. For the original groups 3 and 4, all 12 Elixir process-loss cuts and six routed recovery checkpoints passed after the correction. Earlier native evidence remains applicable because the native implementation is unchanged. The author-side evidence now covers all nine original groups for the selected offline profile.
 
-A separate source review found that `HostBoundary.close/1` returns `:ok` even if journal closure fails. The functional turn calls it from an `after` block, so a failed close does not withhold an otherwise successful turn result. The R1 plan requires request admission to close before cleanup. Master Gate must resolve the missing durable closure evidence before final acceptance. The reviewed ledger correction leaves the host boundary and completion code unchanged.
+The approved durable-close correction requires a fresh read of the bound journal with closed admission and both terminal requests before AppServer publishes the original Codex completion event. It preserves a prior turn error if closure also fails. R2 uses the general stop handler to honor `defer_runtime_stop`. The routed AgentRunner fault fixture explicitly delegates stopping. The direct AppServer regression verifies stop before the original close error returns. The earlier run with delegation omitted remains in the evidence. The outer owner attempted a second stop and reported a containment timeout.
+
+R2 passed 157 focused tests, 20 routed tests, four delegated close-fault cases, and the direct stop regression. The four fault cases verified cleanup, a failed C04 record in a fresh BEAM, and C01 replay refusal. The routed readback checked 19 journals and six recovery checkpoints. Formatting, specs, governance, strict Credo, development compilation and Dialyzer passed. The earlier durable-close candidate's full local run reported 2,652 tests, zero failures, six skips and 90.07% coverage. Fresh hosted `make-all` and `validate-pr-description` must pass on the documentation commit's tree, with aggregate coverage at or above 90.00%.
 
 The approved encrypted independent backup destination was unmounted at verification. The local ledger review archive passed manifest and archive readback for all 175 payload files. Its SHA-256 is `7cf6bfa3c40442020a6ec75f8dcc3c112ff022f05cacb8830a5d1cb36e9bf6c5`.
+
+Publication readback independently verified all 376 payload files in the retained R2 review archive against its manifest and their retained bytes. The archive is 323,603 bytes and its SHA-256 is `a451769038f851398d7c1ac4b84117543465bf30404cb3ced32951149304c9e9`.
 
 The evidence covers the selected synthetic profile. Production host qualification and authenticated provider execution remain outside this checkpoint. Merge requires separate approval after independent review of the exact final diff, the original requirements and required CI.
