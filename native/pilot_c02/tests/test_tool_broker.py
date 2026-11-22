@@ -119,9 +119,9 @@ class ToolBrokerTest(unittest.TestCase):
         os.close(pipes[0])
         os.close(pipes[3])
 
-    def prepare(self, root, mode, content=None):
+    def prepare(self, root, mode, content=None, *, release=True):
         pipes, manifest, content = self.make_permit(root, mode, content)
-        if mode == "run":
+        if mode == "run" and release:
             fd = os.open(root / "broker-release", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             os.write(fd, b"release\n"); os.fsync(fd); os.close(fd)
         pid = self.launch(root, pipes)
@@ -175,6 +175,30 @@ class ToolBrokerTest(unittest.TestCase):
 
     def test_held_child_stops_before_command_exec(self):
         self.run_to_exit("wait_for_stop")
+
+    def test_tool_deadline_or_revoked_release_stops_the_held_child_without_output(self):
+        for revoke_release in (False, True):
+            with self.subTest(revoke_release=revoke_release), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                pipes, pid, _, _, _, _, deadline = self.prepare(root, "run", release=False)
+                try:
+                    started = read_frame(pipes[2], deadline)
+                    self.assertEqual(started["operation"], "STARTED")
+                    if revoke_release:
+                        # A release marker for the wrong security mode cannot open the read gate.
+                        Path(root / "broker-release").mkdir(mode=0o700)
+                    refusal = read_frame(pipes[2], deadline)
+                    self.assertEqual(refusal["operation"], "REFUSED")
+                    self.assertEqual(refusal["reason"], "tool_uncertain")
+                finally:
+                    code = self.finish(pipes, pid)
+
+                self.assertEqual(code, 4)
+                self.assertTrue((root / "broker-start-consumed").is_file())
+                states = [json.loads(line)["state"] for line in (root / "broker-events.jsonl").read_text().splitlines()]
+                self.assertEqual(states, ["PERMITTED", "START_INTENT_DURABLE", "STARTED",
+                                          "CHILD_STOPPED_AFTER_FAILURE", "QUARANTINED"])
+                self.assertFalse(Path(f"/proc/{started['pid']}").exists())
 
     def test_unknown_request_refuses_before_start_consumption(self):
         with tempfile.TemporaryDirectory(prefix="tool-broker-invalid-") as temp:

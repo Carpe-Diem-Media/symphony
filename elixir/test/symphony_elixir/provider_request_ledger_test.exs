@@ -138,6 +138,72 @@ defmodule SymphonyElixir.ProviderEffect.RequestLedgerTest do
     assert {:error, :attempt_mismatch} = RequestLedger.open(Base.url_encode64(<<1::128>>, padding: false), path: ledger.path)
   end
 
+  test "does not reopen admission from a torn, repeated, or out-of-order journal" do
+    {ledger, root} = open_ledger()
+    on_exit(fn -> File.rm_rf!(root) end)
+
+    assert {:ok, first} = RequestLedger.prepare(ledger, attrs(1))
+    assert {:ok, _, _} = RequestLedger.acknowledge_possible_send(ledger, first.request_id, 1)
+    assert {:ok, _} = RequestLedger.close_admission(ledger)
+    durable_bytes = File.read!(ledger.path)
+    [intent, acknowledged, closed] = String.split(durable_bytes, "\n", trim: true)
+
+    for invalid <- [
+          intent,
+          intent <> "\n{\n",
+          intent <> "\n{}\n",
+          Enum.join([acknowledged, intent, closed, ""], "\n"),
+          Enum.join([intent, acknowledged, acknowledged, closed, ""], "\n"),
+          Enum.join([intent, closed, acknowledged, ""], "\n")
+        ] do
+      File.write!(ledger.path, invalid)
+      assert {:error, :journal_corrupt} = RequestLedger.open(ledger.attempt_id, path: ledger.path)
+      assert {:error, :journal_corrupt} = RequestLedger.acknowledge_possible_send(ledger, first.request_id, 1)
+      assert File.read!(ledger.path) == invalid
+    end
+
+    File.write!(ledger.path, durable_bytes)
+    assert {:ok, reopened} = RequestLedger.open(ledger.attempt_id, path: ledger.path)
+    assert reopened.closed?
+    assert [%{state: :possible_send, send_may_have_occurred: true}] = RequestLedger.records(reopened)
+    assert {:error, :ledger_closed} = RequestLedger.record_observation(reopened, first.request_id, :ambiguous, %{})
+    assert {:error, :ledger_closed} = RequestLedger.close_admission(reopened)
+  end
+
+  test "refuses missing or invalid acknowledgments and never treats them as invocation" do
+    {ledger, root} = open_ledger()
+    on_exit(fn -> File.rm_rf!(root) end)
+    assert {:ok, first} = RequestLedger.prepare(ledger, attrs(1))
+    durable_intent = File.read!(ledger.path)
+
+    assert {:error, :unknown_request} = RequestLedger.acknowledge_possible_send(ledger, "unknown-request", 1)
+    assert {:error, :request_not_sendable} = RequestLedger.acknowledge_possible_send(ledger, first.request_id, 2)
+    assert {:error, :invalid_transition} = RequestLedger.record_observation(ledger, first.request_id, :terminal, %{})
+    assert File.read!(ledger.path) == durable_intent
+
+    assert {:ok, _, _} = RequestLedger.acknowledge_possible_send(ledger, first.request_id, 1)
+    assert {:ok, reopened} = RequestLedger.open(ledger.attempt_id, path: ledger.path)
+    assert [%{state: :possible_send, revision: 2}] = RequestLedger.records(reopened)
+  end
+
+  test "will not open a journal through a symlink or directory" do
+    {ledger, root} = open_ledger()
+    on_exit(fn -> File.rm_rf!(root) end)
+    assert {:ok, _} = RequestLedger.prepare(ledger, attrs(1))
+    bytes = File.read!(ledger.path)
+    target = Path.join(root, "original")
+    File.rename!(ledger.path, target)
+    File.ln_s!(target, ledger.path)
+
+    assert {:error, :journal_not_regular} = RequestLedger.open(ledger.attempt_id, path: ledger.path)
+    assert File.read!(target) == bytes
+
+    File.rm!(ledger.path)
+    File.mkdir!(ledger.path)
+    assert {:error, :journal_not_regular} = RequestLedger.open(ledger.attempt_id, path: ledger.path)
+    assert File.read!(target) == bytes
+  end
+
   for first_byte <- [0, 248, 252] do
     id = Base.url_encode64(<<first_byte, 0::120>>, padding: false)
 

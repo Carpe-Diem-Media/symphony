@@ -426,6 +426,69 @@ if binary = System.get_env("PINNED_CODEX_FUNCTIONAL_BINARY") do
       assert_raise RuntimeError, "Pilot launch refused", fn -> AgentRunner.run(ctx.issue, self(), ctx.opts) end
     end
 
+    for {fault, ordinal, request_state, expected_native} <- [
+          {"native_ack_lost", 1, :pre_send_intent, "POSSIBLE_SEND_ACK"},
+          {"invocation_permission_lost", 1, :ambiguous, "INVOCATION_PERMITTED"},
+          {"response_headers_lost", 1, :ambiguous, "INVOCATION_PERMITTED"},
+          {"response_created_lost", 1, :ambiguous, "INVOCATION_PERMITTED"},
+          {"tool_item_lost", 1, :ambiguous, "OBSERVED_ACCEPTANCE"},
+          {"final_stream_lost", 2, :ambiguous, "OBSERVED_ACCEPTANCE"}
+        ] do
+      @tag fixture_fault: fault
+      @tag recovery_cut: true
+      test "reopens consumed authority after #{fault}", ctx do
+        assert {:returned, {:error, {:runtime_containment_unconfirmed, :termination_timeout}}} = capture_fault(ctx, ctx.opts)
+
+        ordinal = unquote(ordinal)
+        state = unquote(request_state)
+        assert %{"checkpoint" => unquote(fault), "ordinal" => ^ordinal} = fault_receipt(ctx, "recovery-checkpoint")
+
+        assert [%{ordinal: ^ordinal, state: ^state, request_id: request_id} | prior] =
+                 Enum.reverse(request_records(ctx))
+
+        assert length(prior) == ordinal - 1
+        assert Enum.all?(prior, &match?(%{state: :terminal}, &1))
+        path = Path.join(ctx.directory, "request-effect-#{request_id}.jsonl")
+        assert %{"state" => unquote(expected_native)} = path |> File.stream!() |> Enum.map(&Jason.decode!/1) |> List.last()
+
+        attempt = ctx.opts[:runtime_attempt_identity].runtime_attempt_id
+        assert {:ok, %{closed?: true}} = RequestLedger.open(attempt, path: Path.join(ctx.directory, "provider-effects.journal"))
+        refute File.exists?(Path.join(ctx.directory, "routed-stop-observation.json"))
+        identity = ctx.opts[:runtime_attempt_identity]
+
+        assert {:ok, %{state: :quarantined, runtime_identity: ^identity, result: result}} =
+                 AttemptLedger.pilot_status(ctx.ledger)
+
+        assert %{outcome: :failed, final_answer: nil} = result
+
+        assert {:error, _} = AttemptLedger.begin_attempt(ctx.ledger, @item, pilot_binding: ctx.grant)
+        assert_raise RuntimeError, "Pilot launch refused", fn -> AgentRunner.run(ctx.issue, self(), ctx.opts) end
+        assert :ok = AttemptLedger.close(ctx.ledger)
+        assert %{state: :quarantined, runtime_identity: ^identity, result: ^result} = fresh_pilot_status(ctx)
+      end
+    end
+
+    @tag fixture_fault: "missing_tool_pidfd"
+    test "without a pidfd for the started tool, the routed path retains quarantine", ctx do
+      assert {:returned, {:error, {:runtime_containment_unconfirmed, :termination_timeout}}} = capture_fault(ctx, ctx.opts)
+      assert %{"state" => "STARTED", "pid" => pid} = fault_receipt(ctx, "tool-pidfd-fault.json")
+
+      events = ctx.directory |> Path.join("broker-events.jsonl") |> File.stream!() |> Enum.map(&Jason.decode!/1)
+      assert Enum.any?(events, &match?(%{"state" => "STARTED", "pid" => ^pid}, &1))
+      refute Enum.any?(events, &match?(%{"state" => "STOP_VERIFIED"}, &1))
+      refute File.exists?(Path.join(ctx.directory, "broker-release"))
+      refute File.exists?(Path.join(ctx.directory, "functional-broker-stop.json"))
+      refute File.exists?(Path.join(ctx.directory, "routed-stop-observation.json"))
+      assert [%{ordinal: 1, state: :terminal}] = request_records(ctx)
+      identity = ctx.opts[:runtime_attempt_identity]
+      assert {:ok, %{state: :quarantined, runtime_identity: ^identity, result: result}} = AttemptLedger.pilot_status(ctx.ledger)
+      assert %{outcome: :failed, final_answer: nil} = result
+      assert {:error, _} = AttemptLedger.begin_attempt(ctx.ledger, @item, pilot_binding: ctx.grant)
+      assert_raise RuntimeError, "Pilot launch refused", fn -> AgentRunner.run(ctx.issue, self(), ctx.opts) end
+      assert :ok = AttemptLedger.close(ctx.ledger)
+      assert %{state: :quarantined, runtime_identity: ^identity, result: ^result} = fresh_pilot_status(ctx)
+    end
+
     defp fault_receipt(ctx, file), do: ctx.directory |> Path.join(file) |> File.read!() |> Jason.decode!()
 
     defp capture_fault(ctx, opts) do

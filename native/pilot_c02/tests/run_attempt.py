@@ -29,11 +29,16 @@ import uuid
 NATIVE = Path(__file__).resolve().parents[1]
 SCHEMA2_PROFILE = "H100_FUNCTIONAL_CODEX_SYNTHETIC_V1"
 SCHEMA2_REASON = "SYMPHONY_PROVIDER_BOUNDARY_UNAVAILABLE"
+RECOVERY_CUTS = {"native_ack_lost", "invocation_permission_lost", "response_headers_lost",
+                 "response_created_lost", "tool_item_lost", "final_stream_lost"}
+INTERACTIVE_FAULTS = {"lost_ack", "incomplete", "interrupt", "wrong_call", "wrong_output",
+                      "contradictory_final", "missing_tool_pidfd"} | RECOVERY_CUTS
 FAULTS = {"none", "missing_permit", "wrong_attempt", "wrong_holder", "wrong_peer", "substituted_holder",
           "bootstrap_failure", "before_materialization", "partial_materialization", "after_materialization",
           "continuous", "launcher_loss", "parent_loss", "ambiguous_provider", "cleanup_failure",
-          "observe_failure", "journal_failure", "post_materialization_journal_failure", "ancillary_fd", "manifest_unsealed", "manifest_wrong_identity", "manifest_wrong_binding", "controls_unavailable",
-          "lost_ack", "incomplete", "interrupt", "wrong_call", "wrong_output", "contradictory_final"}
+          "observe_failure", "journal_failure", "post_materialization_journal_failure", "ancillary_fd",
+          "manifest_unsealed", "manifest_wrong_identity", "manifest_wrong_binding",
+          "controls_unavailable"} | INTERACTIVE_FAULTS
 
 
 def read_line(stream, deadline):
@@ -389,6 +394,17 @@ def interactive_controller(guard, host, request_fd, reply_fd, root, manifest, de
                 or frame["turn_id"] != actual_turn_id):
             raise ValueError("Provider effect frame has a stale or unbound session identity")
 
+    def cut_recovery(checkpoint, ordinal):
+        # Mark only a reached fixture checkpoint. A supervised process exit
+        # leaves the actual journals and disposal checks to the runtime.
+        if fault != checkpoint or ordinal != (2 if checkpoint == "final_stream_lost" else 1):
+            return
+        with (root / "recovery-checkpoint").open("xb") as stream:
+            stream.write(canonical({"checkpoint": checkpoint, "ordinal": ordinal}))
+            stream.flush()
+            os.fsync(stream.fileno())
+        os._exit(97)
+
     def write_fixture_stream(current, *, accepted=False):
         nonlocal host_stream_sequence
         descriptor = current["descriptor"]
@@ -420,14 +436,25 @@ def interactive_controller(guard, host, request_fd, reply_fd, root, manifest, de
             host_stream_sequence += 1
             send_holder(dict(common, kind="ACCEPTANCE", sequence=host_stream_sequence,
                              response_id=response_id))
+            cut_recovery("response_headers_lost", ordinal)
             chunks = [base64.b64encode(created + delimiter).decode("ascii")]
+        if accepted and fault == "tool_item_lost" and ordinal == 1:
+            body = b"".join(base64.b64decode(chunk, validate=True) for chunk in chunks)
+            first, delimiter, _ = body.partition(b"\n\n")
+            if not delimiter or not first.startswith(b"event: response.output_item.done\n"):
+                raise ValueError("Recovery fixture lacks the completed tool item")
+            chunks = [base64.b64encode(first + delimiter).decode("ascii")]
         for data in chunks:
             host_stream_sequence += 1
             send_holder(dict(common, kind="SSE_CHUNK", sequence=host_stream_sequence, data=data))
         if accepted:
+            cut_recovery("tool_item_lost", ordinal)
+            cut_recovery("final_stream_lost", ordinal)
             host_stream_sequence += 1
             send_holder(dict(common, kind="TERMINAL", sequence=host_stream_sequence,
                              response_id=response_id, response_completed=True))
+        else:
+            cut_recovery("response_created_lost", ordinal)
 
     def process_rpc(line):
         nonlocal thread_start_id, turn_start_id
@@ -492,6 +519,7 @@ def interactive_controller(guard, host, request_fd, reply_fd, root, manifest, de
                 _journal_effect(root, manifest["binding"], manifest["attempt"], request_id,
                                 kind, frame_digest, frame.get("revision"), frame["ordinal"],
                                 manifest["provider"]["nonce"])
+                cut_recovery("native_ack_lost", frame["ordinal"])
             elif kind == "OBSERVED_ACCEPTANCE":
                 if frame.get("response_id") != current.get("response_id"):
                     raise ValueError("Observed acceptance changed the synthetic response ID")
@@ -548,8 +576,10 @@ def interactive_controller(guard, host, request_fd, reply_fd, root, manifest, de
                                 state, current["descriptor_sha256"], 2 if stage == "accepted" else 3,
                                 response["ordinal"], manifest["provider"]["nonce"])
                 current["expected_response_sequence"] = None
-        if kind == "INVOCATION_PERMITTED" and fault == "lost_ack":
-            return
+        if kind == "INVOCATION_PERMITTED":
+            cut_recovery("invocation_permission_lost", response["ordinal"])
+            if fault == "lost_ack":
+                return
         send_holder(response)
         if kind == "DURABLE_OBSERVATION" and stage == "terminal" and response["ordinal"] == 1:
             request_1_terminal = True
@@ -1146,7 +1176,8 @@ def receive_broker_endpoints(token, binding, attempt, selection, deadline):
 
 
 def host_supervisor_loop(root, binding, attempt, broker_image, permit_fd, request_read, reply_write,
-                        request_write, reply_read, listener, deadline_ms, supervisor_pid, operation_id):
+                        request_write, reply_read, listener, deadline_ms, supervisor_pid, operation_id,
+                        fault):
     """Run outside the PID namespace and record only pidfd-observed broker stops."""
     for fd in (0, 1, 2):
         try:
@@ -1205,6 +1236,10 @@ def host_supervisor_loop(root, binding, attempt, broker_image, permit_fd, reques
                         tool_pid = event.get("pid")
                         if type(tool_pid) is not int or tool_pid <= 1:
                             raise ValueError("Host broker recorded an invalid tool PID")
+                        if fault == "missing_tool_pidfd":
+                            sync_private_file(root / "tool-pidfd-fault.json",
+                                              canonical({"state": "STARTED", "pid": tool_pid}))
+                            raise OSError("Injected failure to open the tool pidfd")
                         candidate = os.pidfd_open(tool_pid)
                         try:
                             observed = observed_identity(tool_pid)
@@ -1290,7 +1325,7 @@ def host_broker_prelaunch(argv):
         fault = command[command.index("--fault") + 1]
     except (ValueError, IndexError) as exc:
         raise ValueError("Host broker command lacks its bound interactive driver arguments") from exc
-    if not 500 <= duration <= 5000 or fault not in {"none", "observe_failure", "lost_ack", "incomplete", "interrupt", "wrong_call", "wrong_output", "contradictory_final"}:
+    if not 500 <= duration <= 5000 or fault not in ({"none", "observe_failure"} | INTERACTIVE_FAULTS):
         raise ValueError("Host broker mode requires an approved bounded routed case")
     if "--broker-handoff" in command[interactive_at:]:
         raise ValueError("External broker descriptors are already present")
@@ -1334,7 +1369,7 @@ def host_broker_prelaunch(argv):
     if supervisor_pid == 0:
         host_supervisor_loop(root, binding, attempt, broker_image_fd, permit_fd,
                              request_read, reply_write, request_write, reply_read, listener,
-                             manifest["deadline_ms"], os.getpid(), binding_record["operation_id"])
+                             manifest["deadline_ms"], os.getpid(), binding_record["operation_id"], fault)
     supervisor_identity = {"schema": "H100-HOST-SUPERVISOR-1", "pid": supervisor_pid,
                            "ppid": os.getpid(), "start_ticks": proc_start(supervisor_pid),
                            "binding": binding, "attempt": attempt}
@@ -1721,7 +1756,7 @@ def main():
     if args.interactive and not hex64(args.broker_handoff):
         raise ValueError("Interactive functional mode requires the host-prepared external broker")
     if args.schema2:
-        allowed_faults = {"none", "observe_failure"} | ({"lost_ack", "incomplete", "interrupt", "wrong_call", "wrong_output", "contradictory_final"} if args.interactive else set())
+        allowed_faults = {"none", "observe_failure"} | (INTERACTIVE_FAULTS if args.interactive else set())
         if not args.pinned_codex or args.holder is None or args.fault not in allowed_faults:
             raise ValueError("Schema2 requires the pinned holder and an approved stop observation fixture")
         manifest, cancel = schema2_manifest(args.root.resolve(), args.binding, args.attempt, args.holder.resolve())
