@@ -193,15 +193,9 @@ defmodule SymphonyElixir.ProviderEffect.RequestLedger do
 
   @spec close_admission(t()) :: {:ok, t()} | {:error, term()}
   def close_admission(%__MODULE__{closed?: false} = ledger) do
-    ledger =
-      case refresh(ledger) do
-        {:ok, refreshed} -> refreshed
-        _ -> ledger
-      end
-
-    case append(ledger, %{schema: @schema, attempt_id: ledger.attempt_id, kind: :closed}) do
-      {:ok, next} -> {:ok, %{next | closed?: true}}
-      error -> error
+    with {:ok, current} <- refresh_open(ledger),
+         {:ok, next} <- append(current, %{schema: @schema, attempt_id: current.attempt_id, kind: :closed}) do
+      {:ok, %{next | closed?: true}}
     end
   end
 
@@ -310,6 +304,13 @@ defmodule SymphonyElixir.ProviderEffect.RequestLedger do
     end
   end
 
+  defp refresh_open(ledger) do
+    case refresh(ledger) do
+      {:ok, %{closed?: true}} -> {:error, :ledger_closed}
+      result -> result
+    end
+  end
+
   defp latest_records(events) do
     events
     |> Enum.flat_map(fn
@@ -326,22 +327,28 @@ defmodule SymphonyElixir.ProviderEffect.RequestLedger do
     lock = {{__MODULE__, ledger.path}, self()}
 
     :global.trans(lock, fn ->
-      with {:ok, disk_events} <- read_events(ledger.path),
-           :ok <- validate_append(disk_events, event),
-           {:ok, file} <- :file.open(String.to_charlist(ledger.path), [:append, :binary, :raw]),
-           :ok <- :file.write(file, line),
-           :ok <- :file.sync(file),
-           :ok <- :file.close(file),
-           :ok <- sync_parent(ledger.path) do
-        {:ok, %{ledger | events: disk_events ++ [event]}}
-      else
-        _ ->
-          _ = try_sync_close(ledger.path)
-          {:error, :journal_sync_failed}
+      with {:ok, current} <- refresh_open(ledger),
+           :ok <- validate_append(current.events, event),
+           :ok <- append_line(current.path, line) do
+        {:ok, %{current | events: current.events ++ [event]}}
       end
     end)
   rescue
     _ -> {:error, :journal_sync_failed}
+  end
+
+  defp append_line(path, line) do
+    with {:ok, file} <- :file.open(String.to_charlist(path), [:append, :binary, :raw]),
+         :ok <- :file.write(file, line),
+         :ok <- :file.sync(file),
+         :ok <- :file.close(file),
+         :ok <- sync_parent(path) do
+      :ok
+    else
+      _ ->
+        _ = try_sync_close(path)
+        {:error, :journal_sync_failed}
+    end
   end
 
   defp read_events(path) do

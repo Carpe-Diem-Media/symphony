@@ -154,12 +154,14 @@ defmodule SymphonyElixir.ProviderEffect.RequestLedgerTest do
           intent <> "\n{}\n",
           Enum.join([acknowledged, intent, closed, ""], "\n"),
           Enum.join([intent, acknowledged, acknowledged, closed, ""], "\n"),
+          durable_bytes <> closed <> "\n",
           Enum.join([intent, closed, acknowledged, ""], "\n")
         ] do
       File.write!(ledger.path, invalid)
       assert {:error, :journal_corrupt} = RequestLedger.open(ledger.attempt_id, path: ledger.path)
       assert {:error, :journal_corrupt} = RequestLedger.acknowledge_possible_send(ledger, first.request_id, 1)
       assert {:error, :journal_corrupt} = RequestLedger.record_observation(ledger, first.request_id, :ambiguous, %{})
+      assert {:error, :journal_corrupt} = RequestLedger.close_admission(ledger)
       assert File.read!(ledger.path) == invalid
     end
 
@@ -178,9 +180,98 @@ defmodule SymphonyElixir.ProviderEffect.RequestLedgerTest do
     incomplete = File.read!(ledger.path) <> "{"
     File.write!(ledger.path, incomplete)
 
-    assert {:error, :journal_sync_failed} = RequestLedger.close_admission(ledger)
+    assert {:error, :journal_corrupt} = RequestLedger.close_admission(ledger)
     assert {:error, :journal_corrupt} = RequestLedger.open(ledger.attempt_id, path: ledger.path)
     assert File.read!(ledger.path) == incomplete
+  end
+
+  test "closes once across the returned handle, the stale handle, and a reopened journal" do
+    {ledger, root} = open_ledger()
+    on_exit(fn -> File.rm_rf!(root) end)
+    assert {:ok, record} = RequestLedger.prepare(ledger, attrs(1))
+    initial = File.read!(ledger.path)
+    assert {:ok, %{closed?: true} = closed} = RequestLedger.close_admission(ledger)
+    bytes = assert_single_close(closed, initial, [record])
+    assert {:ok, reopened} = RequestLedger.open(ledger.attempt_id, path: ledger.path)
+
+    for handle <- [closed, ledger, reopened] do
+      assert {:error, :ledger_closed} = RequestLedger.close_admission(handle)
+      assert File.read!(ledger.path) == bytes
+      assert {:ok, ^closed} = RequestLedger.open(ledger.attempt_id, path: ledger.path)
+    end
+  end
+
+  test "concurrent closes that both passed refresh produce one close event" do
+    {ledger, root} = open_ledger()
+    on_exit(fn -> File.rm_rf!(root) end)
+    assert {:ok, record} = RequestLedger.prepare(ledger, attrs(1))
+    initial = File.read!(ledger.path)
+    close = fn -> RequestLedger.close_admission(ledger) end
+
+    results = ledger |> queued_appends([close, close], fn -> :ok end) |> Enum.map(&Task.await/1)
+    assert [{:ok, closed}] = Enum.filter(results, &match?({:ok, _}, &1))
+    assert [{:error, :ledger_closed}] = Enum.filter(results, &match?({:error, _}, &1))
+    assert_single_close(closed, initial, [record])
+  end
+
+  test "refuses a request update that passed refresh before another caller closed admission" do
+    {ledger, root} = open_ledger()
+    on_exit(fn -> File.rm_rf!(root) end)
+    assert {:ok, first} = RequestLedger.prepare(ledger, attrs(1))
+    assert {:ok, _, possible_send} = RequestLedger.acknowledge_possible_send(ledger, first.request_id, 1)
+    initial = File.read!(ledger.path)
+    update = fn -> RequestLedger.record_observation(ledger, first.request_id, :ambiguous, %{}) end
+
+    [worker] =
+      queued_appends(ledger, [update], fn ->
+        assert {:ok, _} = RequestLedger.close_admission(ledger)
+      end)
+
+    assert {:error, :ledger_closed} = Task.await(worker)
+    assert {:ok, closed} = RequestLedger.open(ledger.attempt_id, path: ledger.path)
+    assert_single_close(closed, initial, [possible_send])
+  end
+
+  test "a refresh read failure leaves the previous journal untouched" do
+    {ledger, root} = open_ledger()
+    on_exit(fn -> File.rm_rf!(root) end)
+    assert {:ok, record} = RequestLedger.prepare(ledger, attrs(1))
+    initial = File.read!(ledger.path)
+    saved = ledger.path <> ".saved"
+    File.rename!(ledger.path, saved)
+    File.mkdir!(ledger.path)
+
+    assert {:error, :journal_unavailable} = RequestLedger.close_admission(ledger)
+    assert File.ls!(ledger.path) == []
+    assert File.read!(saved) == initial
+    assert {:error, :journal_not_regular} = RequestLedger.open(ledger.attempt_id, path: ledger.path)
+
+    File.rmdir!(ledger.path)
+    File.rename!(saved, ledger.path)
+    assert {:ok, %{closed?: false} = reopened} = RequestLedger.open(ledger.attempt_id, path: ledger.path)
+    assert RequestLedger.records(reopened) == [record]
+    assert File.read!(ledger.path) == initial
+  end
+
+  test "a fresh BEAM reopens a valid closed journal and preserves its events" do
+    {ledger, root} = open_ledger()
+    on_exit(fn -> File.rm_rf!(root) end)
+    assert {:ok, record} = RequestLedger.prepare(ledger, attrs(1))
+    initial = File.read!(ledger.path)
+    assert {:ok, closed} = RequestLedger.close_admission(ledger)
+    bytes = assert_single_close(closed, initial, [record])
+
+    code = """
+    [attempt, path] = System.argv()
+    {:ok, ledger} = SymphonyElixir.ProviderEffect.RequestLedger.open(attempt, path: path)
+    IO.write(Base.encode64(:erlang.term_to_binary(ledger)))
+    """
+
+    paths = Enum.flat_map(:code.get_path(), &["-pa", List.to_string(&1)])
+    args = paths ++ ["-e", code, "--", ledger.attempt_id, ledger.path]
+    assert {output, 0} = System.cmd(System.find_executable("elixir"), args, env: [{"ERL_FLAGS", "+S 2:2 +SDio 1 +SDcpu 1"}])
+    assert :erlang.binary_to_term(Base.decode64!(output), [:safe]) == closed
+    assert File.read!(ledger.path) == bytes
   end
 
   test "refuses missing or invalid acknowledgments and never treats them as invocation" do
@@ -283,6 +374,49 @@ defmodule SymphonyElixir.ProviderEffect.RequestLedgerTest do
 
     assert {:ok, %{request_id: "A.request:1"}} =
              RequestLedger.prepare(ledger, Map.put(attrs(1), :request_id, "A.request:1"))
+  end
+
+  defp assert_single_close(ledger, initial, records) do
+    bytes = File.read!(ledger.path)
+    assert String.starts_with?(bytes, initial)
+    assert [close] = bytes |> binary_part(byte_size(initial), byte_size(bytes) - byte_size(initial)) |> String.split("\n", trim: true)
+    assert %{"kind" => "closed", "attempt_id" => id} = Jason.decode!(close)
+    assert id == ledger.attempt_id
+    assert {:ok, ^ledger} = RequestLedger.open(id, path: ledger.path)
+    assert ledger.closed?
+    assert RequestLedger.records(ledger) == records
+    bytes
+  end
+
+  defp queued_appends(ledger, operations, before_release) do
+    resource = {RequestLedger, ledger.path}
+    lock = {resource, self()}
+    trace = :trace.session_create(:request_ledger_append, self(), [])
+    assert :global.set_lock(lock)
+
+    try do
+      :trace.function(trace, {:global, :trans, 2}, true, [])
+
+      tasks =
+        for operation <- operations do
+          task = Task.async(fn -> receive do: (:append -> operation.()) end)
+          :trace.process(trace, task.pid, true, [:call])
+          send(task.pid, :append)
+          task
+        end
+
+      for task <- tasks do
+        pid = task.pid
+        # The worker has refreshed its handle but cannot acquire the write lock.
+        assert_receive {:trace, ^pid, :call, {:global, :trans, [{^resource, ^pid}, _]}}, 2_000
+      end
+
+      before_release.()
+      tasks
+    after
+      :global.del_lock(lock)
+      :trace.session_destroy(trace)
+    end
   end
 
   defp abandon_request_at(ledger, checkpoint) do
