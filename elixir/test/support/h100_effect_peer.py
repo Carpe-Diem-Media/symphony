@@ -20,10 +20,13 @@ def notify(method, **params):
 
 
 spec = json.loads(Path(sys.argv[1]).read_text())
-if spec["fault"] == "stop":
+if spec["fault"] in {"stop", "invalid-stop"}:
     assert receive()["symphonyNativeControl"]["kind"] == "stop"
     send({"method": "turn/completed"})
-    send({"symphonyNativeControl": spec["stop"]})
+    if spec["fault"] == "stop":
+        send({"symphonyNativeControl": spec["stop"]})
+    else:
+        send({"method": "thread/started"})
     sys.stdin.buffer.readline()
     sys.exit(0)
 
@@ -48,6 +51,12 @@ def exchange(ordinal, kind, fields):
 start = receive()
 assert start["method"] == "turn/start"
 assert start["params"]["threadId"] == thread
+if fault == "turn-start-error":
+    send({"id": start["id"], "error": {"code": -32603, "message": "fixture refused turn"}})
+    sys.exit(0)
+if fault == "missing-turn-id":
+    send({"id": start["id"], "result": {"turn": {}}})
+    sys.exit(0)
 send({"id": start["id"], "result": {"turn": {"id": turn}}})
 notify("turn/started", turn={"id": turn})
 notify("item/started", turnId=turn, item={"type": "agentMessage", "id": "message-1"})
@@ -61,6 +70,10 @@ elif fault == "protocol-error":
     notify("error", turnId=turn)
 elif fault == "invalid-frame":
     print("[]", flush=True)
+elif fault == "wrong-turn":
+    notify("turn/completed", turn={"id": "unrelated-turn", "status": "completed"})
+elif fault == "oversized-frame":
+    print(json.dumps({"message": "x" * 65536}), flush=True)
 elif fault == "continuous":
     signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     intent = exchange(1, "VALIDATE_DESCRIPTOR", spec["descriptors"][0])

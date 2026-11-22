@@ -1,6 +1,6 @@
 # H-100 offline functional holder checkpoint
 
-**Draft checkpoint. Slice C awaits hosted checks and independent review.**
+**Draft checkpoint. Final hosted coverage and a recovery defect remain open.**
 
 This checkpoint records the offline Slice C implementation on top of the accepted Slice A and P05 fixture work. It preserves a successful synthetic Planner run, including two synthetic Responses requests, one brokered tracked-file read, verified process stop, C04 result readback in a fresh BEAM, and C01 replay refusal.
 
@@ -31,7 +31,9 @@ The original R1 matrix uses these retained observations for the three continuati
 - Group 4. The routed controller exits after sending synthetic headers, after sending response creation, after sending a completed tool-item frame, and after sending the final response body before its terminal frame. Recovery checks the observed stage in both journals, the request ordinal, and the quarantined C01 result in a fresh BEAM. A lost final stream keeps request 2 ambiguous and request 1 terminal.
 - Group 7. Maintained component tests cover phase-specific expiration, continued incoming traffic after acknowledgment, permission revocation, retained home and exact cleanup binding. The native broker test expires or denies release of a started child. The routed missing-pidfd test records the actual tool PID, withholds release and leaves the result quarantined. Prior cancellation, parent-loss and write/sync fault evidence applies to the same implementation.
 
-The initial draft reported 88.71% aggregate coverage. The schema-only update reported 88.72%. Both runs failed the fixed 90.00% hosted gate. The continuation adds maintained host-boundary, request-ledger and native lifecycle tests to the existing test partitions. Hosted results must be verified against the final PR head.
+The initial draft reported 88.71% aggregate coverage. The schema-only update reported 88.72%, and the recovery coverage update at `148d3c6` reported 89.98%. All three missed the fixed 90.00% hosted gate. The follow-up tests cover rejected turn starts, malformed or mismatched frames, incomplete journal writes, and shutdown with missing or contradictory evidence. Hosted results must be verified against the final PR head.
+
+The follow-up also reproduced a recovery defect in `RequestLedger.close_admission/1`. A caller can retain a handle opened before admission closes. Reusing it after a successful close appends a second close record and returns success. A fresh reopen then returns `{:error, :journal_corrupt}`. The recovery correction requires separate approval. The coverage follow-up changes only tests and this checkpoint record.
 
 The approved encrypted independent backup destination was unavailable at verification. The complete local evidence archive passed extraction and hash readback. Its SHA-256 is `e2c0ff810406c03107d7797d9ffd6b18799485148d73f2daa84ab6f8fb6ed852`.
 

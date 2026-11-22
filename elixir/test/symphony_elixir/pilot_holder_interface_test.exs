@@ -456,6 +456,8 @@ defmodule SymphonyElixir.PilotHolderInterfaceTest do
       wrong_route = effect_descriptor(%{"url" => "https://unexpected.invalid/v1/responses"})
       assert {:error, :provider_descriptor_refused} = send_effect(boundary, 1, "VALIDATE_DESCRIPTOR", wrong_route)
       assert {:error, :provider_descriptor_refused} = send_effect(boundary, 2, "VALIDATE_DESCRIPTOR", second_descriptor())
+      assert {:error, :provider_effect_frame_refused} = send_effect(boundary, 1, "UNRECOGNIZED", %{})
+      assert {:error, :provider_effect_frame_refused} = HostBoundary.effect(boundary, [])
 
       {intent, boundary} = prepare_effect(boundary)
       assert {:error, :provider_effect_frame_refused} = HostBoundary.effect(boundary, %{"sequence" => boundary.sequence})
@@ -635,7 +637,9 @@ defmodule SymphonyElixir.PilotHolderInterfaceTest do
     for {fault, reason} <- [
           {"interrupted", :native_functional_turn_failed},
           {"protocol-error", :native_functional_turn_failed},
-          {"invalid-frame", :native_functional_frame_refused}
+          {"wrong-turn", :native_functional_turn_refused},
+          {"invalid-frame", :native_functional_frame_refused},
+          {"oversized-frame", :native_functional_frame_refused}
         ] do
       test "AppServer closes effect admission after #{fault}", ctx do
         holder = functional_effect_fixture(ctx)
@@ -646,31 +650,44 @@ defmodule SymphonyElixir.PilotHolderInterfaceTest do
       end
     end
 
-    test "a verified native stop receipt does not replace namespace termination observation", ctx do
+    test "a malformed or refused turn start cannot open the provider-effect journal", ctx do
       holder = functional_effect_fixture(ctx)
-      home = Path.join(holder.directory, "retained-home")
-      File.mkdir!(home)
-      stop = functional_stop_fixture(holder)
-      assert {:ok, _} = NativePilot.verify_functional_receipt(holder, :stopped, stop)
+      assert {:error, :native_functional_turn_refused} = run_effect_port(ctx, holder, "missing-turn-id")
 
-      script = Path.expand("../support/h100_effect_peer.py", __DIR__)
-      path = Path.join(holder.directory, "stop-peer.json")
-      File.write!(path, Jason.encode!(%{fault: "stop", stop: stop}))
-      port = Port.open({:spawn_executable, "/usr/bin/python3"}, [:binary, :exit_status, {:line, 256}, {:args, ["-I", script, path]}])
+      assert {:error, {:response_error, %{"code" => -32_603, "message" => "fixture refused turn"}}} =
+               run_effect_port(ctx, holder, "turn-start-error")
 
-      assert {:error, {:containment_unconfirmed, :termination_timeout}} =
-               AppServer.stop_session(%{
-                 port: port,
-                 runtime_containment: :linux_pid_namespace,
-                 runtime_namespace: nil,
-                 pilot_holder_context: holder,
-                 absolute_deadline_ms: holder.binding.absolute_deadline_ms,
-                 ephemeral_home: home
-               })
+      refute File.exists?(Path.join(holder.directory, "provider-effects.journal"))
+      assert {:ok, %{state: :running, result: nil}} = AttemptLedger.pilot_status(ctx.ledger)
+    end
 
-      refute Port.info(port)
-      assert File.dir?(home)
-      refute File.exists?(Path.join(holder.directory, "routed-stop-observation.json"))
+    for {case_name, fault, observation, expected} <- [
+          {"no namespace observation", "stop", :missing, {:containment_unconfirmed, :termination_timeout}},
+          {"a still-live observed process", "stop", :live, {:containment_unconfirmed, :termination_timeout}},
+          {"a stopped process but invalid native control", "invalid-stop", :peer, :native_functional_observation_refused}
+        ] do
+      test "retains home after routed shutdown with #{case_name}", ctx do
+        holder = functional_effect_fixture(ctx)
+        assert {:error, unquote(Macro.escape(expected))} = stop_effect_port(holder, unquote(fault), unquote(observation))
+        assert File.dir?(Path.join(holder.directory, "retained-home"))
+        refute File.exists?(Path.join(holder.directory, "routed-stop-observation.json"))
+        assert {:ok, %{state: :running, result: nil}} = AttemptLedger.pilot_status(ctx.ledger)
+      end
+    end
+
+    test "refuses functional launch if the selected driver pin or profile does not match", ctx do
+      holder = functional_effect_fixture(ctx)
+      pin = holder.pin
+      pin = update_in(pin.files, &Map.delete(&1, pin.driver))
+      Application.put_env(:symphony_elixir, :test_native_pilot, pin)
+
+      assert {:error, :native_schema2_input_refused} = NativePilot.prepare_functional(holder.binding, pin, holder.opts)
+
+      unselected = %{pin | schema2: :strict_fault}
+      assert {:error, :pilot_holder_boundary_unavailable} = NativePilot.prepare_functional(holder.binding, unselected, holder.opts)
+      boundary_unavailable = {:error, :pilot_holder_boundary_unavailable}
+      assert ^boundary_unavailable = NativePilot.functional_command(%{holder | assurance: :unverified}, "/usr/bin/python3")
+      refute File.exists?(Path.join(holder.directory, "provider-effects.journal"))
       assert {:ok, %{state: :running, result: nil}} = AttemptLedger.pilot_status(ctx.ledger)
     end
 
@@ -696,6 +713,7 @@ defmodule SymphonyElixir.PilotHolderInterfaceTest do
       for {key, value} <- [
             {"operation_id", "another-operation"},
             {"helper_stopped", false},
+            {"tool", %{}},
             {"tool", broker["helper"]},
             {"supervisor_pid", 99}
           ] do
@@ -775,6 +793,52 @@ defmodule SymphonyElixir.PilotHolderInterfaceTest do
 
   defp expired_effect(boundary) do
     put_in(boundary.holder.binding.absolute_deadline_ms, System.monotonic_time(:millisecond) - 1)
+  end
+
+  defp stop_effect_port(holder, fault, observation) do
+    home = Path.join(holder.directory, "retained-home")
+    File.mkdir!(home)
+    stop = functional_stop_fixture(holder)
+    assert {:ok, _} = NativePilot.verify_functional_receipt(holder, :stopped, stop)
+    script = Path.expand("../support/h100_effect_peer.py", __DIR__)
+    path = Path.join(holder.directory, "stop-peer.json")
+    File.write!(path, Jason.encode!(%{fault: fault, stop: stop}))
+    port = Port.open({:spawn_executable, "/usr/bin/python3"}, [:binary, :exit_status, {:line, 256}, {:args, ["-I", script, path]}])
+
+    try do
+      result =
+        AppServer.stop_session(%{
+          port: port,
+          runtime_containment: :linux_pid_namespace,
+          runtime_namespace: stop_observation(port, observation),
+          pilot_holder_context: holder,
+          absolute_deadline_ms: holder.binding.absolute_deadline_ms,
+          ephemeral_home: home
+        })
+
+      refute Port.info(port)
+      result
+    after
+      if Port.info(port), do: Port.close(port)
+    end
+  end
+
+  defp stop_observation(_port, :missing), do: nil
+
+  defp stop_observation(_port, :live), do: process_observation(String.to_integer(System.pid()))
+
+  defp stop_observation(port, :peer) do
+    {:os_pid, pid} = Port.info(port, :os_pid)
+    process_observation(pid)
+  end
+
+  defp process_observation(pid) do
+    [_, fields] = File.read!("/proc/#{pid}/stat") |> String.split(") ", parts: 2)
+    start_ticks = fields |> String.split() |> Enum.at(19) |> String.to_integer()
+    ["pid:", inode] = File.read_link!("/proc/#{pid}/ns/pid") |> String.split(["[", "]"], trim: true)
+    # These local identities exercise the stop decision given a captured process.
+    # The separate routed suite verifies actual namespace PID 1 containment.
+    %{pid: pid, namespace_inode: String.to_integer(inode), start_ticks: start_ticks}
   end
 
   defp functional_stop_fixture(holder) do

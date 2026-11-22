@@ -159,6 +159,7 @@ defmodule SymphonyElixir.ProviderEffect.RequestLedgerTest do
       File.write!(ledger.path, invalid)
       assert {:error, :journal_corrupt} = RequestLedger.open(ledger.attempt_id, path: ledger.path)
       assert {:error, :journal_corrupt} = RequestLedger.acknowledge_possible_send(ledger, first.request_id, 1)
+      assert {:error, :journal_corrupt} = RequestLedger.record_observation(ledger, first.request_id, :ambiguous, %{})
       assert File.read!(ledger.path) == invalid
     end
 
@@ -170,9 +171,23 @@ defmodule SymphonyElixir.ProviderEffect.RequestLedgerTest do
     assert {:error, :ledger_closed} = RequestLedger.close_admission(reopened)
   end
 
+  test "cannot record admission closed on a partially written journal event" do
+    {ledger, root} = open_ledger()
+    on_exit(fn -> File.rm_rf!(root) end)
+    assert {:ok, _} = RequestLedger.prepare(ledger, attrs(1))
+    incomplete = File.read!(ledger.path) <> "{"
+    File.write!(ledger.path, incomplete)
+
+    assert {:error, :journal_sync_failed} = RequestLedger.close_admission(ledger)
+    assert {:error, :journal_corrupt} = RequestLedger.open(ledger.attempt_id, path: ledger.path)
+    assert File.read!(ledger.path) == incomplete
+  end
+
   test "refuses missing or invalid acknowledgments and never treats them as invocation" do
     {ledger, root} = open_ledger()
     on_exit(fn -> File.rm_rf!(root) end)
+    assert {:error, :invalid_request} = RequestLedger.prepare(ledger, Map.put(attrs(1), :request_id, 123))
+    assert [] = RequestLedger.records(ledger)
     assert {:ok, first} = RequestLedger.prepare(ledger, attrs(1))
     durable_intent = File.read!(ledger.path)
 
