@@ -5795,10 +5795,10 @@ index 0000000000000000000000000000000000000000..e8b161e8be310ba7fb77c48483eb5139
 +}
 diff --git a/codex-rs/core/src/symphony_boundary/transport.rs b/codex-rs/core/src/symphony_boundary/transport.rs
 new file mode 100644
-index 00000000..b97eaa8f
+index 00000000..af6e5d7c
 --- /dev/null
 +++ b/codex-rs/core/src/symphony_boundary/transport.rs
-@@ -0,0 +1,1248 @@
+@@ -0,0 +1,1271 @@
 +//! Fixed synthetic Responses transport for the selected holder.
 +//!
 +//! The transport accepts only prepared Responses POST requests. It never opens
@@ -6324,10 +6324,33 @@ index 00000000..b97eaa8f
 +        .get("tools")
 +        .and_then(Value::as_array)
 +        .ok_or_else(io_error)?;
-+    if tools.len() != 1
-+        || tools[0].get("name").and_then(Value::as_str) != Some("exec_command")
-+        || tools[0].get("type").and_then(Value::as_str) != Some("function")
-+    {
++    use codex_tools::{JsonSchema, ResponsesApiTool, ToolSpec};
++
++    // Match the strict Planner constructor in session/turn.rs using the bound workspace.
++    let properties = std::collections::BTreeMap::from([
++        (
++            "cmd".into(),
++            JsonSchema::string_enum(vec![json!(crate::symphony_boundary::BROKER_COMMAND)], None),
++        ),
++        (
++            "workdir".into(),
++            JsonSchema::string_enum(vec![json!(state.workspace)], None),
++        ),
++        ("login".into(), JsonSchema::boolean(None)),
++        ("tty".into(), JsonSchema::boolean(None)),
++    ]);
++    let required = properties.keys().cloned().collect();
++    let approved_tool = ToolSpec::Function(ResponsesApiTool {
++        name: "exec_command".into(),
++        description: "Read the one approved Planner input.".into(),
++        strict: true,
++        defer_loading: None,
++        parameters: JsonSchema::object(properties, Some(required), Some(false.into())),
++        output_schema: None,
++    });
++    let approved_tools = codex_tools::create_tools_json_for_responses_api(&[approved_tool])
++        .map_err(|_| io_error())?;
++    if tools != &approved_tools {
 +        return Err(io_error());
 +    }
 +    let input = value
