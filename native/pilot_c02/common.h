@@ -31,7 +31,8 @@
 #define SCHEMA2_PROFILE "C02_SYNTHETIC_SCHEMA2_V1"
 struct permit {
     char profile[40], binding[65], attempt[129], holder[65], guard[65];
-    char manifest[65];
+    char manifest[65], broker[65], broker_permit[65];
+    char context_digest[65], provider_nonce[65], provider_fixture[65];
     int guard_pid;
     unsigned long long guard_start, deadline;
 };
@@ -77,11 +78,26 @@ static inline int read_permit(void) {
     bool schema2 = !strcmp(candidate.profile, SCHEMA2_PROFILE);
     if (schema2 && fscanf(f, "%64s\n", candidate.manifest) != 1) n = -1;
     int trailing = fgetc(f);
+    if (schema2 && trailing != EOF) {
+        if (ungetc(trailing, f) == EOF ||
+            fscanf(f, "%64s\n%64s\n", candidate.broker, candidate.broker_permit) != 2 ||
+            !hex64(candidate.broker) || !hex64(candidate.broker_permit)) n = -1;
+        trailing = fgetc(f);
+        if (trailing != EOF) {
+            if (ungetc(trailing, f) == EOF ||
+                fscanf(f, "%64s\n%64s\n%64s\n", candidate.context_digest,
+                       candidate.provider_nonce, candidate.provider_fixture) != 3 ||
+                !hex64(candidate.context_digest) || !hex64(candidate.provider_nonce) ||
+                !hex64(candidate.provider_fixture)) n = -1;
+            trailing = fgetc(f);
+        }
+    }
     fclose(f);
     if (n != 8 || trailing != EOF || (!schema2 && strcmp(candidate.profile, PROFILE)) ||
         (schema2 && !hex64(candidate.manifest)) || !hex64(candidate.binding) ||
         !hex64(candidate.holder) || !hex64(candidate.guard) || !reference(candidate.attempt) ||
-        candidate.guard_pid < 2 || candidate.deadline <= monotonic_ms()) return -1;
+        candidate.guard_pid < 2 || candidate.deadline <= monotonic_ms() ||
+        (candidate.provider_nonce[0] && (!candidate.broker[0] || !candidate.context_digest[0]))) return -1;
     authority = candidate;
     return 0;
 }

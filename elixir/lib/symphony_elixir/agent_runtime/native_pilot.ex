@@ -341,4 +341,332 @@ defmodule SymphonyElixir.AgentRuntime.NativePilot do
   else
     def exercise(_binding, _pin), do: {:error, :pilot_holder_boundary_unavailable}
   end
+
+  @doc "Prepares the exact interactive synthetic holder without starting a process."
+  @spec prepare_functional(map(), term(), keyword()) :: {:ok, map()} | {:error, atom()}
+  if @test_build do
+    alias SymphonyElixir.{AgentRunner, Config, PromptBuilder, Workflow}
+
+    def prepare_functional(binding, %{schema2: :functional, pinned_codex: true} = pin, opts) do
+      with true <- pin == Application.get_env(:symphony_elixir, :test_native_pilot),
+           true <- binding.profile.model == "synthetic-planner-v1",
+           true <- functional_dependencies_pinned?(pin),
+           :ok <- validate_pin(binding, pin),
+           {:ok, settings} <- Config.settings(),
+           {:ok, %{prompt_template: template}} <- Workflow.load(),
+           {:ok, authority} <- Config.pilot_configuration_snapshot(settings, template),
+           true <- authority.identity == binding.grant.config_identity,
+           true <- authority.role_policy.profile_name == binding.attempt.runtime_profile,
+           :ok <- AgentRunner.validate_pilot_checkout(binding.workspace, binding.grant, authority.git),
+           {:ok, bytes} <- File.read(pin.model_catalog),
+           true <- sha256(bytes) == pin.files[pin.model_catalog],
+           {:ok, %{"models" => [%{"slug" => slug}]} = catalog} <- Jason.decode(bytes),
+           true <- slug == binding.profile.model,
+           prompt <- PromptBuilder.build_prompt(Keyword.fetch!(opts, :runtime_issue), opts),
+           {:ok, directory} <- prepare_evidence(binding, pin),
+           context <- schema2_context(binding, authority.role_policy, catalog, slug, prompt, directory, :functional),
+           :ok <- write_functional_input(directory, context) do
+        {:ok,
+         %{
+           assurance: :synthetic_functional_only,
+           binding: binding,
+           digest: binding_digest(binding),
+           directory: directory,
+           pin: pin,
+           opts: opts
+         }}
+      else
+        _ -> {:error, :native_schema2_input_refused}
+      end
+    rescue
+      _ -> {:error, :native_schema2_input_refused}
+    end
+
+    def prepare_functional(_binding, _pin, _opts), do: {:error, :pilot_holder_boundary_unavailable}
+
+    defp functional_dependencies_pinned?(pin) do
+      driver_directory = Path.dirname(pin.driver)
+      build_directory = Path.expand("../build", driver_directory)
+      binaries = Enum.map(~w(host guard tool-broker request-effect), &Path.join(build_directory, &1))
+      fixture = Path.join(driver_directory, "provider_fixture.py")
+
+      Enum.all?([pin.driver, pin.holder, pin.model_catalog, fixture | binaries], fn path ->
+        Path.type(path) == :absolute and is_binary(pin.files[path])
+      end)
+    end
+
+    defp write_functional_input(directory, context) do
+      path = Path.join(directory, "schema2-input.json")
+
+      with :ok <- File.write(path, Jason.encode!(%{context: context, cancel: false}), [:exclusive]),
+           do: File.chmod(path, 0o600)
+    end
+  else
+    def prepare_functional(_binding, _pin, _opts), do: {:error, :pilot_holder_boundary_unavailable}
+  end
+
+  @doc "Returns the pinned controller command for the existing routed PID guard."
+  @spec functional_command(map(), Path.t()) :: {:ok, [String.t()]} | {:error, atom()}
+  if @test_build do
+    def functional_command(%{assurance: :synthetic_functional_only, binding: binding, digest: digest, directory: directory, pin: pin}, python) do
+      remaining = binding.absolute_deadline_ms - System.monotonic_time(:millisecond)
+
+      with true <- pin == Application.get_env(:symphony_elixir, :test_native_pilot),
+           :ok <- validate_pin(binding, pin),
+           true <- remaining > 4_000,
+           true <- Map.has_key?(pin.files, pin.driver) do
+        {:ok,
+         [
+           python,
+           "-I",
+           pin.driver,
+           "--interactive",
+           "--root",
+           directory,
+           "--binding",
+           digest,
+           "--attempt",
+           binding.attempt.runtime_attempt_id,
+           "--holder",
+           pin.holder,
+           "--fault",
+           pin.fault,
+           "--duration-ms",
+           Integer.to_string(min(remaining - 2_000, 5_000)),
+           "--pinned-codex",
+           "--schema2"
+         ]}
+      else
+        _ -> {:error, :native_functional_launch_refused}
+      end
+    rescue
+      _ -> {:error, :native_functional_launch_refused}
+    end
+
+    def functional_command(_holder, _python), do: {:error, :pilot_holder_boundary_unavailable}
+  else
+    def functional_command(_holder, _python), do: {:error, :pilot_holder_boundary_unavailable}
+  end
+
+  @doc "Correlates the controller envelope with the synchronized private receipt."
+  @spec verify_functional_receipt(map(), :ready | :stopped, map() | nil) :: {:ok, map()} | {:error, atom()}
+  if @test_build do
+    def verify_functional_receipt(
+          %{assurance: :synthetic_functional_only, binding: binding, digest: digest, directory: directory, pin: pin},
+          phase,
+          envelope
+        )
+        when phase in [:ready, :stopped] do
+      {file, sequence} =
+        case phase do
+          :ready -> {"functional-ready.json", 0}
+          :stopped -> {"functional-stop.json", 1}
+        end
+
+      kind = "native-" <> Atom.to_string(phase)
+      attempt = binding.attempt.runtime_attempt_id
+      path = Path.join(directory, file)
+
+      with {:ok, %File.Stat{size: size, type: :regular, mode: mode}} when size in 1..8192 and :erlang.band(mode, 0o077) == 0 <-
+             File.lstat(path),
+           {:ok, bytes} when byte_size(bytes) == size <- File.read(path),
+           {:ok, %{"scope" => "SYNTHETIC_PIPE", "kind" => ^kind, "binding" => ^digest, "attempt" => ^attempt, "sequence" => ^sequence} = receipt} <- Jason.decode(bytes),
+           :ok <- verify_functional_observation(directory, phase, digest, receipt, pin),
+           :ok <- verify_host_broker_stop(directory, phase, digest, attempt),
+           true <- is_nil(envelope) or envelope == functional_envelope(receipt, phase, sha256(bytes)) do
+        {:ok, receipt}
+      else
+        _ -> {:error, :native_functional_observation_refused}
+      end
+    end
+
+    def verify_functional_receipt(_holder, _phase, _envelope), do: {:error, :pilot_holder_boundary_unavailable}
+
+    defp verify_host_broker_stop(_directory, :ready, _digest, _attempt), do: :ok
+
+    defp verify_host_broker_stop(directory, :stopped, digest, attempt) do
+      path = Path.join(directory, "functional-broker-stop.json")
+
+      with {:ok, %File.Stat{type: :regular, mode: mode, size: size, links: 1}}
+           when size in 1..4096 and :erlang.band(mode, 0o777) == 0o600 <- File.lstat(path),
+           {:ok, bytes} when byte_size(bytes) == size <- File.read(path),
+           {:ok,
+            %{
+              "schema" => "H100-HOST-BROKER-STOP-1",
+              "binding" => ^digest,
+              "attempt" => ^attempt,
+              "helper_stopped" => true,
+              "tool_stopped" => true,
+              "helper" => helper,
+              "tool" => tool
+            } = stop} <- Jason.decode(bytes),
+           true <- host_process_identity?(helper) and host_process_identity?(tool) and helper["pid"] != tool["pid"],
+           :ok <- verify_host_stop_binding(directory, stop) do
+        :ok
+      else
+        _ -> {:error, :host_broker_stop_unverified}
+      end
+    end
+
+    defp verify_host_stop_binding(directory, %{
+           "binding" => binding,
+           "attempt" => attempt,
+           "supervisor_pid" => supervisor,
+           "operation_id" => operation
+         }) do
+      with {:ok, identity} when byte_size(identity) <= 4096 <-
+             File.read(Path.join(directory, "functional-host-supervisor.json")),
+           {:ok, %{"binding" => ^binding, "attempt" => ^attempt, "pid" => ^supervisor}} <- Jason.decode(identity),
+           {:ok, manifest} when byte_size(manifest) <= 131_072 <- File.read(Path.join(directory, "manifest.json")),
+           {:ok, %{"context" => %{"broker_selftest" => %{"binding" => %{"operation_id" => ^operation}}}}} <-
+             Jason.decode(manifest),
+           true <- is_binary(operation) and is_integer(supervisor) and supervisor > 1 do
+        :ok
+      else
+        _ -> {:error, :host_broker_stop_unverified}
+      end
+    end
+
+    defp verify_host_stop_binding(_directory, _stop), do: {:error, :host_broker_stop_unverified}
+
+    defp host_process_identity?(%{"pid" => pid, "start_ticks" => ticks}),
+      do: is_integer(pid) and pid > 1 and is_integer(ticks) and ticks > 0
+
+    defp host_process_identity?(_process), do: false
+
+    defp verify_functional_observation(
+           directory,
+           :ready,
+           digest,
+           %{
+             "holder_pid" => holder,
+             "guard_pid" => guard,
+             "fixture_sha256" => fixture_digest
+           },
+           pin
+         )
+         when is_integer(holder) and holder > 1 and is_integer(guard) and guard > 1 and holder != guard do
+      fixture = Path.join(Path.dirname(pin.driver), "provider_fixture.py")
+
+      if fixture_digest == pin.files[fixture] and File.read(Path.join(directory, "channel-closed")) == {:ok, digest},
+        do: :ok,
+        else: {:error, :native_channel_unverified}
+    end
+
+    defp verify_functional_observation(
+           directory,
+           :stopped,
+           digest,
+           %{
+             "termination_observed" => true,
+             "disposal_verified" => true,
+             "journal_sha256" => expected
+           },
+           _pin
+         ) do
+      markers = ~w(channel-closed consumed guard-reaped disposed)
+
+      with true <- Enum.all?(markers, &(File.read(Path.join(directory, &1)) == {:ok, digest})),
+           {:ok, journal} when byte_size(journal) <= 65_536 <- File.read(Path.join(directory, "events.jsonl")),
+           true <- sha256(journal) == expected do
+        :ok
+      else
+        _ -> {:error, :native_stop_unverified}
+      end
+    end
+
+    defp verify_functional_observation(_directory, _phase, _digest, _receipt, _pin),
+      do: {:error, :native_functional_observation_refused}
+
+    defp functional_envelope(receipt, phase, receipt_sha256) do
+      common =
+        receipt
+        |> Map.take(~w(binding attempt sequence context_digest))
+        |> Map.merge(%{
+          "schema" => "H100-NATIVE-CONTROL-1",
+          "kind" => Atom.to_string(phase),
+          "receipt_sha256" => receipt_sha256
+        })
+
+      case phase do
+        :ready ->
+          Map.merge(common, Map.take(receipt, ~w(holder_pid guard_pid)))
+
+        :stopped ->
+          Map.merge(common, %{
+            "guard_reaped" => true,
+            "host_termination_observed" => receipt["termination_observed"],
+            "disposal_verified" => receipt["disposal_verified"],
+            "journal_sha256" => receipt["journal_sha256"]
+          })
+      end
+    end
+  else
+    def verify_functional_receipt(_holder, _phase, _envelope), do: {:error, :pilot_holder_boundary_unavailable}
+  end
+
+  @doc "Reads the bound host supervisor identity before AppServer checks its live parent and namespace."
+  @spec host_supervisor_identity(map(), pos_integer()) :: {:ok, map()} | {:error, atom()}
+  if @test_build do
+    def host_supervisor_identity(
+          %{assurance: :synthetic_functional_only, binding: binding, digest: digest, directory: directory},
+          parent
+        ) do
+      attempt = binding.attempt.runtime_attempt_id
+      path = Path.join(directory, "functional-host-supervisor.json")
+
+      with {:ok, %File.Stat{type: :regular, mode: mode, size: size, links: 1}}
+           when size in 1..4096 and :erlang.band(mode, 0o777) == 0o600 <- File.lstat(path),
+           {:ok, bytes} when byte_size(bytes) == size <- File.read(path),
+           {:ok, %{"schema" => "H100-HOST-SUPERVISOR-1", "binding" => ^digest, "attempt" => ^attempt, "ppid" => ^parent, "pid" => pid, "start_ticks" => ticks}}
+           when is_integer(pid) and pid > 1 and
+                  is_integer(ticks) and ticks > 0 <- Jason.decode(bytes) do
+        {:ok, %{pid: pid, start_ticks: ticks}}
+      else
+        _ -> {:error, :host_supervisor_unverified}
+      end
+    end
+
+    def host_supervisor_identity(_, _), do: {:error, :host_supervisor_unverified}
+  else
+    def host_supervisor_identity(_, _), do: {:error, :pilot_holder_boundary_unavailable}
+  end
+
+  @doc "Retains the routed guard observation after AppServer independently verifies namespace stop."
+  @spec retain_namespace_stop(map(), map() | nil) :: :ok | {:error, term()}
+  if @test_build do
+    def retain_namespace_stop(
+          %{assurance: :synthetic_functional_only, binding: binding, digest: digest, directory: directory},
+          %{pid: pid, parent_pid: parent, start_ticks: ticks, namespace_inode: namespace} = identity
+        )
+        when is_integer(pid) and pid > 1 and is_integer(parent) and parent > 1 and
+               is_integer(ticks) and ticks > 0 and is_integer(namespace) and namespace > 0 do
+      observation = %{
+        scope: "SYNTHETIC_PIPE",
+        binding: digest,
+        attempt: binding.attempt.runtime_attempt_id,
+        namespace_pid1: identity,
+        port_down_observed: true,
+        pid1_stop_verified: true
+      }
+
+      path = Path.join(directory, "routed-stop-observation.json")
+
+      with {:ok, :ok} <- File.open(path, [:write, :binary, :exclusive], &sync_observation(&1, observation)),
+           :ok <- File.chmod(path, 0o600),
+           {:ok, file} <- :file.open(String.to_charlist(directory), [:directory, :raw, :read]) do
+        try do
+          :file.sync(file)
+        after
+          :file.close(file)
+        end
+      else
+        _ -> {:error, :native_routed_stop_record_unavailable}
+      end
+    end
+
+    def retain_namespace_stop(_holder, _identity), do: {:error, :native_routed_stop_record_unavailable}
+  else
+    def retain_namespace_stop(_holder, _identity), do: {:error, :pilot_holder_boundary_unavailable}
+  end
 end

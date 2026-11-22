@@ -1,6 +1,50 @@
 /* Real native synthetic materialization owner. Never accepts operational access material. */
 #include "common.h"
 
+static int durable_receipt(const char *name, const char *bytes, size_t size) {
+    int fd = openat(root_fd, name, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+    if (fd < 0) return -1;
+    struct stat st;
+    bool ok = !fstat(fd, &st) && S_ISREG(st.st_mode) && st.st_nlink == 1 &&
+              st.st_uid == geteuid() && (st.st_mode & 0777) == 0600 &&
+              write(fd, bytes, size) == (ssize_t)size && !fsync(fd) && !fsync(root_fd);
+    close(fd);
+    return ok ? 0 : -1;
+}
+
+static int write_ready_receipt(pid_t holder, unsigned long long holder_start) {
+    char bytes[1024];
+    int size = snprintf(bytes, sizeof(bytes),
+        "{\"attempt\":\"%s\",\"binding\":\"%s\",\"context_digest\":\"%s\",\"fixture_sha256\":\"%s\",\"guard_pid\":%d,\"guard_start_ticks\":%llu,\"holder_pid\":%d,\"holder_start_ticks\":%llu,\"kind\":\"native-ready\",\"nonce\":\"%s\",\"scope\":\"SYNTHETIC_PIPE\",\"sequence\":0}",
+        authority.attempt, authority.binding, authority.context_digest, authority.provider_fixture,
+        authority.guard_pid, authority.guard_start, holder, holder_start,
+        authority.provider_nonce);
+    return size > 0 && (size_t)size < sizeof(bytes) ?
+        durable_receipt("functional-ready.json", bytes, (size_t)size) : -1;
+}
+
+static int write_stop_receipt(pid_t holder, unsigned long long holder_start,
+                              const char *journal_sha256) {
+    pid_t host_parent = 0;
+    unsigned long long host_start = 0;
+    char bytes[1536];
+    if (proc_identity(getpid(), &host_parent, &host_start)) return -1;
+    int size = snprintf(bytes, sizeof(bytes),
+        "{\"attempt\":\"%s\",\"binding\":\"%s\",\"context_digest\":\"%s\",\"disposal_verified\":true,\"fixture_sha256\":\"%s\",\"guard_pid\":%d,\"guard_start_ticks\":%llu,\"holder_pid\":%d,\"holder_start_ticks\":%llu,\"host_pid\":%d,\"host_start_ticks\":%llu,\"journal_sha256\":\"%s\",\"kind\":\"native-stopped\",\"nonce\":\"%s\",\"scope\":\"SYNTHETIC_PIPE\",\"sequence\":1,\"termination_observed\":true}",
+        authority.attempt, authority.binding, authority.context_digest, authority.provider_fixture,
+        authority.guard_pid, authority.guard_start, holder, holder_start, getpid(), host_start,
+        journal_sha256, authority.provider_nonce);
+    return size > 0 && (size_t)size < sizeof(bytes) ?
+        durable_receipt("functional-stop.json", bytes, (size_t)size) : -1;
+}
+
+static bool fixture_matches(const char *path, const char *expected) {
+    struct stat st;
+    char actual[65];
+    return path && !lstat(path, &st) && S_ISREG(st.st_mode) && !S_ISLNK(st.st_mode) &&
+           !digest_path(path, actual) && !strcmp(actual, expected);
+}
+
 static int identity_matches(pid_t peer) {
     pid_t parent = 0, guard_parent = 0;
     unsigned long long start = 0, guard_start = 0;
@@ -34,7 +78,8 @@ static int identity_matches(pid_t peer) {
     return 0;
 }
 int main(int argc, char **argv) {
-    if (argc != 5 || !hex64(argv[3]) || !reference(argv[4]) || (root_fd = open_root(argv[1])) < 0) return 80;
+    if ((argc != 5 && argc != 6) || !hex64(argv[3]) || !reference(argv[4]) ||
+        (root_fd = open_root(argv[1])) < 0) return 80;
     struct rlimit core = {0, 0};
     if (setrlimit(RLIMIT_CORE, &core) || prctl(PR_SET_DUMPABLE, 0) || prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) return 80;
     const char *fault = argv[2];
@@ -53,7 +98,10 @@ int main(int argc, char **argv) {
     socklen_t peer_size = sizeof(peer);
     struct request request;
     memset(&request, 0, sizeof(request));
-    if (channel < 0 || read_permit() || strcmp(authority.binding, argv[3]) || strcmp(authority.attempt, argv[4]) || getsockopt(channel, SOL_SOCKET, SO_PEERCRED, &peer, &peer_size) ||
+    if (channel < 0 || read_permit() || strcmp(authority.binding, argv[3]) || strcmp(authority.attempt, argv[4]) ||
+        ((authority.provider_nonce[0] != '\0') != (argc == 6) || (argc == 6 &&
+          !fixture_matches(argv[5], authority.provider_fixture))) ||
+        getsockopt(channel, SOL_SOCKET, SO_PEERCRED, &peer, &peer_size) ||
         peer_size != sizeof(peer) || peer.uid != geteuid() || peer.gid != getegid() ||
         !wait_fd(channel, POLLIN, authority.deadline) || receive_plain(channel, &request, sizeof(request)) != sizeof(request) ||
         memchr(request.binding, 0, sizeof(request.binding)) == NULL || memchr(request.attempt, 0, sizeof(request.attempt)) == NULL ||
@@ -97,8 +145,16 @@ int main(int argc, char **argv) {
         return 0;
     }
     char extra;
+    unsigned long long observed_holder_start = 0;
     if (wait_fd(channel, POLLIN | POLLHUP, authority.deadline) && receive_plain(channel, &extra, 1) == 0) {
-        if (!event("CREDENTIAL_CHANNEL_CLOSED", peer.pid)) marker("channel-closed");
+        if (!event("CREDENTIAL_CHANNEL_CLOSED", peer.pid) && !marker("channel-closed") &&
+            authority.provider_nonce[0]) {
+            pid_t holder_parent = 0;
+            if (proc_identity(peer.pid, &holder_parent, &observed_holder_start) ||
+                holder_parent != authority.guard_pid || write_ready_receipt(peer.pid, observed_holder_start) ||
+                event("FUNCTIONAL_READY_RECEIPT_WRITTEN", peer.pid))
+                event("QUARANTINED", peer.pid);
+        }
     }
     close(channel);
     if (strcmp(fault, "observe_failure") && wait_fd(pidfd, POLLIN, authority.deadline)) {
@@ -111,7 +167,14 @@ int main(int argc, char **argv) {
                 if (faccessat(root_fd, "guard-reaped", F_OK, 0) == 0 &&
                     (!schema2 || faccessat(root_fd, "channel-closed", F_OK, 0) == 0) &&
                     faccessat(root_fd, terminal, F_OK, 0) == 0) {
-                if (!event("DISPOSAL_VERIFIED", peer.pid)) marker("disposed");
+                    if (!event("DISPOSAL_VERIFIED", peer.pid) && !marker("disposed") &&
+                        authority.provider_nonce[0]) {
+                        char journal_sha256[65];
+                        if (event("FUNCTIONAL_STOP_RECEIPT_WRITTEN", peer.pid) ||
+                            digest_path("events.jsonl", journal_sha256) ||
+                            write_stop_receipt(peer.pid, observed_holder_start, journal_sha256))
+                            event("QUARANTINED", peer.pid);
+                    }
                 } else event("QUARANTINED", peer.pid);
             }
         }

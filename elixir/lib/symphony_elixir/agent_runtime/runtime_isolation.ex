@@ -65,6 +65,9 @@ defmodule SymphonyElixir.AgentRuntime.RuntimeIsolation do
 
     defp prepare_test_pilot_holder(binding, opts) do
       case Keyword.fetch(opts, :test_native_pilot) do
+        {:ok, %{schema2: :functional} = pin} ->
+          NativePilot.prepare_functional(binding, pin, opts)
+
         {:ok, pin} ->
           NativePilot.exercise(binding, pin)
 
@@ -104,6 +107,17 @@ defmodule SymphonyElixir.AgentRuntime.RuntimeIsolation do
   end
 
   if @pilot_holder_test_build do
+    alias SymphonyElixir.AgentRuntime.NativePilot
+
+    def check_pilot_holder(%{assurance: :synthetic_functional_only, binding: binding, opts: opts} = holder, phase)
+        when phase in [:thread, :turn, :cleanup] do
+      with :ok <- current_pilot_holder_binding(binding, opts, phase),
+           {:ok, _observation} <-
+             NativePilot.verify_functional_receipt(holder, if(phase == :cleanup, do: :stopped, else: :ready), nil) do
+        :ok
+      end
+    end
+
     def check_pilot_holder(%{assurance: :synthetic_test_only, binding: binding, peer: peer, receipt: receipt, opts: opts}, phase)
         when phase in [:thread, :turn, :cleanup] do
       with {:ok, ^peer} <- synthetic_pilot_peer(opts),
