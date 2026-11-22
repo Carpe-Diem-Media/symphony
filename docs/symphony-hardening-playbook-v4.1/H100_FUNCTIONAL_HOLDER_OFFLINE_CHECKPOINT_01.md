@@ -1,6 +1,6 @@
 # H-100 offline functional holder checkpoint
 
-**Draft checkpoint. Final hosted coverage and a recovery defect remain open.**
+**Draft checkpoint. Author-side verification is complete for the selected offline profile. Independent Slice C acceptance is pending.**
 
 This checkpoint records the offline Slice C implementation on top of the accepted Slice A and P05 fixture work. It preserves a successful synthetic Planner run, including two synthetic Responses requests, one brokered tracked-file read, verified process stop, C04 result readback in a fresh BEAM, and C01 replay refusal.
 
@@ -10,6 +10,8 @@ This checkpoint records the offline Slice C implementation on top of the accepte
 - Initial checkpoint implementation tree `bd0f52ed8daa63b324eca2b024898dcf6b6f9127`.
 - Corrected implementation-only tree `4f7a52c2b0552af296a10a07b5f6830554b203a0`.
 - Corrected cumulative implementation diff SHA-256 `1ef343d28c63cdbebcfbbc22d506c7ed5ea1e255c5c3c14af80f9d982dc21034`.
+- Reviewed ledger correction commit `d72e03dc8ab423950c5dc99c227bad946eedacba`, tree `5cb1ec67f7f8e9fb9f1567224d3d0f995c81af78`.
+- Reviewed two-file correction SHA-256 `043682c200eea1ca89fd5460730d4e46c095c4f554ff7731c45a6d35ef6d87cd`.
 - Pinned Codex 0.162.1 source commit `092d3acd6bec3e3a14bdc7e7a2810ab628ab759d`, tree `572cdecd45cd985f0ad80b63d8b86ffcb345f47a`.
 - Current Codex patch SHA-256 `19c5491d4aeeea7f077667dbfc1a57993858c4a70a7bac7fc3f7d0ff6d2253e9`.
 - Current patched Codex source tree `ee9e5f5611ec8372abe327bf9fe70df0002415e8`.
@@ -31,10 +33,12 @@ The original R1 matrix uses these retained observations for the three continuati
 - Group 4. The routed controller exits after sending synthetic headers, after sending response creation, after sending a completed tool-item frame, and after sending the final response body before its terminal frame. Recovery checks the observed stage in both journals, the request ordinal, and the quarantined C01 result in a fresh BEAM. A lost final stream keeps request 2 ambiguous and request 1 terminal.
 - Group 7. Maintained component tests cover phase-specific expiration, continued incoming traffic after acknowledgment, permission revocation, retained home and exact cleanup binding. The native broker test expires or denies release of a started child. The routed missing-pidfd test records the actual tool PID, withholds release and leaves the result quarantined. Prior cancellation, parent-loss and write/sync fault evidence applies to the same implementation.
 
-The initial draft reported 88.71% aggregate coverage. The schema-only update reported 88.72%, and the recovery coverage update at `148d3c6` reported 89.98%. All three missed the fixed 90.00% hosted gate. The follow-up tests cover rejected turn starts, malformed or mismatched frames, incomplete journal writes, and shutdown with missing or contradictory evidence. Hosted results must be verified against the final PR head.
+The previous published head `09916f9` passed both required checks and reached 90.12% hosted aggregate coverage. The reviewed ledger correction passed 104 focused tests, 20 routed Planner tests and the full local run with 2,648 tests, zero failures, six existing skips and 90.08% aggregate coverage. Formatting, lint and Dialyzer also passed. The 90.00% threshold is unchanged. Both hosted checks must pass again on the published correction.
 
-The follow-up also reproduced a recovery defect in `RequestLedger.close_admission/1`. A caller can retain a handle opened before admission closes. Reusing it after a successful close appends a second close record and returns success. A fresh reopen then returns `{:error, :journal_corrupt}`. The recovery correction requires separate approval. The coverage follow-up changes only tests and this checkpoint record.
+The ledger correction refreshes the journal and validates it under the existing append lock. It preserves one durable close event across concurrent or stale handles, refuses record updates after closure and leaves invalid journal bytes intact. For the original groups 3 and 4, all 12 Elixir process-loss cuts and six routed recovery checkpoints passed after the correction. Earlier native evidence remains applicable because the native implementation is unchanged. The author-side evidence now covers all nine original groups for the selected offline profile.
 
-The approved encrypted independent backup destination was unavailable at verification. The complete local evidence archive passed extraction and hash readback. Its SHA-256 is `e2c0ff810406c03107d7797d9ffd6b18799485148d73f2daa84ab6f8fb6ed852`.
+A separate source review found that `HostBoundary.close/1` returns `:ok` even if journal closure fails. The functional turn calls it from an `after` block, so a failed close does not withhold an otherwise successful turn result. The R1 plan requires request admission to close before cleanup. Master Gate must resolve the missing durable closure evidence before final acceptance. The reviewed ledger correction leaves the host boundary and completion code unchanged.
+
+The approved encrypted independent backup destination was unmounted at verification. The local ledger review archive passed manifest and archive readback for all 175 payload files. Its SHA-256 is `7cf6bfa3c40442020a6ec75f8dcc3c112ff022f05cacb8830a5d1cb36e9bf6c5`.
 
 The evidence covers the selected synthetic profile. Production host qualification and authenticated provider execution remain outside this checkpoint. Merge requires separate approval after independent review of the exact final diff, the original requirements and required CI.
