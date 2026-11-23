@@ -1,14 +1,94 @@
 """Executable tests of the native slice. No Codex, credentials or network provider."""
+import base64
+from contextlib import redirect_stderr
+import importlib.util
+import io
 import json
 import os
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 BINDING = "a" * 64
 ATTEMPT = "existing-runtime-attempt-01"
+
+
+DRIVER_SPEC = importlib.util.spec_from_file_location("run_attempt", ROOT / "tests" / "run_attempt.py")
+run_attempt = importlib.util.module_from_spec(DRIVER_SPEC)
+DRIVER_SPEC.loader.exec_module(run_attempt)
+
+class ControllerAttemptArgumentsTest(unittest.TestCase):
+    @staticmethod
+    def runtime_id(first_byte):
+        return base64.urlsafe_b64encode(bytes([first_byte]) + bytes(15)).decode("ascii").rstrip("=")
+
+    def args(self, *attempt):
+        return ["--root", "/offline-test", "--binding", BINDING, "--interactive", *attempt]
+
+    def assert_parser_error(self, argv, reason):
+        stderr = io.StringIO()
+        with redirect_stderr(stderr), self.assertRaises(SystemExit) as failure:
+            run_attempt.parse_controller_args(argv)
+        self.assertEqual(failure.exception.code, 2)
+        self.assertIn(reason, stderr.getvalue())
+
+    def test_canonical_ids_round_trip_for_all_prefixes(self):
+        for first_byte, prefix in [(0, "A"), (248, "-"), (252, "_")]:
+            attempt_id = self.runtime_id(first_byte)
+            self.assertTrue(attempt_id.startswith(prefix))
+            for option in [("--attempt", attempt_id), (f"--attempt={attempt_id}",)]:
+                with self.subTest(prefix=prefix, representation=len(option)):
+                    self.assertEqual(run_attempt.parse_controller_args(self.args(*option)).attempt, attempt_id)
+
+    def test_normalization_preserves_order_and_other_arguments(self):
+        hyphen = self.runtime_id(248)
+        argv = ["--root", "/offline-test", "--attempt", hyphen, "--binding", BINDING, "--duration-ms=2500"]
+        original = argv.copy()
+        self.assertEqual(
+            run_attempt.normalize_controller_arguments(argv),
+            ["--root", "/offline-test", f"--attempt={hyphen}", "--binding", BINDING, "--duration-ms=2500"],
+        )
+        self.assertEqual(argv, original)
+        for attempt_id in [self.runtime_id(0), self.runtime_id(252), ATTEMPT, f"{hyphen}="]:
+            with self.subTest(attempt_id=attempt_id):
+                argv = argv[:2] + ["--attempt", attempt_id] + argv[4:]
+                self.assertEqual(run_attempt.normalize_controller_arguments(argv), argv)
+
+    def test_duplicate_attempt_options_are_rejected(self):
+        first, second = self.runtime_id(248), self.runtime_id(252)
+        for one in [("--attempt", first), (f"--attempt={first}",)]:
+            for two in [("--attempt", second), (f"--attempt={second}",), (f"--att={second}",)]:
+                with self.subTest(one=one, two=two):
+                    self.assert_parser_error(self.args(*one, *two), "--attempt may only be supplied once")
+
+    def test_missing_and_malformed_attempt_values_are_rejected(self):
+        self.assert_parser_error(self.args(), "required")
+        self.assert_parser_error(self.args("--attempt"), "expected one argument")
+        for value in ["", "-", "-short", self.runtime_id(248) + "=",
+                      self.runtime_id(248)[:-1] + "B", self.runtime_id(0)[:-1] + "/", "é" * 22]:
+            with self.subTest(value=value):
+                self.assert_parser_error(self.args(f"--attempt={value}"), "invalid runtime attempt ID")
+        self.assert_parser_error(self.args("--attempt", "-short"), "expected one argument")
+
+    def test_noninteractive_symbolic_attempt_ids_remain_accepted(self):
+        args = run_attempt.parse_controller_args(["--root", "/offline-test", "--binding", BINDING, "--attempt", ATTEMPT])
+        self.assertEqual(args.attempt, ATTEMPT)
+
+    def test_host_broker_receives_the_original_split_argument(self):
+        hyphen = self.runtime_id(248)
+        argv = ["/usr/bin/unshare", "/usr/bin/python3", "run_attempt.py", *self.args("--attempt", hyphen),
+                "--holder", "/offline-holder", "--duration-ms", "2500", "--fault", "none"]
+        original = argv.copy()
+        with mock.patch.object(run_attempt, "normalize_controller_arguments") as normalize, mock.patch.object(
+                run_attempt, "schema2_manifest", side_effect=RuntimeError("stop before host broker launch")) as manifest:
+            with self.assertRaisesRegex(RuntimeError, "stop before host broker launch"):
+                run_attempt.host_broker_prelaunch(argv)
+        manifest.assert_called_once_with(Path("/offline-test"), BINDING, hyphen, Path("/offline-holder"))
+        normalize.assert_not_called()
+        self.assertEqual(argv, original)
 
 
 class NativeLifecycleTest(unittest.TestCase):

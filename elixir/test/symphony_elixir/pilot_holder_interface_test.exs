@@ -61,11 +61,12 @@ end
 defmodule SymphonyElixir.PilotHolderInterfaceTest do
   use SymphonyElixir.TestSupport
 
-  alias SymphonyElixir.AgentRuntime.{AttemptLedger, NativePilot, Router, RuntimeIsolation}
+  alias SymphonyElixir.AgentRuntime.{AttemptLedger, HostBoundary, NativePilot, Router, RuntimeIsolation}
   alias SymphonyElixir.AgentRuntime.RuntimeAttempt.Identity
   alias SymphonyElixir.C02SyntheticHost
   alias SymphonyElixir.Codex.IsolationProfile
   alias SymphonyElixir.Config.Schema
+  alias SymphonyElixir.ProviderEffect.RequestLedger
   alias SymphonyElixir.WorkControl.{WorkflowLifecycle, WorkItem}
 
   @plane_project "11111111-1111-4111-8111-111111111111"
@@ -442,6 +443,755 @@ defmodule SymphonyElixir.PilotHolderInterfaceTest do
       refute File.exists?(ctx.protocol_log)
     end
   end
+
+  describe "routed functional provider-effect boundary" do
+    @describetag schema2_boundary: true
+
+    test "binds and completes precisely two correlated provider requests", ctx do
+      holder = functional_effect_fixture(ctx)
+      assert {:ok, boundary} = HostBoundary.open(holder, "thread-1", "turn-1")
+      refute File.exists?(Path.join(holder.directory, "provider-effects.journal"))
+      assert {:error, :provider_effect_completion_unconfirmed} = HostBoundary.completed?(boundary)
+
+      wrong_route = effect_descriptor(%{"url" => "https://unexpected.invalid/v1/responses"})
+      assert {:error, :provider_descriptor_refused} = send_effect(boundary, 1, "VALIDATE_DESCRIPTOR", wrong_route)
+      assert {:error, :provider_descriptor_refused} = send_effect(boundary, 2, "VALIDATE_DESCRIPTOR", second_descriptor())
+      assert {:error, :provider_effect_frame_refused} = send_effect(boundary, 1, "UNRECOGNIZED", %{})
+      assert {:error, :provider_effect_frame_refused} = HostBoundary.effect(boundary, [])
+
+      {intent, boundary} = prepare_effect(boundary)
+      assert {:error, :provider_effect_frame_refused} = HostBoundary.effect(boundary, %{"sequence" => boundary.sequence})
+      assert {:error, :provider_possible_send_refused} = acknowledge_effect(boundary, %{intent | "revision" => 2})
+      assert {:error, :provider_possible_send_refused} = acknowledge_effect(boundary, %{intent | "request_id" => "unknown"})
+      assert {:error, :provider_acceptance_refused} = send_effect(boundary, 1, "OBSERVED_ACCEPTANCE", response_fields(intent, 1))
+      {permission, boundary} = allow_effect(boundary, intent)
+      assert permission["kind"] == "INVOCATION_PERMITTED"
+      assert {:error, :provider_possible_send_refused} = acknowledge_effect(boundary, intent)
+      expired = expired_effect(boundary)
+
+      assert {:error, :provider_effect_frame_refused} =
+               send_effect(expired, 1, "OBSERVED_ACCEPTANCE", response_fields(intent, 1))
+
+      assert {:error, :provider_acceptance_refused} =
+               send_effect(boundary, 1, "OBSERVED_ACCEPTANCE", %{response_fields(intent, 1) | "response_id" => " invalid"})
+
+      assert {:error, :provider_terminal_refused} = send_effect(boundary, 1, "TERMINAL_CONFIRMATION", terminal_fields(intent, 1))
+      boundary = complete_effect(boundary, intent, 1)
+      assert {:error, :provider_effect_completion_unconfirmed} = HostBoundary.completed?(boundary)
+      expired = expired_effect(boundary)
+      assert {:error, :provider_effect_frame_refused} = send_effect(expired, 2, "VALIDATE_DESCRIPTOR", second_descriptor())
+
+      assert {:error, :provider_descriptor_refused} =
+               send_effect(boundary, 2, "VALIDATE_DESCRIPTOR", effect_descriptor(Map.put(second_descriptor_fields(), "tool_call_id", "wrong")))
+
+      assert {:ok, second, boundary} = send_effect(boundary, 2, "VALIDATE_DESCRIPTOR", second_descriptor())
+      {_, boundary} = allow_effect(boundary, second, 2)
+
+      assert {:ok, %{"stage" => "accepted"}, second_accepted} =
+               send_effect(boundary, 2, "OBSERVED_ACCEPTANCE", response_fields(second, 2))
+
+      expired = expired_effect(second_accepted)
+
+      assert {:error, :provider_effect_frame_refused} =
+               send_effect(expired, 2, "TERMINAL_CONFIRMATION", terminal_fields(second, 2))
+
+      assert {:ok, %{"stage" => "terminal"}, boundary} =
+               send_effect(second_accepted, 2, "TERMINAL_CONFIRMATION", terminal_fields(second, 2))
+
+      assert :ok = HostBoundary.completed?(boundary)
+      assert :ok = HostBoundary.close(boundary)
+      assert {:ok, %{closed?: true} = ledger} = read_effects(holder)
+      assert [%{ordinal: 1, state: :terminal}, %{ordinal: 2, state: :terminal}] = RequestLedger.records(ledger)
+      assert {:ok, %{state: :running, result: nil}} = AttemptLedger.pilot_status(ctx.ledger)
+    end
+
+    test "recovers a native acknowledgment lost before host handoff without replay", ctx do
+      holder = functional_effect_fixture(ctx)
+      assert {:ok, boundary} = HostBoundary.open(holder, "thread-1", "turn-1")
+      {intent, boundary} = prepare_effect(boundary)
+      assert 0 == record_native_effect(holder, intent, "PRE_SEND_INTENT", 1)
+      assert 0 == record_native_effect(holder, intent, "POSSIBLE_SEND_ACK", 1)
+      assert 1 == record_native_effect(holder, intent, "POSSIBLE_SEND_ACK", 1)
+
+      assert {:ok, ledger} = read_effects(holder)
+      assert [%{ordinal: 1, state: :pre_send_intent, send_may_have_occurred: false}] = RequestLedger.records(ledger)
+      assert ["PRE_SEND_INTENT", "POSSIBLE_SEND_ACK"] = native_effect_states(holder, intent)
+      assert {:ok, recovered} = HostBoundary.open(holder, "thread-1", "turn-1")
+      assert :ok = HostBoundary.close(recovered)
+      assert {:error, :provider_possible_send_refused} = acknowledge_effect(boundary, intent)
+      assert {:ok, %{closed?: true}} = read_effects(holder)
+      assert ["PRE_SEND_INTENT", "POSSIBLE_SEND_ACK"] = native_effect_states(holder, intent)
+      assert {:error, _} = AttemptLedger.begin_attempt(ctx.ledger, ctx.issue.id, pilot_binding: ctx.grant)
+    end
+
+    test "recovers a lost recorded invocation permission and refuses an additional ordinal", ctx do
+      holder = functional_effect_fixture(ctx)
+      assert {:ok, boundary} = HostBoundary.open(holder, "thread-1", "turn-1")
+      {intent, boundary} = prepare_effect(boundary)
+      assert 0 == record_native_effect(holder, intent, "PRE_SEND_INTENT", 1)
+      assert 0 == record_native_effect(holder, intent, "POSSIBLE_SEND_ACK", 1)
+      {permission, boundary} = allow_effect(boundary, intent)
+      assert permission["revision"] == 2
+      assert 0 == record_native_effect(holder, intent, "INVOCATION_PERMITTED", 2)
+      assert 1 == record_native_effect(holder, intent, "INVOCATION_PERMITTED", 2)
+      assert {:ok, ledger} = read_effects(holder)
+      assert [%{state: :possible_send, send_may_have_occurred: true}] = RequestLedger.records(ledger)
+      assert {:ok, without_permit} = HostBoundary.open(holder, "thread-1", "turn-1")
+
+      assert {:error, :provider_acceptance_refused} =
+               send_effect(without_permit, 1, "OBSERVED_ACCEPTANCE", response_fields(intent, 1))
+
+      assert :ok = HostBoundary.close(without_permit)
+      assert {:ok, %{closed?: true} = ledger} = read_effects(holder)
+      assert [%{ordinal: 1, state: :ambiguous, send_may_have_occurred: true}] = RequestLedger.records(ledger)
+      assert {:error, :provider_descriptor_refused} = send_effect(boundary, 2, "VALIDATE_DESCRIPTOR", second_descriptor())
+      assert ["PRE_SEND_INTENT", "POSSIBLE_SEND_ACK", "INVOCATION_PERMITTED"] = native_effect_states(holder, intent)
+      assert {:ok, %{state: :running, result: nil}} = AttemptLedger.pilot_status(ctx.ledger)
+    end
+
+    test "expired and revoked bindings fence effects without erasing retained intent", ctx do
+      holder = functional_effect_fixture(ctx)
+      assert {:ok, boundary} = HostBoundary.open(holder, "thread-1", "turn-1")
+      {intent, boundary} = prepare_effect(boundary)
+      assert 0 == record_native_effect(holder, intent, "PRE_SEND_INTENT", 1)
+      expired = expired_effect(boundary)
+
+      for {kind, attrs} <- [
+            {"VALIDATE_DESCRIPTOR", effect_descriptor()},
+            {"POSSIBLE_SEND_ACK", ack_fields(intent)},
+            {"OBSERVED_ACCEPTANCE", response_fields(intent, 1)},
+            {"TERMINAL_CONFIRMATION", terminal_fields(intent, 1)}
+          ] do
+        assert {:error, :provider_effect_frame_refused} = send_effect(expired, 1, kind, attrs)
+      end
+
+      File.rm!(Path.join(holder.directory, "permission"))
+      assert 1 == record_native_effect(holder, intent, "POSSIBLE_SEND_ACK", 1)
+      assert :ok = AttemptLedger.quarantine_pilot(ctx.ledger, ctx.identity, :worker_lost)
+      assert {:error, :pilot_holder_binding_invalid} = acknowledge_effect(boundary, intent)
+      assert :ok = HostBoundary.close(boundary)
+      assert {:ok, %{closed?: true} = ledger} = read_effects(holder)
+      assert [%{state: :pre_send_intent, send_may_have_occurred: false}] = RequestLedger.records(ledger)
+      assert ["PRE_SEND_INTENT"] = native_effect_states(holder, intent)
+      assert {:ok, %{state: :quarantined, result: nil}} = AttemptLedger.pilot_status(ctx.ledger)
+    end
+
+    test "revoking permission after acceptance refuses terminal and retains a possible effect", ctx do
+      holder = functional_effect_fixture(ctx)
+      assert {:ok, boundary} = HostBoundary.open(holder, "thread-1", "turn-1")
+      {intent, boundary} = prepare_effect(boundary)
+      assert 0 == record_native_effect(holder, intent, "PRE_SEND_INTENT", 1)
+      assert 0 == record_native_effect(holder, intent, "POSSIBLE_SEND_ACK", 1)
+      {_, boundary} = allow_effect(boundary, intent)
+      assert 0 == record_native_effect(holder, intent, "INVOCATION_PERMITTED", 2)
+
+      assert {:ok, %{"stage" => "accepted"}, boundary} =
+               send_effect(boundary, 1, "OBSERVED_ACCEPTANCE", response_fields(intent, 1))
+
+      assert 0 == record_native_effect(holder, intent, "OBSERVED_ACCEPTANCE", 2)
+
+      expired = expired_effect(boundary)
+      assert {:error, :provider_effect_frame_refused} = send_effect(expired, 1, "TERMINAL_CONFIRMATION", terminal_fields(intent, 1))
+
+      File.rm!(Path.join(holder.directory, "permission"))
+      assert 1 == record_native_effect(holder, intent, "TERMINAL_CONFIRMATION", 3)
+      assert :ok = AttemptLedger.quarantine_pilot(ctx.ledger, ctx.identity, :worker_lost)
+      assert {:error, :pilot_holder_binding_invalid} = send_effect(boundary, 1, "TERMINAL_CONFIRMATION", terminal_fields(intent, 1))
+      assert {:error, :pilot_holder_binding_invalid} = send_effect(boundary, 2, "VALIDATE_DESCRIPTOR", second_descriptor())
+      assert :ok = HostBoundary.close(boundary)
+      assert {:ok, %{closed?: true} = ledger} = read_effects(holder)
+      assert [%{ordinal: 1, state: :ambiguous, send_may_have_occurred: true}] = RequestLedger.records(ledger)
+      assert ["PRE_SEND_INTENT", "POSSIBLE_SEND_ACK", "INVOCATION_PERMITTED", "OBSERVED_ACCEPTANCE"] = native_effect_states(holder, intent)
+      assert {:ok, %{state: :quarantined, result: nil}} = AttemptLedger.pilot_status(ctx.ledger)
+    end
+
+    test "AppServer forwards functional effects and refuses a premature final item", ctx do
+      holder = functional_effect_fixture(ctx)
+      assert {:error, :provider_effect_completion_unconfirmed} = run_effect_port(ctx, holder, "premature-final")
+      assert {:ok, %{closed?: true} = ledger} = read_effects(holder)
+      assert [] = RequestLedger.records(ledger)
+      assert {:ok, %{state: :running, result: nil}} = AttemptLedger.pilot_status(ctx.ledger)
+    end
+
+    test "AppServer publishes the actual completion only after journal closure", ctx do
+      holder = functional_effect_fixture(ctx)
+
+      on_message = fn
+        %{event: :turn_completed, payload: payload, raw: raw} ->
+          assert Jason.decode!(raw) == payload
+          send(self(), {:reported_completion, payload, read_effects(holder)})
+
+        _ ->
+          :ok
+      end
+
+      assert {:ok, %{turn_id: "turn-1", thread_id: "thread-1", result: payload}} =
+               run_effect_port(ctx, holder, "complete", on_message)
+
+      assert_received {:reported_completion, ^payload, {:ok, %{closed?: true} = at_notification}}
+      assert [%{ordinal: 1, state: :terminal}, %{ordinal: 2, state: :terminal}] = RequestLedger.records(at_notification)
+      assert {:ok, %{closed?: true} = ledger} = read_effects(holder)
+      assert ledger == at_notification
+      assert [%{ordinal: 1, state: :terminal}, %{ordinal: 2, state: :terminal}] = RequestLedger.records(ledger)
+      assert {:ok, %{state: :running, result: nil}} = AttemptLedger.pilot_status(ctx.ledger)
+    end
+
+    test "HostBoundary confirms a valid closed journal without adding a second close", ctx do
+      holder = functional_effect_fixture(ctx)
+      assert {:ok, boundary} = HostBoundary.open(holder, "thread-1", "turn-1")
+      path = Path.join(holder.directory, "provider-effects.journal")
+      assert :ok = HostBoundary.close(boundary)
+      bytes = File.read!(path)
+      assert :ok = HostBoundary.close(boundary)
+      assert {:ok, %{closed?: true, events: [%{kind: :closed}]}} = read_effects(holder)
+      assert File.read!(path) == bytes
+
+      File.write!(path, bytes <> bytes)
+      assert {:error, :journal_corrupt} = HostBoundary.close(boundary)
+      assert File.read!(path) == bytes <> bytes
+    end
+
+    test "HostBoundary reports an unreadable bound journal", ctx do
+      holder = functional_effect_fixture(ctx)
+      assert {:ok, boundary} = HostBoundary.open(holder, "thread-1", "turn-1")
+      path = Path.join(holder.directory, "provider-effects.journal")
+      File.mkdir!(path)
+      assert {:error, :journal_not_regular} = HostBoundary.close(boundary)
+      assert File.ls!(path) == []
+    end
+
+    test "HostBoundary reports that ambiguity could not be recorded in an already closed journal", ctx do
+      holder = functional_effect_fixture(ctx)
+      assert {:ok, boundary} = HostBoundary.open(holder, "thread-1", "turn-1")
+      {intent, boundary} = prepare_effect(boundary)
+      {_, boundary} = allow_effect(boundary, intent)
+      assert {:ok, ledger} = read_effects(holder)
+      assert {:ok, closed} = RequestLedger.close_admission(ledger)
+      bytes = File.read!(closed.path)
+
+      assert {:error, :ledger_closed} = HostBoundary.close(boundary)
+      assert {:ok, ^closed} = read_effects(holder)
+      assert [%{ordinal: 1, state: :possible_send}] = RequestLedger.records(closed)
+      assert File.read!(closed.path) == bytes
+    end
+
+    test "AppServer retains an interrupted turn and records a separate close error", ctx do
+      holder = functional_effect_fixture(ctx)
+      path = Path.join(holder.directory, "provider-effects.journal")
+
+      on_message = fn
+        %{event: :session_started} -> File.mkdir!(path)
+        %{event: :turn_completed} -> flunk("interrupted turn reported completion")
+        _ -> :ok
+      end
+
+      {result, log} = ExUnit.CaptureLog.with_log(fn -> run_effect_port(ctx, holder, "interrupted", on_message) end)
+
+      assert {:error, :native_functional_turn_failed} = result
+      assert log =~ "request journal close failed reason=:journal_not_regular"
+      assert File.ls!(path) == []
+    end
+
+    test "AppServer expires an acknowledged effect while fresh messages keep arriving", ctx do
+      deadline = System.monotonic_time(:millisecond) + 7_000
+      ctx = update_in(ctx.opts, &Keyword.put(&1, :absolute_deadline_ms, deadline))
+      holder = functional_effect_fixture(ctx)
+
+      assert {:error, reason} = run_effect_port(ctx, holder, "continuous")
+      assert reason in [:turn_timeout, :native_functional_timeout]
+      assert System.monotonic_time(:millisecond) >= deadline
+      assert {:ok, %{closed?: true} = ledger} = read_effects(holder)
+      assert [%{ordinal: 1, state: :ambiguous, send_may_have_occurred: true}] = RequestLedger.records(ledger)
+      assert {:ok, %{state: :running, result: nil}} = AttemptLedger.pilot_status(ctx.ledger)
+    end
+
+    for {fault, reason} <- [
+          {"interrupted", :native_functional_turn_failed},
+          {"protocol-error", :native_functional_turn_failed},
+          {"wrong-turn", :native_functional_turn_refused},
+          {"invalid-frame", :native_functional_frame_refused},
+          {"oversized-frame", :native_functional_frame_refused}
+        ] do
+      test "AppServer closes effect admission after #{fault}", ctx do
+        holder = functional_effect_fixture(ctx)
+        assert {:error, unquote(reason)} = run_effect_port(ctx, holder, unquote(fault))
+        assert {:ok, %{closed?: true} = ledger} = read_effects(holder)
+        assert [] = RequestLedger.records(ledger)
+        assert {:ok, %{state: :running, result: nil}} = AttemptLedger.pilot_status(ctx.ledger)
+      end
+    end
+
+    test "a malformed or refused turn start cannot open the provider-effect journal", ctx do
+      holder = functional_effect_fixture(ctx)
+      assert {:error, :native_functional_turn_refused} = run_effect_port(ctx, holder, "missing-turn-id")
+
+      assert {:error, {:response_error, %{"code" => -32_603, "message" => "fixture refused turn"}}} =
+               run_effect_port(ctx, holder, "turn-start-error")
+
+      refute File.exists?(Path.join(holder.directory, "provider-effects.journal"))
+      assert {:ok, %{state: :running, result: nil}} = AttemptLedger.pilot_status(ctx.ledger)
+    end
+
+    for {case_name, fault, observation, expected} <- [
+          {"no namespace observation", "stop", :missing, {:containment_unconfirmed, :termination_timeout}},
+          {"a still-live observed process", "stop", :live, {:containment_unconfirmed, :termination_timeout}},
+          {"a stopped process but invalid native control", "invalid-stop", :peer, :native_functional_observation_refused}
+        ] do
+      test "retains home after routed shutdown with #{case_name}", ctx do
+        holder = functional_effect_fixture(ctx)
+        assert {:error, unquote(Macro.escape(expected))} = stop_effect_port(holder, unquote(fault), unquote(observation))
+        assert File.dir?(Path.join(holder.directory, "retained-home"))
+        refute File.exists?(Path.join(holder.directory, "routed-stop-observation.json"))
+        assert {:ok, %{state: :running, result: nil}} = AttemptLedger.pilot_status(ctx.ledger)
+      end
+    end
+
+    test "refuses functional launch if the selected driver pin or profile does not match", ctx do
+      holder = functional_effect_fixture(ctx)
+      pin = holder.pin
+      pin = update_in(pin.files, &Map.delete(&1, pin.driver))
+      Application.put_env(:symphony_elixir, :test_native_pilot, pin)
+
+      assert {:error, :native_schema2_input_refused} = NativePilot.prepare_functional(holder.binding, pin, holder.opts)
+
+      unselected = %{pin | schema2: :strict_fault}
+      assert {:error, :pilot_holder_boundary_unavailable} = NativePilot.prepare_functional(holder.binding, unselected, holder.opts)
+      boundary_unavailable = {:error, :pilot_holder_boundary_unavailable}
+      assert ^boundary_unavailable = NativePilot.functional_command(%{holder | assurance: :unverified}, "/usr/bin/python3")
+      refute File.exists?(Path.join(holder.directory, "provider-effects.journal"))
+      assert {:ok, %{state: :running, result: nil}} = AttemptLedger.pilot_status(ctx.ledger)
+    end
+
+    test "checks supervisor, broker and disposal receipt bindings after forward authority is revoked", ctx do
+      holder = functional_effect_fixture(ctx)
+      stop = functional_stop_fixture(holder)
+      assert {:ok, _} = NativePilot.verify_functional_receipt(holder, :stopped, stop)
+      assert {:ok, %{pid: 10, start_ticks: 1}} = NativePilot.host_supervisor_identity(holder, 9)
+      assert {:error, :host_supervisor_unverified} = NativePilot.host_supervisor_identity(holder, 8)
+
+      assert {:error, :native_functional_observation_refused} =
+               NativePilot.verify_functional_receipt(holder, :stopped, %{stop | "sequence" => 0})
+
+      assert :ok = AttemptLedger.quarantine_pilot(ctx.ledger, ctx.identity, :worker_lost)
+      assert {:error, :pilot_holder_binding_invalid} = RuntimeIsolation.check_pilot_holder(holder, :turn)
+      assert :ok = RuntimeIsolation.check_pilot_holder(holder, :cleanup)
+      write_effect_fixture(holder, "disposed", "wrong binding")
+      assert {:error, :native_functional_observation_refused} = RuntimeIsolation.check_pilot_holder(holder, :cleanup)
+      write_effect_fixture(holder, "disposed", holder.digest)
+
+      broker = Path.join(holder.directory, "functional-broker-stop.json") |> File.read!() |> Jason.decode!()
+
+      for {key, value} <- [
+            {"operation_id", "another-operation"},
+            {"helper_stopped", false},
+            {"tool", %{}},
+            {"tool", broker["helper"]},
+            {"supervisor_pid", 99}
+          ] do
+        write_effect_fixture(holder, "functional-broker-stop.json", Jason.encode!(Map.put(broker, key, value)))
+        assert {:error, :native_functional_observation_refused} = RuntimeIsolation.check_pilot_holder(holder, :cleanup)
+      end
+
+      assert {:ok, %{state: :quarantined, result: nil}} = AttemptLedger.pilot_status(ctx.ledger)
+    end
+
+    test "correlates the startup receipt with the selected fixture and closed channel", ctx do
+      holder = functional_effect_fixture(ctx)
+      refused = {:error, :native_functional_observation_refused}
+      fixture = Path.join(Path.dirname(holder.pin.driver), "provider_fixture.py")
+
+      receipt = %{
+        "scope" => "SYNTHETIC_PIPE",
+        "kind" => "native-ready",
+        "binding" => holder.digest,
+        "attempt" => holder.binding.attempt.runtime_attempt_id,
+        "sequence" => 0,
+        "context_digest" => effect_digest("context"),
+        "fixture_sha256" => holder.pin.files[fixture],
+        "holder_pid" => 11,
+        "guard_pid" => 12
+      }
+
+      bytes = Jason.encode!(receipt)
+      write_effect_fixture(holder, "functional-ready.json", bytes)
+
+      envelope =
+        receipt
+        |> Map.take(~w(binding attempt sequence context_digest holder_pid guard_pid))
+        |> Map.merge(%{"schema" => "H100-NATIVE-CONTROL-1", "kind" => "ready", "receipt_sha256" => effect_digest(bytes)})
+
+      assert {:ok, ^receipt} = NativePilot.verify_functional_receipt(holder, :ready, envelope)
+
+      assert ^refused = NativePilot.verify_functional_receipt(holder, :ready, %{envelope | "holder_pid" => 12})
+
+      for change <- [%{"fixture_sha256" => effect_digest("wrong fixture")}, %{"guard_pid" => 11}] do
+        write_effect_fixture(holder, "functional-ready.json", Jason.encode!(Map.merge(receipt, change)))
+        assert ^refused = NativePilot.verify_functional_receipt(holder, :ready, nil)
+      end
+
+      write_effect_fixture(holder, "functional-ready.json", bytes)
+      File.rm!(Path.join(holder.directory, "channel-closed"))
+      assert ^refused = NativePilot.verify_functional_receipt(holder, :ready, envelope)
+    end
+
+    test "retains a bound namespace stop once without replacing it with a changed identity", ctx do
+      holder = functional_effect_fixture(ctx)
+      path = Path.join(holder.directory, "routed-stop-observation.json")
+      identity = %{pid: 11, parent_pid: 12, start_ticks: 2, namespace_inode: 3}
+
+      assert {:error, :native_routed_stop_record_unavailable} = NativePilot.retain_namespace_stop(holder, nil)
+      refute File.exists?(path)
+      assert :ok = NativePilot.retain_namespace_stop(holder, identity)
+      bytes = File.read!(path)
+      digest = holder.digest
+      attempt = ctx.identity.runtime_attempt_id
+
+      assert %{
+               "binding" => ^digest,
+               "attempt" => ^attempt,
+               "namespace_pid1" => %{"pid" => 11, "parent_pid" => 12, "start_ticks" => 2, "namespace_inode" => 3},
+               "port_down_observed" => true,
+               "pid1_stop_verified" => true
+             } = Jason.decode!(bytes)
+
+      changed_identity = %{identity | start_ticks: 4}
+      refused = {:error, :native_routed_stop_record_unavailable}
+      assert ^refused = NativePilot.retain_namespace_stop(holder, changed_identity)
+      assert File.read!(path) == bytes
+      assert {:ok, %{state: :running, result: nil}} = AttemptLedger.pilot_status(ctx.ledger)
+    end
+  end
+
+  defp expired_effect(boundary) do
+    put_in(boundary.holder.binding.absolute_deadline_ms, System.monotonic_time(:millisecond) - 1)
+  end
+
+  defp stop_effect_port(holder, fault, observation) do
+    home = Path.join(holder.directory, "retained-home")
+    File.mkdir!(home)
+    stop = functional_stop_fixture(holder)
+    assert {:ok, _} = NativePilot.verify_functional_receipt(holder, :stopped, stop)
+    script = Path.expand("../support/h100_effect_peer.py", __DIR__)
+    path = Path.join(holder.directory, "stop-peer.json")
+    File.write!(path, Jason.encode!(%{fault: fault, stop: stop}))
+    port = Port.open({:spawn_executable, "/usr/bin/python3"}, [:binary, :exit_status, {:line, 256}, {:args, ["-I", script, path]}])
+
+    try do
+      result =
+        AppServer.stop_session(%{
+          port: port,
+          runtime_containment: :linux_pid_namespace,
+          runtime_namespace: stop_observation(port, observation),
+          pilot_holder_context: holder,
+          absolute_deadline_ms: holder.binding.absolute_deadline_ms,
+          ephemeral_home: home
+        })
+
+      refute Port.info(port)
+      result
+    after
+      if Port.info(port), do: Port.close(port)
+    end
+  end
+
+  defp stop_observation(_port, :missing), do: nil
+
+  defp stop_observation(_port, :live), do: process_observation(String.to_integer(System.pid()))
+
+  defp stop_observation(port, :peer) do
+    {:os_pid, pid} = Port.info(port, :os_pid)
+    process_observation(pid)
+  end
+
+  defp process_observation(pid) do
+    [_, fields] = File.read!("/proc/#{pid}/stat") |> String.split(") ", parts: 2)
+    start_ticks = fields |> String.split() |> Enum.at(19) |> String.to_integer()
+    ["pid:", inode] = File.read_link!("/proc/#{pid}/ns/pid") |> String.split(["[", "]"], trim: true)
+    # These local identities exercise the stop decision given a captured process.
+    # The separate routed suite verifies actual namespace PID 1 containment.
+    %{pid: pid, namespace_inode: String.to_integer(inode), start_ticks: start_ticks}
+  end
+
+  defp functional_stop_fixture(holder) do
+    attempt = holder.binding.attempt.runtime_attempt_id
+    journal = Jason.encode!(%{attempt: attempt, binding: holder.digest}) <> "\n"
+    journal_sha = effect_digest(journal)
+    manifest = Path.join(holder.directory, "manifest.json") |> File.read!() |> Jason.decode!()
+
+    for file <- ~w(consumed guard-reaped disposed), do: write_effect_fixture(holder, file, holder.digest)
+    write_effect_fixture(holder, "events.jsonl", journal)
+
+    write_effect_fixture(
+      holder,
+      "functional-host-supervisor.json",
+      Jason.encode!(%{
+        schema: "H100-HOST-SUPERVISOR-1",
+        binding: holder.digest,
+        attempt: attempt,
+        pid: 10,
+        ppid: 9,
+        start_ticks: 1
+      })
+    )
+
+    write_effect_fixture(
+      holder,
+      "functional-broker-stop.json",
+      Jason.encode!(%{
+        schema: "H100-HOST-BROKER-STOP-1",
+        binding: holder.digest,
+        attempt: attempt,
+        supervisor_pid: 10,
+        operation_id: "tool-op-1",
+        helper_stopped: true,
+        tool_stopped: true,
+        helper: %{pid: 11, start_ticks: 1},
+        tool: %{pid: 12, start_ticks: 2}
+      })
+    )
+
+    receipt = %{
+      "scope" => "SYNTHETIC_PIPE",
+      "kind" => "native-stopped",
+      "binding" => holder.digest,
+      "attempt" => attempt,
+      "sequence" => 1,
+      "context_digest" => manifest["context"]["context_digest"],
+      "termination_observed" => true,
+      "disposal_verified" => true,
+      "journal_sha256" => journal_sha
+    }
+
+    bytes = Jason.encode!(receipt)
+    write_effect_fixture(holder, "functional-stop.json", bytes)
+
+    receipt
+    |> Map.take(~w(binding attempt sequence context_digest journal_sha256 disposal_verified))
+    |> Map.merge(%{"schema" => "H100-NATIVE-CONTROL-1", "kind" => "stopped", "guard_reaped" => true, "host_termination_observed" => true, "receipt_sha256" => effect_digest(bytes)})
+  end
+
+  defp run_effect_port(ctx, holder, fault, on_message \\ fn _ -> :ok end) do
+    assert {:ok, boundary} = HostBoundary.open(holder, "thread-1", "turn-1")
+
+    spec = %{
+      common: Map.drop(effect_frame(boundary, 1, "unused", %{}), ~w(kind ordinal sequence)),
+      descriptors: [effect_descriptor(), second_descriptor()],
+      terminal_sha256: effect_digest("terminal"),
+      fault: fault
+    }
+
+    path = Path.join(holder.directory, "peer-test-input.json")
+    File.write!(path, Jason.encode!(spec))
+    script = Path.expand("../support/h100_effect_peer.py", __DIR__)
+    port = Port.open({:spawn_executable, "/usr/bin/python3"}, [:binary, :exit_status, {:line, 128}, {:args, ["-I", script, path]}])
+
+    session = %{
+      port: port,
+      metadata: %{},
+      approval_policy: "never",
+      auto_approve_requests: false,
+      thread_id: "thread-1",
+      workspace: ctx.workspace,
+      dynamic_tool_binding: %{},
+      pilot_holder_context: holder,
+      absolute_deadline_ms: holder.binding.absolute_deadline_ms
+    }
+
+    try do
+      AppServer.run_turn(session, @prompt, ctx.issue,
+        model: holder.binding.profile.model,
+        defer_runtime_stop: true,
+        on_message: on_message
+      )
+    after
+      if Port.info(port), do: Port.close(port)
+    end
+  end
+
+  defp functional_effect_fixture(ctx) do
+    {binding, pin} = schema2_refusal_fixture(ctx)
+    native = Path.expand("../native/pilot_c02")
+    driver = Path.join(native, "tests/run_attempt.py")
+
+    files =
+      [driver, Path.join(native, "tests/provider_fixture.py"), pin.holder, pin.model_catalog] ++
+        Enum.map(~w(host guard tool-broker request-effect), &Path.join([native, "build", &1]))
+
+    pin = %{pin | driver: driver, schema2: :functional, files: Map.new(files, &{&1, digest_file(&1)})}
+    Application.put_env(:symphony_elixir, :test_native_pilot, pin)
+    opts = ctx.opts |> Keyword.put(:model, ctx.route.profile.model) |> Keyword.put(:test_native_pilot, pin)
+    assert {:ok, holder} = RuntimeIsolation.prepare_pilot_holder(ctx.workspace, opts)
+    assert holder.binding == binding
+    assert {:ok, ["/usr/bin/python3", "-I", ^driver | args]} = NativePilot.functional_command(holder, "/usr/bin/python3")
+    assert "--interactive" in args
+    assert "--schema2" in args
+
+    expired = put_in(holder.binding.absolute_deadline_ms, System.monotonic_time(:millisecond))
+    assert {:error, :native_functional_launch_refused} = NativePilot.functional_command(expired, "/usr/bin/python3")
+
+    context = holder.directory |> Path.join("schema2-input.json") |> File.read!() |> Jason.decode!() |> Map.fetch!("context")
+    deadline = 9_999_999_999_999
+    nonce = effect_digest("nonce")
+    fixture = pin.files[Path.join(native, "tests/provider_fixture.py")]
+    broker = %{"binding" => %{"operation_id" => "tool-op-1", "tool_call_id" => "call-1", "deadline_ms" => deadline}}
+    context = Map.merge(context, %{"context_digest" => effect_digest("context"), "broker_selftest" => broker, "model_catalog_digest" => pin.files[pin.model_catalog]})
+
+    manifest = %{"binding" => holder.digest, "context" => context, "deadline_ms" => deadline, "provider" => %{"nonce" => nonce, "fixture_sha256" => fixture}}
+    write_effect_fixture(holder, "manifest.json", Jason.encode!(manifest))
+    assert {:error, :provider_boundary_unavailable} = HostBoundary.open(holder, "thread-1", "turn-1")
+
+    write_effect_fixture(holder, "channel-closed", holder.digest)
+
+    write_effect_fixture(
+      holder,
+      "functional-ready.json",
+      Jason.encode!(%{
+        "scope" => "SYNTHETIC_PIPE",
+        "kind" => "native-ready",
+        "binding" => holder.digest,
+        "attempt" => ctx.identity.runtime_attempt_id,
+        "sequence" => 0,
+        "holder_pid" => 3,
+        "guard_pid" => 2,
+        "fixture_sha256" => fixture,
+        "context_digest" => context["context_digest"]
+      })
+    )
+
+    permission = [
+      "C02_SYNTHETIC_SCHEMA2_V1",
+      holder.digest,
+      ctx.identity.runtime_attempt_id,
+      pin.files[pin.holder],
+      pin.files[Path.join(native, "build/guard")],
+      "2",
+      "1",
+      to_string(deadline),
+      effect_digest("manifest")
+    ]
+
+    write_effect_fixture(holder, "permission", Enum.join(permission, "\n") <> "\n")
+    holder
+  end
+
+  defp write_effect_fixture(holder, name, bytes) do
+    path = Path.join(holder.directory, name)
+    File.write!(path, bytes)
+    File.chmod!(path, 0o600)
+  end
+
+  defp effect_descriptor(overrides \\ %{}) do
+    fields =
+      Map.merge(
+        %{
+          "request_id" => nil,
+          "method" => "POST",
+          "url" => "https://api.openai.com/v1/responses",
+          "model" => "synthetic-planner-v1",
+          "body_sha256" => effect_digest("body"),
+          "body_length" => 4,
+          "content_type" => "application/json",
+          "stream" => true,
+          "store" => false,
+          "parallel_tool_calls" => false,
+          "tool_schema_sha256" => effect_digest("tools"),
+          "prior_response_id" => nil,
+          "tool_call_id" => nil,
+          "tool_output_sha256" => nil,
+          "tool_output_length" => nil
+        },
+        overrides
+      )
+
+    digest = fields |> Enum.sort() |> Jason.OrderedObject.new() |> Jason.encode!() |> effect_digest()
+    Map.put(fields, "descriptor_sha256", digest)
+  end
+
+  defp second_descriptor_fields do
+    %{"prior_response_id" => "response-1", "tool_call_id" => "call-1", "tool_output_sha256" => effect_digest("fixture read"), "tool_output_length" => 12}
+  end
+
+  defp second_descriptor, do: effect_descriptor(second_descriptor_fields())
+
+  defp send_effect(boundary, ordinal, kind, attrs), do: HostBoundary.effect(boundary, effect_frame(boundary, ordinal, kind, attrs))
+
+  defp effect_frame(boundary, ordinal, kind, attrs) do
+    common = %{
+      "schema" => "H100-EFFECT-PIPE-1",
+      "kind" => kind,
+      "context_digest" => boundary.context["context_digest"],
+      "thread_id" => boundary.thread,
+      "turn_id" => boundary.turn,
+      "nonce" => boundary.nonce,
+      "ordinal" => ordinal,
+      "sequence" => boundary.sequence + 1,
+      "deadline_ms" => boundary.native_deadline
+    }
+
+    Map.merge(common, attrs)
+  end
+
+  defp prepare_effect(boundary) do
+    assert {:ok, %{"kind" => "PRE_SEND_INTENT"} = intent, next} =
+             send_effect(boundary, 1, "VALIDATE_DESCRIPTOR", effect_descriptor())
+
+    {intent, next}
+  end
+
+  defp ack_fields(intent), do: Map.take(intent, ~w(request_id revision descriptor_sha256))
+
+  defp acknowledge_effect(boundary, intent, ordinal \\ 1), do: send_effect(boundary, ordinal, "POSSIBLE_SEND_ACK", ack_fields(intent))
+
+  defp allow_effect(boundary, intent, ordinal \\ 1) do
+    assert {:ok, permission, next} = acknowledge_effect(boundary, intent, ordinal)
+    {permission, next}
+  end
+
+  defp response_fields(intent, ordinal), do: %{"request_id" => intent["request_id"], "response_id" => "response-#{ordinal}"}
+
+  defp terminal_fields(intent, ordinal) do
+    Map.merge(response_fields(intent, ordinal), %{"terminal_sha256" => effect_digest("terminal"), "terminal_length" => 8})
+  end
+
+  defp complete_effect(boundary, intent, ordinal) do
+    assert {:ok, %{"kind" => "DURABLE_OBSERVATION", "stage" => "accepted"}, next} =
+             send_effect(boundary, ordinal, "OBSERVED_ACCEPTANCE", response_fields(intent, ordinal))
+
+    assert {:ok, %{"kind" => "DURABLE_OBSERVATION", "stage" => "terminal"}, next} =
+             send_effect(next, ordinal, "TERMINAL_CONFIRMATION", terminal_fields(intent, ordinal))
+
+    next
+  end
+
+  defp read_effects(holder), do: RequestLedger.open(holder.binding.attempt.runtime_attempt_id, path: Path.join(holder.directory, "provider-effects.journal"))
+
+  defp record_native_effect(holder, intent, state, revision) do
+    binary = Path.expand("../native/pilot_c02/build/request-effect")
+
+    {_, status} =
+      System.cmd(binary, [
+        holder.directory,
+        holder.digest,
+        holder.binding.attempt.runtime_attempt_id,
+        intent["request_id"],
+        state,
+        intent["descriptor_sha256"],
+        to_string(revision),
+        "1",
+        intent["nonce"]
+      ])
+
+    status
+  end
+
+  defp native_effect_states(holder, intent) do
+    holder.directory
+    |> Path.join("request-effect-#{intent["request_id"]}.jsonl")
+    |> File.stream!()
+    |> Enum.map(&Jason.decode!(&1)["state"])
+  end
+
+  defp effect_digest(bytes), do: :crypto.hash(:sha256, bytes) |> Base.encode16(case: :lower)
 
   defp schema2_refusal_fixture(ctx) do
     opts = Keyword.put(ctx.opts, :model, ctx.route.profile.model)

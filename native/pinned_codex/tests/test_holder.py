@@ -28,8 +28,10 @@ else:os.set_inheritable(4,True)
 extra=os.environ.pop('TEST_EXTRA_FD','')
 if extra:
  other=os.open('/dev/null',os.O_RDONLY)
- os.dup2(other,int(extra),inheritable=True)
- if other != int(extra):os.close(other)
+ if other != int(extra):
+  os.dup2(other,int(extra),inheritable=True);os.close(other)
+ else:
+  os.set_inheritable(other,True)
 if os.environ.pop('TEST_DENY_SECCOMP',''):
  class F(ctypes.Structure):_fields_=[('code',ctypes.c_ushort),('jt',ctypes.c_ubyte),('jf',ctypes.c_ubyte),('k',ctypes.c_uint)]
  class P(ctypes.Structure):_fields_=[('len',ctypes.c_ushort),('filter',ctypes.POINTER(F))]

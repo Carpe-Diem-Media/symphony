@@ -4,7 +4,7 @@ defmodule SymphonyElixir.Codex.AppServer do
   """
 
   require Logger
-  alias SymphonyElixir.AgentRuntime.RuntimeIsolation
+  alias SymphonyElixir.AgentRuntime.{NativePilot, RuntimeIsolation}
   alias SymphonyElixir.Codex.DynamicTool
   alias SymphonyElixir.Codex.IsolationProfile
   alias SymphonyElixir.{Config, CredentialBoundary, PathSafety, SSH, Workspace}
@@ -20,6 +20,7 @@ defmodule SymphonyElixir.Codex.AppServer do
   @port_monitor_timeout_ms 5_000
   @routed_stop_token <<0, "SYMPHONY_STOP", "\n">>
   @linux_guard_stop_timeout_ms 5_000
+  @functional_test_build Code.ensure_loaded?(Mix) and Mix.env() == :test
 
   @linux_runtime_guard_script ~S"""
   import ctypes, errno, json, os, selectors, signal, sys, time
@@ -399,7 +400,7 @@ defmodule SymphonyElixir.Codex.AppServer do
   defp start_captured_port(port, ephemeral_home, workspace, worker_host, dynamic_tool_binding, opts, session_policies) do
     namespace_result =
       if routed_policies?(session_policies) and pilot_execution?(Keyword.get(opts, :absolute_deadline_ms)),
-        do: capture_runtime_namespace(port, Keyword.get(opts, :absolute_deadline_ms)),
+        do: capture_runtime_namespace(port, Keyword.get(opts, :absolute_deadline_ms), Keyword.get(opts, :pilot_holder_context)),
         else: {:ok, nil}
 
     case namespace_result do
@@ -570,7 +571,7 @@ defmodule SymphonyElixir.Codex.AppServer do
   @spec run_turn(session(), String.t(), map(), keyword()) :: {:ok, map()} | {:error, term()}
   def run_turn(
         %{
-          port: port,
+          port: _port,
           metadata: metadata,
           approval_policy: approval_policy,
           auto_approve_requests: auto_approve_requests,
@@ -609,8 +610,8 @@ defmodule SymphonyElixir.Codex.AppServer do
       with :ok <- pilot_holder_turn_options(Map.get(session, :pilot_holder_context), opts),
            :ok <- RuntimeIsolation.check_pilot_holder(Map.get(session, :pilot_holder_context), :turn),
            :ok <- check_deadline(deadline_ms) do
-        start_turn(
-          port,
+        start_session_turn(
+          session,
           thread_id,
           prompt,
           issue,
@@ -642,7 +643,10 @@ defmodule SymphonyElixir.Codex.AppServer do
           metadata
         )
 
-        case await_turn_completion(port, on_message, tool_executor, auto_approve_requests, deadline_ms) do
+        result =
+          await_session_turn(session, thread_id, turn_id, on_message, tool_executor, auto_approve_requests, deadline_ms)
+
+        case result do
           {:ok, result} ->
             log_turn_success(deadline_ms, issue, session_id)
 
@@ -705,6 +709,8 @@ defmodule SymphonyElixir.Codex.AppServer do
 
   @spec stop_session(session()) :: :ok | {:error, term()}
   def stop_session(%{port: port} = session) when is_port(port) do
+    native_observation = request_functional_stop(port, session)
+
     stop_result =
       if Map.get(session, :runtime_containment) == :linux_pid_namespace do
         stop_routed_port(
@@ -718,7 +724,9 @@ defmodule SymphonyElixir.Codex.AppServer do
 
     case stop_result do
       :ok ->
-        with :ok <- RuntimeIsolation.check_pilot_holder(Map.get(session, :pilot_holder_context), :cleanup) do
+        with :ok <- native_observation,
+             :ok <- RuntimeIsolation.check_pilot_holder(Map.get(session, :pilot_holder_context), :cleanup),
+             :ok <- retain_functional_namespace_stop(session) do
           cleanup_ephemeral_home(Map.get(session, :ephemeral_home))
         end
 
@@ -726,6 +734,14 @@ defmodule SymphonyElixir.Codex.AppServer do
         error
     end
   end
+
+  if @functional_test_build do
+    defp retain_functional_namespace_stop(%{pilot_holder_context: %{assurance: :synthetic_functional_only} = holder} = session) do
+      NativePilot.retain_namespace_stop(holder, Map.get(session, :runtime_namespace))
+    end
+  end
+
+  defp retain_functional_namespace_stop(_session), do: :ok
 
   defp validate_workspace_cwd(workspace, nil) when is_binary(workspace) do
     expanded_workspace = Path.expand(workspace)
@@ -832,7 +848,8 @@ defmodule SymphonyElixir.Codex.AppServer do
          {:ok, unshare} <- routed_guard_tool("unshare", opts),
          {:ok, python} <- routed_guard_tool("python3", opts),
          :ok <- validate_routed_runtime_identity(resolved, launch_identity, runtime_evidence),
-         :ok <- validate_routed_runtime_path(resolved, opts) do
+         :ok <- validate_routed_runtime_path(resolved, opts),
+         {:ok, runtime_command} <- routed_controller(opts, resolved, python) do
       env =
         CredentialBoundary.routed_port_env(
           dynamic_tool_binding.secret_environment_names,
@@ -851,14 +868,22 @@ defmodule SymphonyElixir.Codex.AppServer do
         "-I",
         "-S",
         "-c",
-        @linux_runtime_guard_script,
-        resolved.native_executable
-        | resolved.argv
+        @linux_runtime_guard_script
+        | runtime_command
       ]
+
+      {launcher, args} =
+        case Keyword.get(opts, :pilot_holder_context) do
+          %{assurance: :synthetic_functional_only, pin: %{driver: driver}} ->
+            {python, ["-I", "-B", driver, "--host-broker", unshare | args]}
+
+          _ ->
+            {unshare, args}
+        end
 
       port =
         Port.open(
-          {:spawn_executable, String.to_charlist(unshare)},
+          {:spawn_executable, String.to_charlist(launcher)},
           [
             :binary,
             :exit_status,
@@ -877,6 +902,16 @@ defmodule SymphonyElixir.Codex.AppServer do
   rescue
     error in [ArgumentError, ErlangError] ->
       {:error, {:codex_spawn_failed, error.__struct__}}
+  end
+
+  defp routed_controller(opts, resolved, python) do
+    case Keyword.get(opts, :pilot_holder_context) do
+      %{assurance: :synthetic_functional_only} = holder ->
+        NativePilot.functional_command(holder, python)
+
+      _ ->
+        {:ok, [resolved.native_executable | resolved.argv]}
+    end
   end
 
   defp require_linux_routed_runtime(opts) do
@@ -1082,10 +1117,15 @@ defmodule SymphonyElixir.Codex.AppServer do
   end
 
   defp prepare_launch(workspace, nil, session_policies, opts) do
-    if routed_policies?(session_policies) do
-      prepare_routed_launch(workspace, session_policies, opts)
-    else
-      {:ok, nil}
+    cond do
+      routed_policies?(session_policies) ->
+        prepare_routed_launch(workspace, session_policies, opts)
+
+      match?(%{assurance: :synthetic_functional_only}, Keyword.get(opts, :pilot_holder_context)) ->
+        {:error, :native_functional_routed_required}
+
+      true ->
+        {:ok, nil}
     end
   end
 
@@ -1370,6 +1410,27 @@ defmodule SymphonyElixir.Codex.AppServer do
     end
   end
 
+  if @functional_test_build do
+    defp do_start_session(
+           port,
+           workspace,
+           %{routed: true} = policies,
+           _tools,
+           deadline,
+           %{assurance: :synthetic_functional_only} = holder
+         ) do
+      with :ok <- check_deadline(deadline),
+           :ok <- await_functional_control(port, holder, :ready),
+           :ok <- RuntimeIsolation.check_pilot_holder(holder, :thread),
+           :ok <- initialize_functional_holder(port, deadline) do
+        start_functional_thread(port, policies, workspace, deadline)
+      end
+    end
+  end
+
+  defp do_start_session(_port, _workspace, _policies, _tools, _deadline, %{assurance: :synthetic_functional_only}),
+    do: {:error, :native_functional_routed_required}
+
   defp do_start_session(port, workspace, session_policies, dynamic_tool_binding, deadline_ms, holder) do
     with :ok <- check_deadline(deadline_ms),
          :ok <- send_initialize(port, deadline_ms),
@@ -1384,6 +1445,34 @@ defmodule SymphonyElixir.Codex.AppServer do
       start_routed_thread(port, workspace, session_policies, dynamic_tool_binding, deadline_ms)
     else
       start_legacy_thread(port, workspace, session_policies, dynamic_tool_binding, deadline_ms)
+    end
+  end
+
+  if @functional_test_build do
+    defp initialize_functional_holder(port, deadline) do
+      send_message(port, %{
+        "method" => "initialize",
+        "id" => @initialize_id,
+        "params" => %{"clientInfo" => %{"name" => "symphony-offline-planner", "version" => "1"}}
+      })
+
+      with {:ok, _response} <- await_response(port, @initialize_id, deadline) do
+        send_message(port, %{"method" => "initialized", "params" => %{}})
+        :ok
+      end
+    end
+
+    defp start_functional_thread(port, policies, workspace, deadline) do
+      send_message(port, %{"method" => "thread/start", "id" => @thread_start_id, "params" => %{}})
+
+      with {:ok, %{"thread" => %{"id" => thread_id}} = response} when is_binary(thread_id) <-
+             await_response(port, @thread_start_id, deadline),
+           :ok <- validate_runtime_provenance(response, policies, workspace, :thread_start) do
+        {:ok, thread_id}
+      else
+        {:error, _} = error -> error
+        _ -> {:error, :native_functional_thread_refused}
+      end
     end
   end
 
@@ -1607,6 +1696,269 @@ defmodule SymphonyElixir.Codex.AppServer do
       deadline_ms
     )
   end
+
+  if @functional_test_build do
+    alias SymphonyElixir.AgentRuntime.HostBoundary
+
+    defp start_functional_turn(port, thread_id, prompt, deadline) do
+      send_message(port, %{
+        "method" => "turn/start",
+        "id" => @turn_start_id,
+        "params" => %{"threadId" => thread_id, "input" => [%{"type" => "text", "text" => prompt}]}
+      })
+
+      case await_response(port, @turn_start_id, deadline) do
+        {:ok, %{"turn" => %{"id" => turn_id}}} when is_binary(turn_id) and turn_id != "" -> {:ok, turn_id}
+        {:error, _reason} = error -> error
+        _ -> {:error, :native_functional_turn_refused}
+      end
+    end
+
+    defp await_functional_turn(port, holder, thread, turn, on_message) do
+      with {:ok, boundary} <- HostBoundary.open(holder, thread, turn) do
+        deadline = holder.binding.absolute_deadline_ms
+
+        receive_functional_turn(port, boundary, deadline, thread, turn, on_message, false)
+        |> finalize_functional_turn(boundary, port, on_message)
+      end
+    end
+
+    defp finalize_functional_turn({:completed, message, raw}, boundary, port, on_message) do
+      with :ok <- close_functional_turn(boundary, :completed) do
+        emit_turn_event(on_message, :turn_completed, message, raw, port, message)
+        {:ok, message}
+      end
+    end
+
+    defp finalize_functional_turn({:error, _} = error, boundary, _port, _on_message) do
+      _ = close_functional_turn(boundary, :any)
+      error
+    end
+
+    defp close_functional_turn(boundary, requirement) do
+      case HostBoundary.close(boundary, requirement) do
+        :ok ->
+          :ok
+
+        {:error, reason} ->
+          Logger.warning("Codex pilot request journal close failed reason=#{inspect(reason)}")
+          {:error, {:provider_effect_close_unconfirmed, reason}}
+      end
+    end
+
+    defp receive_functional_turn(port, boundary, deadline, thread, turn, on_message, final?) do
+      receive_functional_frames(port, boundary, deadline, thread, turn, on_message, final?)
+    catch
+      kind, reason ->
+        stacktrace = __STACKTRACE__
+        _ = close_functional_turn(boundary, :any)
+        :erlang.raise(kind, reason, stacktrace)
+    end
+
+    defp receive_functional_frames(port, boundary, deadline, thread, turn, on_message, final?) do
+      with {:ok, message, raw} <- functional_frame(port, deadline, "") do
+        case functional_turn_message(message, raw, port, boundary, thread, turn, on_message, final?) do
+          {:continue, next, final?} ->
+            receive_functional_frames(port, next, deadline, thread, turn, on_message, final?)
+
+          result ->
+            result
+        end
+      end
+    end
+
+    defp functional_turn_message(%{"symphonyProviderEffect" => frame} = wrapper, _raw, port, boundary, _thread, _turn, _on_message, final?) when map_size(wrapper) == 1 and not final? do
+      with {:ok, reply, next} <- HostBoundary.effect(boundary, frame) do
+        send_message(port, %{"symphonyProviderEffect" => reply})
+        {:continue, next, false}
+      end
+    end
+
+    defp functional_turn_message(
+           %{
+             "method" => "turn/started",
+             "params" => %{
+               "threadId" => thread,
+               "turn" => %{"id" => turn}
+             }
+           },
+           _raw,
+           _port,
+           boundary,
+           thread,
+           turn,
+           _callback,
+           final?
+         ),
+         do: {:continue, boundary, final?}
+
+    defp functional_turn_message(
+           %{
+             "method" => "item/completed",
+             "params" => %{
+               "threadId" => thread,
+               "turnId" => turn,
+               "item" => %{"type" => "agentMessage", "phase" => "final_answer", "id" => id, "text" => answer}
+             }
+           } = message,
+           raw,
+           port,
+           boundary,
+           thread,
+           turn,
+           on_message,
+           false
+         )
+         when is_binary(id) and byte_size(id) in 1..128 and is_binary(answer) and byte_size(answer) in 1..16_384 do
+      with :ok <- HostBoundary.completed?(boundary) do
+        emit_turn_event(on_message, :notification, message, raw, port, message)
+        {:continue, boundary, true}
+      end
+    end
+
+    defp functional_turn_message(
+           %{
+             "method" => "turn/completed",
+             "params" => %{
+               "threadId" => thread,
+               "turn" => %{"id" => turn, "status" => "completed"}
+             }
+           } = message,
+           raw,
+           _port,
+           boundary,
+           thread,
+           turn,
+           _on_message,
+           true
+         ) do
+      with :ok <- HostBoundary.completed?(boundary) do
+        {:completed, message, raw}
+      end
+    end
+
+    defp functional_turn_message(
+           %{
+             "method" => "turn/completed",
+             "params" => %{
+               "threadId" => thread,
+               "turn" => %{"id" => turn, "status" => status}
+             }
+           },
+           _raw,
+           _port,
+           _boundary,
+           thread,
+           turn,
+           _on_message,
+           _final?
+         )
+         when status in ["failed", "interrupted"],
+         do: {:error, :native_functional_turn_failed}
+
+    defp functional_turn_message(%{"method" => "error", "params" => %{"threadId" => thread, "turnId" => turn}}, _raw, _port, _boundary, thread, turn, _on_message, _final?),
+      do: {:error, :native_functional_turn_failed}
+
+    defp functional_turn_message(%{"method" => "item/started", "params" => %{"threadId" => thread, "turnId" => turn}}, _raw, _port, boundary, thread, turn, _on_message, final?),
+      do: {:continue, boundary, final?}
+
+    defp functional_turn_message(_message, _raw, _port, _boundary, _thread, _turn, _callback, _final?),
+      do: {:error, :native_functional_turn_refused}
+  end
+
+  if @functional_test_build do
+    defp start_session_turn(
+           %{port: port, pilot_holder_context: %{assurance: :synthetic_functional_only}},
+           thread,
+           prompt,
+           _issue,
+           _workspace,
+           _policies,
+           _model,
+           deadline
+         ) do
+      start_functional_turn(port, thread, prompt, deadline)
+    end
+  end
+
+  defp start_session_turn(%{port: port}, thread, prompt, issue, workspace, policies, model, deadline) do
+    start_turn(port, thread, prompt, issue, workspace, policies, model, deadline)
+  end
+
+  if @functional_test_build do
+    defp await_session_turn(
+           %{port: port, pilot_holder_context: %{assurance: :synthetic_functional_only} = holder},
+           thread,
+           turn,
+           on_message,
+           _tool_executor,
+           _auto_approve,
+           _deadline
+         ) do
+      await_functional_turn(port, holder, thread, turn, on_message)
+    end
+  end
+
+  defp await_session_turn(%{port: port}, _thread, _turn, on_message, tool_executor, auto_approve, deadline) do
+    await_turn_completion(port, on_message, tool_executor, auto_approve, deadline)
+  end
+
+  if @functional_test_build do
+    defp await_functional_control(port, holder, phase) do
+      case functional_frame(port, holder.binding.absolute_deadline_ms, "") do
+        {:ok, %{"symphonyNativeControl" => receipt} = wrapper, _raw} when map_size(wrapper) == 1 ->
+          with {:ok, _validated} <- NativePilot.verify_functional_receipt(holder, phase, receipt), do: :ok
+
+        {:ok, %{"method" => method}, _raw} when phase == :stopped and method in ["turn/completed", "error"] ->
+          await_functional_control(port, holder, phase)
+
+        _ ->
+          {:error, :native_functional_observation_refused}
+      end
+    end
+
+    defp functional_frame(port, deadline, pending) do
+      with :ok <- check_deadline(deadline) do
+        receive do
+          {^port, {:data, {:eol, chunk}}} when byte_size(pending) + byte_size(chunk) <= 65_536 ->
+            raw = pending <> chunk
+
+            case Jason.decode(raw) do
+              {:ok, message} when is_map(message) -> {:ok, message, raw}
+              _ -> {:error, :native_functional_frame_refused}
+            end
+
+          {^port, {:data, {:noeol, chunk}}} when byte_size(pending) + byte_size(chunk) < 65_536 ->
+            functional_frame(port, deadline, pending <> chunk)
+
+          {^port, _message} ->
+            {:error, :native_functional_frame_refused}
+        after
+          receive_timeout(@port_monitor_timeout_ms, deadline) -> {:error, :native_functional_timeout}
+        end
+      end
+    end
+  end
+
+  if @functional_test_build do
+    defp request_functional_stop(port, %{pilot_holder_context: %{assurance: :synthetic_functional_only} = holder}) do
+      send_message(port, %{
+        "symphonyNativeControl" => %{
+          "schema" => "H100-NATIVE-CONTROL-1",
+          "kind" => "stop",
+          "binding" => holder.digest,
+          "attempt" => holder.binding.attempt.runtime_attempt_id,
+          "sequence" => 1
+        }
+      })
+
+      await_functional_control(port, holder, :stopped)
+    rescue
+      ArgumentError -> {:error, :native_functional_stop_unverified}
+    end
+  end
+
+  defp request_functional_stop(_port, _session), do: :ok
 
   defp receive_loop(
          port,
@@ -2351,16 +2703,20 @@ defmodule SymphonyElixir.Codex.AppServer do
     ArgumentError -> nil
   end
 
-  defp capture_runtime_namespace(port, deadline_ms, attempts \\ 50)
+  defp capture_runtime_namespace(port, deadline_ms, holder) do
+    attempts = if match?(%{assurance: :synthetic_functional_only}, holder), do: 500, else: 50
+    capture_runtime_namespace(port, deadline_ms, holder, attempts)
+  end
 
-  defp capture_runtime_namespace(_port, _deadline_ms, 0),
+  defp capture_runtime_namespace(_port, _deadline_ms, _holder, 0),
     do: {:error, {:containment_unconfirmed, :namespace_observation_unavailable}}
 
-  defp capture_runtime_namespace(port, deadline_ms, attempts) do
+  defp capture_runtime_namespace(port, deadline_ms, holder, attempts) do
     with host_pid when is_integer(host_pid) <- port_os_pid(port),
          {:ok, children} <- File.read("/proc/#{host_pid}/task/#{host_pid}/children"),
          {:ok, host_namespace} <- namespace_inode("/proc/self/ns/pid"),
-         {:ok, [identity]} <- namespace_pid1_candidates(String.split(children), host_pid, host_namespace) do
+         {:ok, routed_children} <- routed_namespace_children(String.split(children), host_pid, host_namespace, holder),
+         {:ok, [identity]} <- namespace_pid1_candidates(routed_children, host_pid, host_namespace) do
       {:ok, identity}
     else
       _failure ->
@@ -2373,10 +2729,27 @@ defmodule SymphonyElixir.Codex.AppServer do
 
           true ->
             Process.sleep(receive_timeout(10, deadline_ms))
-            capture_runtime_namespace(port, deadline_ms, attempts - 1)
+            capture_runtime_namespace(port, deadline_ms, holder, attempts - 1)
         end
     end
   end
+
+  if @functional_test_build do
+    defp routed_namespace_children(children, host_pid, host_namespace, %{assurance: :synthetic_functional_only} = holder) do
+      with {:ok, %{pid: pid, start_ticks: ticks}} <- NativePilot.host_supervisor_identity(holder, host_pid),
+           true <- Integer.to_string(pid) in children,
+           {:ok, status} <- File.read("/proc/#{pid}/status"),
+           true <- process_parent(status) == host_pid,
+           {:ok, ^host_namespace} <- namespace_inode("/proc/#{pid}/ns/pid"),
+           {:ok, {^ticks, state}} when state not in ["Z", "X"] <- process_identity(pid) do
+        {:ok, List.delete(children, Integer.to_string(pid))}
+      else
+        _ -> {:error, :namespace_observation_incomplete}
+      end
+    end
+  end
+
+  defp routed_namespace_children(children, _host_pid, _host_namespace, _holder), do: {:ok, children}
 
   defp namespace_pid1_candidates(children, expected_parent, host_namespace) do
     Enum.reduce_while(children, {:ok, []}, fn child, {:ok, candidates} ->

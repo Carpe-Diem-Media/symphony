@@ -6,6 +6,40 @@ This patch builds the actual `codex-app-server` target from Codex 0.162.1, commi
 ordinary entry path. It is a partial protected holder, not operational SIWC custody.
 Production Symphony C02 still refuses execution until its host dependencies qualify.
 
+## Slice C offline Planner fixture
+
+The selected test build connects the protected app-server to the native broker
+on FD 5/6 and the synthetic Responses fixture on FD 7/8. The fixture accepts
+nonsecret request descriptors. It cannot perform a provider network request.
+Each request requires durable intent and one-use possible-send acknowledgment.
+Only the selected tracked-file read can link the first completed response to
+the second request.
+
+Build with the existing source verifier and `--synthetic-functional`. Select
+the resulting binary as `PINNED_CODEX_FUNCTIONAL_BINARY`, set
+`PLANE_API_KEY=SYNTHETIC-NONLIVE-PLANE-KEY` for the test process, and run
+`mix test test/symphony_elixir/pilot_functional_holder_test.exs` from `elixir/`
+under the outbound-denial wrapper. The routed test requires the existing Linux
+user and PID namespaces. `SLICE_C_ROUTED_EVIDENCE` can point to a private
+directory for retained synthetic receipts. The test checks the existing C04
+readback and C01 refusal after the native and namespace stop observations.
+
+## Slice B broker diagnostic
+
+The sealed synthetic selection passes a single tracked-file read through the
+real exec-server backend to the separately observed native helper. The holder
+keeps its process-creation and socket restrictions. The guard passes only the
+two selected pipes, and the helper consumes a synchronized start marker before
+forking. Correlated output, exit, and positive stop observations are distinct.
+
+Use the existing verified offline build with `--synthetic-functional`, build
+the native targets, and run `test_brokered_tools` from this directory's
+`tests` subdirectory with the compiled `PINNED_CODEX_BINARY` under the
+outbound-denial wrapper. The test run can retain evidence via
+`SYMPHONY_SLICE_B_EVIDENCE`. This diagnostic uses a disposable Git checkout.
+A model-selected tool call, production containment, and a C04 result remain
+outside the diagnostic.
+
 ## Slice A offline turn
 
 The approved 41-entry source inventory includes the core turn-input consumer and
@@ -24,7 +58,7 @@ marker retained. The synthetic fixture always reports `qualified_host=false`.
 The previously accepted patch SHA-256 is
 `59a9d0ebabd18de96f7f6552b307183fb11bc091b1152b04aef2c34f1255148a`, with patched
 tree `39d3926e6c2a528c3039c2ff9368c1858b1d7f78`. Preserve those historical bytes.
-The current `upstream.json` identifies the distinct Slice A draft patch.
+The accepted Slice A identities remain in the protected-main history.
 
 A delegated formatter in this task invoked rustup outside the required denial
 wrapper. It reported downloading seven Rust 1.95.0 components, and toolchain
