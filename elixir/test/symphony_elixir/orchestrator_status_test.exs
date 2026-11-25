@@ -1082,7 +1082,7 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
 
     issue_id = "issue-mcp-elicitation-stall"
     orchestrator_name = Module.concat(__MODULE__, :McpElicitationBlockOrchestrator)
-    {:ok, pid} = Orchestrator.start_link(name: orchestrator_name)
+    {:ok, pid} = Orchestrator.start_link(name: orchestrator_name, start_quiesced: true)
 
     on_exit(fn ->
       if Process.alive?(pid) do
@@ -1163,12 +1163,90 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
              Orchestrator.snapshot(orchestrator_name, 1_000)
   end
 
+  @tag :pr86_f01_characterization
+  test "startup retires an armed fixture reservation before the fixture binds it" do
+    project_id = "fixture-startup-#{System.unique_integer([:positive])}"
+    issue_id = "startup-fixture-reservation"
+    test_pid = self()
+    observation_ref = make_ref()
+
+    write_workflow_file!(Workflow.workflow_file_path(),
+      tracker_kind: "memory",
+      agent_routing: "routed",
+      symphony_project_id: project_id,
+      poll_interval_ms: 60_000
+    )
+
+    Application.put_env(:symphony_elixir, :memory_tracker_issues, [])
+    assert %{agent: %{routing: "routed"}, tracker: %{kind: "memory"}, symphony: %{project_id: ^project_id}} = Config.settings!()
+    assert {:ok, []} = Tracker.fetch_dependency_graph()
+
+    write_fun = fn table, records ->
+      result = :dets.insert(table, records)
+
+      if result == :ok do
+        for {{:current, ^issue_id}, %{authority_fence: %{state: fence}} = row} <- records do
+          send(test_pid, {observation_ref, self(), row.lineage_id, fence, row.in_flight})
+        end
+      end
+
+      result
+    end
+
+    name = Module.concat(__MODULE__, :StartupFixtureReservationOrchestrator)
+    {:ok, pid} = Orchestrator.start_link(name: name, start_quiesced: true, attempt_ledger_opts: [write_fun: write_fun])
+
+    try do
+      assert %{
+               startup_reconciliation: :pending,
+               tick_timer_ref: nil,
+               running: running,
+               attempt_ledger_status: :ready,
+               attempt_ledger: %AttemptLedger{project_id: ^project_id} = ledger,
+               recovery_ledger_status: :ready,
+               workspace_ownership_ledger_status: :ready
+             } = :sys.get_state(pid, 2_000)
+
+      assert map_size(running) == 0
+      assert :not_found = AttemptLedger.current(ledger, issue_id)
+      assert {:ok, %{lineage_id: lineage}} = AttemptLedger.begin_attempt(ledger, issue_id)
+
+      assert {:ok, %{lineage_id: ^lineage, in_flight: true, authority_fence: %{state: :armed}}} =
+               AttemptLedger.current(ledger, issue_id)
+
+      assert_receive {^observation_ref, ^test_pid, ^lineage, :armed, true}, 0
+
+      send(pid, :run_poll_cycle)
+      assert %{startup_reconciliation: :ready, tick_timer_ref: timer} = :sys.get_state(pid, 2_000)
+      assert is_reference(timer)
+
+      assert_receive {^observation_ref, ^pid, ^lineage, :released, true}, 0
+      assert_receive {^observation_ref, ^pid, ^lineage, :released, false}, 0
+
+      assert {:ok, %{lineage_id: ^lineage, in_flight: false, authority_fence: %{state: :released}}} =
+               AttemptLedger.current(ledger, issue_id)
+
+      identity = %Identity{
+        runtime_attempt_id: "startup-fixture-runtime",
+        work_item_id: issue_id,
+        lineage_generation: lineage,
+        responsibility: "implementation",
+        runtime_profile: "implementation"
+      }
+
+      assert {:error, :authority_fence_terminal} = AttemptLedger.bind_runtime_attempt(ledger, issue_id, identity)
+    after
+      assert :ok = GenServer.stop(pid, :normal, 5_000)
+      refute Process.alive?(pid)
+    end
+  end
+
   test "orchestrator blocks failed workers after app-server reports input required" do
     write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: "memory")
 
     issue_id = "issue-input-required"
     orchestrator_name = Module.concat(__MODULE__, :InputRequiredBlockOrchestrator)
-    {:ok, pid} = Orchestrator.start_link(name: orchestrator_name)
+    {:ok, pid} = Orchestrator.start_link(name: orchestrator_name, start_quiesced: true)
 
     on_exit(fn ->
       if Process.alive?(pid) do
@@ -1224,7 +1302,7 @@ defmodule SymphonyElixir.OrchestratorStatusTest do
 
     issue_id = "issue-input-required-normal"
     orchestrator_name = Module.concat(__MODULE__, :InputRequiredNormalBlockOrchestrator)
-    {:ok, pid} = Orchestrator.start_link(name: orchestrator_name)
+    {:ok, pid} = Orchestrator.start_link(name: orchestrator_name, start_quiesced: true)
 
     on_exit(fn ->
       if Process.alive?(pid) do
