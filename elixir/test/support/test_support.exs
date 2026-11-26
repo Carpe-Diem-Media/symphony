@@ -17,7 +17,9 @@ defmodule SymphonyElixir.TestSupport do
 
   @workflow_prompt "You are an agent for this repository."
 
-  defmacro __using__(_opts) do
+  defmacro __using__(opts) do
+    rehearsal? = Keyword.get(opts, :h100_rehearsal, false)
+
     quote do
       use ExUnit.Case
       import ExUnit.CaptureLog
@@ -55,57 +57,94 @@ defmodule SymphonyElixir.TestSupport do
           sign_provider_observation_for_test: 1
         ]
 
-      setup do
-        workflow_root =
-          Path.join(
-            System.tmp_dir!(),
-            "symphony-elixir-workflow-#{System.unique_integer([:positive])}"
-          )
+      setup context do
+        case SymphonyElixir.TestSupport.fixture_root(unquote(rehearsal?), context) do
+          :ordinary ->
+            root = Path.join(System.tmp_dir!(), "symphony-elixir-workflow-#{System.unique_integer([:positive])}")
+            SymphonyElixir.TestSupport.start_workflow_fixture(root, :ordinary)
 
-        File.mkdir_p!(workflow_root)
-        workflow_file = Path.join(workflow_root, "WORKFLOW.md")
-        attempt_ledger_root = Path.join(workflow_root, "attempt-ledger")
-        workspace_ownership_root = Path.join(workflow_root, "workspace-ownership")
-        workspace_root = Path.join(workflow_root, "workspaces")
-        File.mkdir_p!(attempt_ledger_root)
-        write_workflow_file!(workflow_file, workspace_root: workspace_root)
-        Workflow.set_workflow_file_path(workflow_file)
-        Application.put_env(:symphony_elixir, :attempt_ledger_root, attempt_ledger_root)
-        if Process.whereis(SymphonyElixir.WorkflowStore), do: SymphonyElixir.WorkflowStore.force_reload()
-        stop_default_http_server()
-
-        {:ok, workspace_ownership_ledger} =
-          OwnershipLedger.open(
-            "test-workspace-ownership",
-            Tracker.identity(Config.settings!().tracker),
-            root: workspace_ownership_root,
-            workspace_root: Config.local_workspace_root()
-          )
-
-        Process.put(:symphony_test_workspace_ownership_ledger, workspace_ownership_ledger)
-        Process.put(:symphony_test_workspace_ownership_root, workspace_ownership_root)
-        Process.put(:symphony_test_workspace_root, workspace_root)
-        Process.put(:symphony_test_workspace_ownership_ledgers, [workspace_ownership_ledger])
-
-        on_exit(fn ->
-          Process.get(:symphony_test_workspace_ownership_ledgers, [])
-          |> Enum.uniq_by(& &1.path)
-          |> Enum.each(&OwnershipLedger.close/1)
-
-          Process.delete(:symphony_test_workspace_ownership_ledger)
-          Process.delete(:symphony_test_workspace_ownership_root)
-          Process.delete(:symphony_test_workspace_root)
-          Process.delete(:symphony_test_workspace_ownership_ledgers)
-          Application.delete_env(:symphony_elixir, :workflow_file_path)
-          Application.delete_env(:symphony_elixir, :server_port_override)
-          Application.delete_env(:symphony_elixir, :memory_tracker_issues)
-          Application.delete_env(:symphony_elixir, :attempt_ledger_root)
-          File.rm_rf(workflow_root)
-        end)
-
-        :ok
+          {:rehearsal, root, mode} ->
+            {:ok, rehearsal_root: root, rehearsal_mode: mode}
+        end
       end
     end
+  end
+
+  def fixture_root(false, _context), do: :ordinary
+
+  def fixture_root(true, context) do
+    case System.get_env("H100_REHEARSAL_MODE") do
+      nil ->
+        if context[:h100_evidence_only_rehearsal], do: raise("H-100 rehearsal is disabled"), else: :ordinary
+
+      mode when mode in ["prepare", "inspect", "execute"] ->
+        root = System.fetch_env!("H100_REHEARSAL_ROOT")
+
+        with true <- context[:h100_evidence_only_rehearsal] == true,
+             {:ok, ^root} <- SymphonyElixir.PathSafety.canonicalize(root),
+             {:ok, %File.Stat{type: :directory, uid: uid, mode: permissions}} <- File.lstat(root),
+             {:ok, %File.Stat{uid: ^uid}} <- File.stat("/proc/self"),
+             true <- Bitwise.band(permissions, 0o777) == 0o700 do
+          {:rehearsal, root, mode}
+        else
+          _ -> raise "H-100 rehearsal fixture root refused"
+        end
+
+      _ ->
+        raise "Unknown H-100 rehearsal mode"
+    end
+  end
+
+  def start_workflow_fixture(workflow_root, retention) do
+    File.mkdir_p!(workflow_root)
+    workflow_file = Path.join(workflow_root, "WORKFLOW.md")
+    attempt_ledger_root = Path.join(workflow_root, "attempt-ledger")
+    workspace_ownership_root = Path.join(workflow_root, "workspace-ownership")
+    workspace_root = Path.join(workflow_root, "workspaces")
+    File.mkdir_p!(attempt_ledger_root)
+    write_workflow_file!(workflow_file, workspace_root: workspace_root)
+    SymphonyElixir.Workflow.set_workflow_file_path(workflow_file)
+    Application.put_env(:symphony_elixir, :attempt_ledger_root, attempt_ledger_root)
+    if Process.whereis(SymphonyElixir.WorkflowStore), do: SymphonyElixir.WorkflowStore.force_reload()
+    stop_default_http_server()
+
+    {:ok, workspace_ownership_ledger} =
+      OwnershipLedger.open(
+        "test-workspace-ownership",
+        Tracker.identity(Config.settings!().tracker),
+        root: workspace_ownership_root,
+        workspace_root: Config.local_workspace_root()
+      )
+
+    Process.put(:symphony_test_workspace_ownership_ledger, workspace_ownership_ledger)
+    Process.put(:symphony_test_workspace_ownership_root, workspace_ownership_root)
+    Process.put(:symphony_test_workspace_root, workspace_root)
+    Process.put(:symphony_test_workspace_ownership_ledgers, [workspace_ownership_ledger])
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Process.get(:symphony_test_workspace_ownership_ledgers, [])
+      |> Enum.uniq_by(& &1.path)
+      |> Enum.each(&OwnershipLedger.close/1)
+
+      Process.delete(:symphony_test_workspace_ownership_ledger)
+      Process.delete(:symphony_test_workspace_ownership_root)
+      Process.delete(:symphony_test_workspace_root)
+      Process.delete(:symphony_test_workspace_ownership_ledgers)
+      Application.delete_env(:symphony_elixir, :workflow_file_path)
+      Application.delete_env(:symphony_elixir, :server_port_override)
+      Application.delete_env(:symphony_elixir, :memory_tracker_issues)
+      Application.delete_env(:symphony_elixir, :attempt_ledger_root)
+      finish_fixture_root(workflow_root, retention)
+    end)
+
+    :ok
+  end
+
+  def finish_fixture_root(_root, :rehearsal), do: :ok
+
+  def finish_fixture_root(root, :ordinary) do
+    File.rm_rf(root)
+    :ok
   end
 
   def write_workflow_file!(path, overrides \\ []) do
