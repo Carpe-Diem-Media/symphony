@@ -22,6 +22,11 @@ _spec = importlib.util.spec_from_file_location("p08_gate_verifier", Path(__file_
 verify = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(verify)
 Refusal = verify.Refusal
+_r3_spec = importlib.util.spec_from_file_location(
+    "p08_current_source_verifier", Path(__file__).with_name("verify_current_source.py"))
+_r3_module = importlib.util.module_from_spec(_r3_spec)
+_r3_spec.loader.exec_module(_r3_module)
+_r3 = _r3_module.CurrentSourceVerifier(verify)
 _ID = re.compile(r"[0-9a-f]{32}\Z")
 _NONCE = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -29,6 +34,28 @@ _NONCE = re.compile(r"[0-9a-f]{64}\Z")
 def _require(condition, code):
     if not condition:
         raise Refusal(code)
+
+
+def select_verifier(context):
+    """Route only from an independently accepted installed enrollment.
+
+    Legacy enrollment-2 bytes continue to select R2 unchanged. The external
+    operator authenticates accepted_profile_sha256 before constructing context;
+    a bundle, process environment or caller-selected callback never selects it.
+    """
+    _require(isinstance(context, dict), "VERIFIER_FAMILY_UNAPPROVED")
+    _require(not {"verifier_family", "record_family", "verifier"}.intersection(context),
+             "VERIFIER_FAMILY_UNAPPROVED")
+    profile = context.get("profile")
+    _require(isinstance(profile, dict) and context.get("accepted_profile_sha256") ==
+             verify.sha256(verify.canonical(profile)), "VERIFIER_FAMILY_UNAPPROVED")
+    schema = profile.get("schema")
+    if schema == "p08-verifier-enrollment-2" and "record_family" not in profile:
+        return verify
+    if (schema == "p08-verifier-enrollment-3" and
+            profile.get("record_family") == "D02_CURRENT_SOURCE_REBIND_R3"):
+        return _r3
+    raise Refusal("VERIFIER_FAMILY_UNAPPROVED")
 
 
 def _directory(path):
@@ -365,8 +392,9 @@ def execute(bundle, trusted_context, register_root, status_provider, observation
     _require(isinstance(current, dict), "STATUS_INVALID")
     current = dict(current)
     context = dict(trusted_context, status=current)
+    selected = select_verifier(context)
     try:
-        checked = dict(verify.verify_bundle(bundle, context))
+        checked = dict(selected.verify_bundle(bundle, context))
     except Refusal as error:
         authenticated = error.authenticated_grant
         if authenticated is not None:
@@ -398,9 +426,9 @@ def execute(bundle, trusted_context, register_root, status_provider, observation
             final_status = status_provider()
             check_launch(checked, final_status, observation_provider(checked))
             register.check_custody()
-            inventory = verify.parse_profile(
+            inventory = selected.parse_profile(
                 trusted_context["profiles"][command["executable"]["inventory_sha256"]], "input-inventory")
-            verify.verify_installed_artifact(command["executable"], inventory, trusted_context["sealed_roots"],
+            selected.verify_installed_artifact(command["executable"], inventory, trusted_context["sealed_roots"],
                                              actual_path=argv[0], actual_argv0=argv[0])
             environment = {x["name"]: x["value"] for x in checked["execution_profile"]["environment"]}
             process = subprocess.Popen(argv, executable=argv[0], cwd=command["working_directory"],

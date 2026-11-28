@@ -78,6 +78,18 @@ def checked_action():
 
 
 class GateTests(unittest.TestCase):
+    def test_family_selection_uses_only_accepted_installed_profile(self):
+        # Legacy enrollment bytes need no new field or rewrite to retain R2.
+        profile = {"schema": "p08-verifier-enrollment-2"}
+        context = {"profile": profile,
+                   "accepted_profile_sha256": gate.verify.sha256(gate.verify.canonical(profile))}
+        self.assertIs(gate.verify, gate.select_verifier(context))
+        original_verify, original_refusal = gate.verify, gate.Refusal
+        context["accepted_profile_sha256"] = "f" * 64
+        self.refuses("VERIFIER_FAMILY_UNAPPROVED", gate.select_verifier, context)
+        self.assertIs(original_verify, gate.verify)
+        self.assertIs(original_refusal, gate.Refusal)
+
     def setUp(self):
         self.case_observations = []
         self.temp = tempfile.TemporaryDirectory(prefix="gate-", dir=OUT / "tmp")
@@ -643,9 +655,12 @@ class GateTests(unittest.TestCase):
 
     def test_authenticated_late_verifier_refusal_burns_all_ids(self):
         refusal = gate.Refusal('ACTION_OBSERVATION_STALE', self.checked['grant'])
+        profile = {"schema": "p08-verifier-enrollment-2"}
+        context = {"profile": profile,
+                   "accepted_profile_sha256": gate.verify.sha256(gate.verify.canonical(profile))}
         with mock.patch.object(gate.verify, 'verify_bundle', side_effect=refusal), \
                 mock.patch.object(gate.subprocess, 'Popen') as process:
-            self.refuses('ACTION_OBSERVATION_STALE', gate.execute, {}, {}, self.root,
+            self.refuses('ACTION_OBSERVATION_STALE', gate.execute, {}, context, self.root,
                          lambda: copy.deepcopy(self.status), lambda _: copy.deepcopy(self.observed))
             process.assert_not_called()
         with gate.OneUseRegister(self.root, 7) as register:
@@ -677,7 +692,9 @@ class GateTests(unittest.TestCase):
             {"index": i, "value": x} for i, x in enumerate([
                 "/usr/bin/python3.14", "-I", "-S", "-B", "-c", code])]}
         checked["execution_profile"] = {"environment": [{"name": "PATH", "value": "/nonexistent"}]}
-        context = {"status": status, "profiles": {gate.verify.sha256(invraw): invraw}, "sealed_roots": ["/usr"]}
+        profile = {"schema": "p08-verifier-enrollment-2"}
+        context = {"status": status, "profiles": {gate.verify.sha256(invraw): invraw}, "sealed_roots": ["/usr"],
+                   "profile": profile, "accepted_profile_sha256": gate.verify.sha256(gate.verify.canonical(profile))}
         return checked, context, status, observed
 
     def test_late_observation_burns_grant_without_launch(self):
