@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "/usr/bin/gpg",
+    "--no-options",
+    "--homedir",
+    "/home/jcschoeman96/sdv02/verify",
+    "--batch",
+    "--dearmor",
+    "--output",
+    "/home/jcschoeman96/sdv02/verify/lima-release.gpg",
+    "/home/jcschoeman96/sdv02/downloads/lima-key.asc"
+  ],
+  "start": "2026-11-12T05:25:12.805309+00:00",
+  "end": "2026-11-12T05:25:12.816813+00:00",
+  "exit": 0
+}

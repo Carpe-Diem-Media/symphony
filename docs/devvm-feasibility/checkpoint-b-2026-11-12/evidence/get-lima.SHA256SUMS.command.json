@@ -1,0 +1,27 @@
+{
+  "argv": [
+    "/usr/bin/curl",
+    "-q",
+    "--proto",
+    "=https",
+    "--proto-redir",
+    "=https",
+    "--tlsv1.2",
+    "--fail",
+    "--location",
+    "--silent",
+    "--show-error",
+    "--connect-timeout",
+    "15",
+    "--max-time",
+    "600",
+    "--max-filesize",
+    "1048576",
+    "--output",
+    "/home/jcschoeman96/sdv02/downloads/lima.SHA256SUMS",
+    "https://github.com/lima-vm/lima/releases/download/v2.2.1/SHA256SUMS"
+  ],
+  "start": "2026-11-12T05:25:11.207041+00:00",
+  "end": "2026-11-12T05:25:11.824676+00:00",
+  "exit": 0
+}

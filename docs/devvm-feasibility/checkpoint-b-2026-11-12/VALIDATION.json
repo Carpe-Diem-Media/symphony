@@ -1,0 +1,47 @@
+{
+  "task": "Publish SYMPHONY_DEVVM_04 evidence for independent review",
+  "scope": "Documentation and selected public historical evidence only",
+  "source_packet_checks": {
+    "exact_script_difference": "PASS",
+    "json_files_validated": 26,
+    "local_links_checked": 16,
+    "python_and_shell_body_ast": "PASS",
+    "source_copies_verified": 40,
+    "staging_or_binaries_executed_by_publication": false,
+    "synthetic_record": "PASS_8_OF_8",
+    "text_only_sensitive_material_scan": "PASS"
+  },
+  "bash_syntax_checks": [
+    {
+      "script": "reviewed-r1.sh",
+      "exit": 0
+    },
+    {
+      "script": "executed-checkpoint-b.sh",
+      "exit": 0
+    },
+    {
+      "script": "synthetic-test-command.sh",
+      "exit": 0
+    }
+  ],
+  "pr_body_check": {
+    "command": "env PATH=/home/jcschoeman96/.local/share/mise/installs/elixir/1.19.5-otp-28/bin:/home/jcschoeman96/.local/share/mise/installs/erlang/28.3/bin:/usr/bin:/bin elixir -r elixir/lib/mix/tasks/pr_body.check.ex -e 'Mix.start(); Mix.Tasks.PrBody.Check.run(System.argv())' -- --file '/home/jcschoeman96/projects/symphony-artifacts/devvm-checkpoint-b-review-20261112-iurgs4tw/PR_DESCRIPTION.md'",
+    "result": {
+      "chunk_id": "f34f33",
+      "wall_time_seconds": 0.250289736,
+      "exit_code": 0,
+      "original_token_count": 5,
+      "output": "PR body format OK\n"
+    }
+  },
+  "full_symphony_gate": {
+    "command": "make -C elixir all",
+    "status": "NOT_RUN",
+    "reason": "This checkout has no dependencies; the target begins with dependency acquisition. Existing no-installation scope remains in force."
+  },
+  "runtime_verification": "NOT_RUN_NO_NEW_AUTHORIZATION",
+  "checkpoint_c0": "HOLD",
+  "checkpoint_c1": "HOLD",
+  "merge_readiness": "NOT_VERIFIED_FOR_MERGE"
+}

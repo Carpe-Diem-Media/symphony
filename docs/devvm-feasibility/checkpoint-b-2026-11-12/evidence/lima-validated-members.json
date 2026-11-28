@@ -1,0 +1,1706 @@
+[
+  {
+    "name": ".",
+    "kind": "dir",
+    "size": 0,
+    "mode": 493,
+    "link": "",
+    "offset": 512
+  },
+  {
+    "name": "libexec",
+    "kind": "dir",
+    "size": 0,
+    "mode": 493,
+    "link": "",
+    "offset": 1024
+  },
+  {
+    "name": "libexec/lima",
+    "kind": "dir",
+    "size": 0,
+    "mode": 493,
+    "link": "",
+    "offset": 1536
+  },
+  {
+    "name": "libexec/lima/limactl-mcp",
+    "kind": "file",
+    "size": 7745799,
+    "mode": 493,
+    "link": "",
+    "offset": 2048
+  },
+  {
+    "name": "libexec/lima/limactl-url-fedora-rawhide",
+    "kind": "file",
+    "size": 2024,
+    "mode": 493,
+    "link": "",
+    "offset": 7748608
+  },
+  {
+    "name": "bin",
+    "kind": "dir",
+    "size": 0,
+    "mode": 493,
+    "link": "",
+    "offset": 7751168
+  },
+  {
+    "name": "bin/limactl",
+    "kind": "file",
+    "size": 34405832,
+    "mode": 493,
+    "link": "",
+    "offset": 7751680
+  },
+  {
+    "name": "bin/apptainer.lima",
+    "kind": "file",
+    "size": 762,
+    "mode": 493,
+    "link": "",
+    "offset": 42158080
+  },
+  {
+    "name": "bin/kubectl.lima",
+    "kind": "file",
+    "size": 1608,
+    "mode": 493,
+    "link": "",
+    "offset": 42159616
+  },
+  {
+    "name": "bin/podman.lima",
+    "kind": "file",
+    "size": 801,
+    "mode": 493,
+    "link": "",
+    "offset": 42162176
+  },
+  {
+    "name": "bin/lima",
+    "kind": "file",
+    "size": 1607,
+    "mode": 493,
+    "link": "",
+    "offset": 42163712
+  },
+  {
+    "name": "bin/nerdctl.lima",
+    "kind": "file",
+    "size": 323,
+    "mode": 493,
+    "link": "",
+    "offset": 42166272
+  },
+  {
+    "name": "bin/docker.lima",
+    "kind": "file",
+    "size": 898,
+    "mode": 493,
+    "link": "",
+    "offset": 42167296
+  },
+  {
+    "name": "share",
+    "kind": "dir",
+    "size": 0,
+    "mode": 493,
+    "link": "",
+    "offset": 42168832
+  },
+  {
+    "name": "share/doc",
+    "kind": "dir",
+    "size": 0,
+    "mode": 493,
+    "link": "",
+    "offset": 42169344
+  },
+  {
+    "name": "share/doc/lima",
+    "kind": "dir",
+    "size": 0,
+    "mode": 493,
+    "link": "",
+    "offset": 42169856
+  },
+  {
+    "name": "share/doc/lima/LICENSE",
+    "kind": "file",
+    "size": 11358,
+    "mode": 420,
+    "link": "",
+    "offset": 42170368
+  },
+  {
+    "name": "share/doc/lima/ROADMAP.md",
+    "kind": "file",
+    "size": 55,
+    "mode": 420,
+    "link": "",
+    "offset": 42182656
+  },
+  {
+    "name": "share/doc/lima/MAINTAINERS.md",
+    "kind": "file",
+    "size": 58,
+    "mode": 420,
+    "link": "",
+    "offset": 42183680
+  },
+  {
+    "name": "share/doc/lima/ADOPTERS.md",
+    "kind": "file",
+    "size": 508,
+    "mode": 420,
+    "link": "",
+    "offset": 42184704
+  },
+  {
+    "name": "share/doc/lima/VERSION",
+    "kind": "file",
+    "size": 7,
+    "mode": 420,
+    "link": "",
+    "offset": 42185728
+  },
+  {
+    "name": "share/doc/lima/SECURITY.md",
+    "kind": "file",
+    "size": 66,
+    "mode": 420,
+    "link": "",
+    "offset": 42186752
+  },
+  {
+    "name": "share/doc/lima/README.md",
+    "kind": "file",
+    "size": 4243,
+    "mode": 420,
+    "link": "",
+    "offset": 42187776
+  },
+  {
+    "name": "share/doc/lima/templates",
+    "kind": "symlink",
+    "size": 0,
+    "mode": 511,
+    "link": "../../lima/templates",
+    "offset": 42192896
+  },
+  {
+    "name": "share/lima",
+    "kind": "dir",
+    "size": 0,
+    "mode": 493,
+    "link": "",
+    "offset": 42193408
+  },
+  {
+    "name": "share/lima/templates",
+    "kind": "dir",
+    "size": 0,
+    "mode": 493,
+    "link": "",
+    "offset": 42193920
+  },
+  {
+    "name": "share/lima/templates/debian-13.yaml",
+    "kind": "file",
+    "size": 89,
+    "mode": 420,
+    "link": "",
+    "offset": 42194432
+  },
+  {
+    "name": "share/lima/templates/opensuse.yaml",
+    "kind": "file",
+    "size": 96,
+    "mode": 420,
+    "link": "",
+    "offset": 42195456
+  },
+  {
+    "name": "share/lima/templates/debian-12.yaml",
+    "kind": "file",
+    "size": 89,
+    "mode": 420,
+    "link": "",
+    "offset": 42196480
+  },
+  {
+    "name": "share/lima/templates/centos-stream-10.yaml",
+    "kind": "file",
+    "size": 96,
+    "mode": 420,
+    "link": "",
+    "offset": 42197504
+  },
+  {
+    "name": "share/lima/templates/apptainer.yaml",
+    "kind": "file",
+    "size": 1191,
+    "mode": 420,
+    "link": "",
+    "offset": 42198528
+  },
+  {
+    "name": "share/lima/templates/alpine.yaml",
+    "kind": "file",
+    "size": 437,
+    "mode": 420,
+    "link": "",
+    "offset": 42200576
+  },
+  {
+    "name": "share/lima/templates/ubuntu-22.04.yaml",
+    "kind": "file",
+    "size": 92,
+    "mode": 420,
+    "link": "",
+    "offset": 42201600
+  },
+  {
+    "name": "share/lima/templates/macos-15.yaml",
+    "kind": "file",
+    "size": 327,
+    "mode": 420,
+    "link": "",
+    "offset": 42202624
+  },
+  {
+    "name": "share/lima/templates/k0s.yaml",
+    "kind": "file",
+    "size": 1947,
+    "mode": 420,
+    "link": "",
+    "offset": 42203648
+  },
+  {
+    "name": "share/lima/templates/windows-11.yaml",
+    "kind": "file",
+    "size": 1770,
+    "mode": 420,
+    "link": "",
+    "offset": 42206208
+  },
+  {
+    "name": "share/lima/templates/oraclelinux-8.yaml",
+    "kind": "file",
+    "size": 93,
+    "mode": 420,
+    "link": "",
+    "offset": 42208768
+  },
+  {
+    "name": "share/lima/templates/rocky-8.yaml",
+    "kind": "file",
+    "size": 87,
+    "mode": 420,
+    "link": "",
+    "offset": 42209792
+  },
+  {
+    "name": "share/lima/templates/default.yaml",
+    "kind": "file",
+    "size": 34256,
+    "mode": 420,
+    "link": "",
+    "offset": 42210816
+  },
+  {
+    "name": "share/lima/templates/macos-27.yaml",
+    "kind": "file",
+    "size": 327,
+    "mode": 420,
+    "link": "",
+    "offset": 42245632
+  },
+  {
+    "name": "share/lima/templates/apptainer-rootful.yaml",
+    "kind": "file",
+    "size": 1212,
+    "mode": 420,
+    "link": "",
+    "offset": 42246656
+  },
+  {
+    "name": "share/lima/templates/ubuntu-25.04.yaml",
+    "kind": "file",
+    "size": 92,
+    "mode": 420,
+    "link": "",
+    "offset": 42248704
+  },
+  {
+    "name": "share/lima/templates/docker-rootful.yaml",
+    "kind": "file",
+    "size": 3380,
+    "mode": 420,
+    "link": "",
+    "offset": 42249728
+  },
+  {
+    "name": "share/lima/templates/ubuntu-26.04.yaml",
+    "kind": "file",
+    "size": 92,
+    "mode": 420,
+    "link": "",
+    "offset": 42253824
+  },
+  {
+    "name": "share/lima/templates/debian-11.yaml",
+    "kind": "file",
+    "size": 89,
+    "mode": 420,
+    "link": "",
+    "offset": 42254848
+  },
+  {
+    "name": "share/lima/templates/archlinux.yaml",
+    "kind": "file",
+    "size": 89,
+    "mode": 420,
+    "link": "",
+    "offset": 42255872
+  },
+  {
+    "name": "share/lima/templates/almalinux-10.yaml",
+    "kind": "file",
+    "size": 92,
+    "mode": 420,
+    "link": "",
+    "offset": 42256896
+  },
+  {
+    "name": "share/lima/templates/fedora.yaml",
+    "kind": "file",
+    "size": 89,
+    "mode": 420,
+    "link": "",
+    "offset": 42257920
+  },
+  {
+    "name": "share/lima/templates/fedora-41.yaml",
+    "kind": "file",
+    "size": 89,
+    "mode": 420,
+    "link": "",
+    "offset": 42258944
+  },
+  {
+    "name": "share/lima/templates/opensuse-leap.yaml",
+    "kind": "file",
+    "size": 96,
+    "mode": 420,
+    "link": "",
+    "offset": 42259968
+  },
+  {
+    "name": "share/lima/templates/fedora-43.yaml",
+    "kind": "file",
+    "size": 89,
+    "mode": 420,
+    "link": "",
+    "offset": 42260992
+  },
+  {
+    "name": "share/lima/templates/homebrew-macos.yaml",
+    "kind": "file",
+    "size": 1314,
+    "mode": 420,
+    "link": "",
+    "offset": 42262016
+  },
+  {
+    "name": "share/lima/templates/alpine-iso.yaml",
+    "kind": "file",
+    "size": 436,
+    "mode": 420,
+    "link": "",
+    "offset": 42264064
+  },
+  {
+    "name": "share/lima/templates/opensuse-leap-16.yaml",
+    "kind": "file",
+    "size": 96,
+    "mode": 420,
+    "link": "",
+    "offset": 42265088
+  },
+  {
+    "name": "share/lima/templates/opensuse-leap-15.yaml",
+    "kind": "file",
+    "size": 96,
+    "mode": 420,
+    "link": "",
+    "offset": 42266112
+  },
+  {
+    "name": "share/lima/templates/rocky-10.yaml",
+    "kind": "file",
+    "size": 88,
+    "mode": 420,
+    "link": "",
+    "offset": 42267136
+  },
+  {
+    "name": "share/lima/templates/centos-stream-9.yaml",
+    "kind": "file",
+    "size": 95,
+    "mode": 420,
+    "link": "",
+    "offset": 42268160
+  },
+  {
+    "name": "share/lima/templates/alpine-3.23.yaml",
+    "kind": "file",
+    "size": 437,
+    "mode": 420,
+    "link": "",
+    "offset": 42269184
+  },
+  {
+    "name": "share/lima/templates/ubuntu-24.10.yaml",
+    "kind": "file",
+    "size": 92,
+    "mode": 420,
+    "link": "",
+    "offset": 42270208
+  },
+  {
+    "name": "share/lima/templates/k3s.yaml",
+    "kind": "file",
+    "size": 2789,
+    "mode": 420,
+    "link": "",
+    "offset": 42271232
+  },
+  {
+    "name": "share/lima/templates/almalinux-9.yaml",
+    "kind": "file",
+    "size": 91,
+    "mode": 420,
+    "link": "",
+    "offset": 42274816
+  },
+  {
+    "name": "share/lima/templates/macos.yaml",
+    "kind": "file",
+    "size": 327,
+    "mode": 420,
+    "link": "",
+    "offset": 42275840
+  },
+  {
+    "name": "share/lima/templates/windows-2025.yaml",
+    "kind": "file",
+    "size": 1108,
+    "mode": 420,
+    "link": "",
+    "offset": 42276864
+  },
+  {
+    "name": "share/lima/templates/docker.yaml",
+    "kind": "file",
+    "size": 3804,
+    "mode": 420,
+    "link": "",
+    "offset": 42278912
+  },
+  {
+    "name": "share/lima/templates/ubuntu.yaml",
+    "kind": "file",
+    "size": 92,
+    "mode": 420,
+    "link": "",
+    "offset": 42283520
+  },
+  {
+    "name": "share/lima/templates/almalinux-8.yaml",
+    "kind": "file",
+    "size": 91,
+    "mode": 420,
+    "link": "",
+    "offset": 42284544
+  },
+  {
+    "name": "share/lima/templates/rocky.yaml",
+    "kind": "file",
+    "size": 88,
+    "mode": 420,
+    "link": "",
+    "offset": 42285568
+  },
+  {
+    "name": "share/lima/templates/ubuntu-lts.yaml",
+    "kind": "file",
+    "size": 92,
+    "mode": 420,
+    "link": "",
+    "offset": 42286592
+  },
+  {
+    "name": "share/lima/templates/k8s.yaml",
+    "kind": "file",
+    "size": 10066,
+    "mode": 420,
+    "link": "",
+    "offset": 42287616
+  },
+  {
+    "name": "share/lima/templates/macos-26.yaml",
+    "kind": "file",
+    "size": 327,
+    "mode": 420,
+    "link": "",
+    "offset": 42298368
+  },
+  {
+    "name": "share/lima/templates/alpine-3.22.yaml",
+    "kind": "file",
+    "size": 437,
+    "mode": 420,
+    "link": "",
+    "offset": 42299392
+  },
+  {
+    "name": "share/lima/templates/oraclelinux.yaml",
+    "kind": "file",
+    "size": 94,
+    "mode": 420,
+    "link": "",
+    "offset": 42300416
+  },
+  {
+    "name": "share/lima/templates/experimental",
+    "kind": "dir",
+    "size": 0,
+    "mode": 493,
+    "link": "",
+    "offset": 42301440
+  },
+  {
+    "name": "share/lima/templates/experimental/almalinux-kitten-10.yaml",
+    "kind": "file",
+    "size": 99,
+    "mode": 420,
+    "link": "",
+    "offset": 42301952
+  },
+  {
+    "name": "share/lima/templates/experimental/alsa.yaml",
+    "kind": "file",
+    "size": 1071,
+    "mode": 420,
+    "link": "",
+    "offset": 42302976
+  },
+  {
+    "name": "share/lima/templates/experimental/freebsd-current.yaml",
+    "kind": "file",
+    "size": 439,
+    "mode": 420,
+    "link": "",
+    "offset": 42305024
+  },
+  {
+    "name": "share/lima/templates/experimental/fedora-rawhide.yaml",
+    "kind": "file",
+    "size": 100,
+    "mode": 420,
+    "link": "",
+    "offset": 42306048
+  },
+  {
+    "name": "share/lima/templates/experimental/vnc.yaml",
+    "kind": "file",
+    "size": 1486,
+    "mode": 420,
+    "link": "",
+    "offset": 42307072
+  },
+  {
+    "name": "share/lima/templates/experimental/freebsd-16.yaml",
+    "kind": "file",
+    "size": 439,
+    "mode": 420,
+    "link": "",
+    "offset": 42309120
+  },
+  {
+    "name": "share/lima/templates/experimental/ubuntu-next.yaml",
+    "kind": "file",
+    "size": 1401,
+    "mode": 420,
+    "link": "",
+    "offset": 42310144
+  },
+  {
+    "name": "share/lima/templates/experimental/u7s.yaml",
+    "kind": "file",
+    "size": 3837,
+    "mode": 420,
+    "link": "",
+    "offset": 42312192
+  },
+  {
+    "name": "share/lima/templates/experimental/wsl2.yaml",
+    "kind": "file",
+    "size": 704,
+    "mode": 420,
+    "link": "",
+    "offset": 42316800
+  },
+  {
+    "name": "share/lima/templates/experimental/debian-sid.yaml",
+    "kind": "file",
+    "size": 711,
+    "mode": 420,
+    "link": "",
+    "offset": 42318336
+  },
+  {
+    "name": "share/lima/templates/experimental/gentoo.yaml",
+    "kind": "file",
+    "size": 339,
+    "mode": 420,
+    "link": "",
+    "offset": 42319872
+  },
+  {
+    "name": "share/lima/templates/experimental/ubuntu-26.10.yaml",
+    "kind": "file",
+    "size": 1401,
+    "mode": 420,
+    "link": "",
+    "offset": 42320896
+  },
+  {
+    "name": "share/lima/templates/experimental/almalinux-kitten.yaml",
+    "kind": "file",
+    "size": 99,
+    "mode": 420,
+    "link": "",
+    "offset": 42322944
+  },
+  {
+    "name": "share/lima/templates/experimental/opensuse-tumbleweed.yaml",
+    "kind": "file",
+    "size": 404,
+    "mode": 420,
+    "link": "",
+    "offset": 42323968
+  },
+  {
+    "name": "share/lima/templates/experimental/rke2.yaml",
+    "kind": "file",
+    "size": 2179,
+    "mode": 420,
+    "link": "",
+    "offset": 42324992
+  },
+  {
+    "name": "share/lima/templates/podman.yaml",
+    "kind": "file",
+    "size": 1712,
+    "mode": 420,
+    "link": "",
+    "offset": 42328064
+  },
+  {
+    "name": "share/lima/templates/buildkit.yaml",
+    "kind": "file",
+    "size": 695,
+    "mode": 420,
+    "link": "",
+    "offset": 42330624
+  },
+  {
+    "name": "share/lima/templates/freebsd-15.yaml",
+    "kind": "file",
+    "size": 90,
+    "mode": 420,
+    "link": "",
+    "offset": 42332160
+  },
+  {
+    "name": "share/lima/templates/_default",
+    "kind": "dir",
+    "size": 0,
+    "mode": 493,
+    "link": "",
+    "offset": 42333184
+  },
+  {
+    "name": "share/lima/templates/_default/mounts.yaml",
+    "kind": "file",
+    "size": 171,
+    "mode": 420,
+    "link": "",
+    "offset": 42333696
+  },
+  {
+    "name": "share/lima/templates/ubuntu-24.04.yaml",
+    "kind": "file",
+    "size": 92,
+    "mode": 420,
+    "link": "",
+    "offset": 42334720
+  },
+  {
+    "name": "share/lima/templates/ubuntu-25.10.yaml",
+    "kind": "file",
+    "size": 92,
+    "mode": 420,
+    "link": "",
+    "offset": 42335744
+  },
+  {
+    "name": "share/lima/templates/README.md",
+    "kind": "file",
+    "size": 8622,
+    "mode": 420,
+    "link": "",
+    "offset": 42336768
+  },
+  {
+    "name": "share/lima/templates/linuxbrew.yaml",
+    "kind": "file",
+    "size": 1023,
+    "mode": 420,
+    "link": "",
+    "offset": 42345984
+  },
+  {
+    "name": "share/lima/templates/oraclelinux-9.yaml",
+    "kind": "file",
+    "size": 93,
+    "mode": 420,
+    "link": "",
+    "offset": 42347520
+  },
+  {
+    "name": "share/lima/templates/rocky-9.yaml",
+    "kind": "file",
+    "size": 87,
+    "mode": 420,
+    "link": "",
+    "offset": 42348544
+  },
+  {
+    "name": "share/lima/templates/centos-stream.yaml",
+    "kind": "file",
+    "size": 95,
+    "mode": 420,
+    "link": "",
+    "offset": 42349568
+  },
+  {
+    "name": "share/lima/templates/windows.yaml",
+    "kind": "file",
+    "size": 1770,
+    "mode": 420,
+    "link": "",
+    "offset": 42350592
+  },
+  {
+    "name": "share/lima/templates/fedora-42.yaml",
+    "kind": "file",
+    "size": 89,
+    "mode": 420,
+    "link": "",
+    "offset": 42353152
+  },
+  {
+    "name": "share/lima/templates/almalinux.yaml",
+    "kind": "file",
+    "size": 92,
+    "mode": 420,
+    "link": "",
+    "offset": 42354176
+  },
+  {
+    "name": "share/lima/templates/freebsd.yaml",
+    "kind": "file",
+    "size": 90,
+    "mode": 420,
+    "link": "",
+    "offset": 42355200
+  },
+  {
+    "name": "share/lima/templates/_images",
+    "kind": "dir",
+    "size": 0,
+    "mode": 493,
+    "link": "",
+    "offset": 42356224
+  },
+  {
+    "name": "share/lima/templates/_images/debian-13.yaml",
+    "kind": "file",
+    "size": 4513,
+    "mode": 420,
+    "link": "",
+    "offset": 42356736
+  },
+  {
+    "name": "share/lima/templates/_images/debian-12.yaml",
+    "kind": "file",
+    "size": 3015,
+    "mode": 420,
+    "link": "",
+    "offset": 42361856
+  },
+  {
+    "name": "share/lima/templates/_images/centos-stream-10.yaml",
+    "kind": "file",
+    "size": 1809,
+    "mode": 420,
+    "link": "",
+    "offset": 42365440
+  },
+  {
+    "name": "share/lima/templates/_images/ubuntu-22.04.yaml",
+    "kind": "file",
+    "size": 2997,
+    "mode": 420,
+    "link": "",
+    "offset": 42368000
+  },
+  {
+    "name": "share/lima/templates/_images/macos-15.yaml",
+    "kind": "file",
+    "size": 509,
+    "mode": 420,
+    "link": "",
+    "offset": 42371584
+  },
+  {
+    "name": "share/lima/templates/_images/almalinux-kitten-10.yaml",
+    "kind": "file",
+    "size": 2062,
+    "mode": 420,
+    "link": "",
+    "offset": 42372608
+  },
+  {
+    "name": "share/lima/templates/_images/oraclelinux-8.yaml",
+    "kind": "file",
+    "size": 1017,
+    "mode": 420,
+    "link": "",
+    "offset": 42375680
+  },
+  {
+    "name": "share/lima/templates/_images/rocky-8.yaml",
+    "kind": "file",
+    "size": 1159,
+    "mode": 420,
+    "link": "",
+    "offset": 42377216
+  },
+  {
+    "name": "share/lima/templates/_images/macos-27.yaml",
+    "kind": "file",
+    "size": 485,
+    "mode": 420,
+    "link": "",
+    "offset": 42379264
+  },
+  {
+    "name": "share/lima/templates/_images/ubuntu-25.04.yaml",
+    "kind": "file",
+    "size": 2421,
+    "mode": 420,
+    "link": "",
+    "offset": 42380288
+  },
+  {
+    "name": "share/lima/templates/_images/ubuntu-26.04.yaml",
+    "kind": "file",
+    "size": 3855,
+    "mode": 420,
+    "link": "",
+    "offset": 42383360
+  },
+  {
+    "name": "share/lima/templates/_images/debian-11.yaml",
+    "kind": "file",
+    "size": 1671,
+    "mode": 420,
+    "link": "",
+    "offset": 42387968
+  },
+  {
+    "name": "share/lima/templates/_images/archlinux.yaml",
+    "kind": "file",
+    "size": 825,
+    "mode": 420,
+    "link": "",
+    "offset": 42390528
+  },
+  {
+    "name": "share/lima/templates/_images/almalinux-10.yaml",
+    "kind": "file",
+    "size": 1599,
+    "mode": 420,
+    "link": "",
+    "offset": 42392064
+  },
+  {
+    "name": "share/lima/templates/_images/fedora.yaml",
+    "kind": "file",
+    "size": 892,
+    "mode": 420,
+    "link": "",
+    "offset": 42394624
+  },
+  {
+    "name": "share/lima/templates/_images/fedora-41.yaml",
+    "kind": "file",
+    "size": 938,
+    "mode": 420,
+    "link": "",
+    "offset": 42396160
+  },
+  {
+    "name": "share/lima/templates/_images/opensuse-leap.yaml",
+    "kind": "file",
+    "size": 470,
+    "mode": 420,
+    "link": "",
+    "offset": 42397696
+  },
+  {
+    "name": "share/lima/templates/_images/fedora-43.yaml",
+    "kind": "file",
+    "size": 1111,
+    "mode": 420,
+    "link": "",
+    "offset": 42398720
+  },
+  {
+    "name": "share/lima/templates/_images/alpine-iso.yaml",
+    "kind": "file",
+    "size": 646,
+    "mode": 420,
+    "link": "",
+    "offset": 42400768
+  },
+  {
+    "name": "share/lima/templates/_images/opensuse-leap-16.yaml",
+    "kind": "file",
+    "size": 470,
+    "mode": 420,
+    "link": "",
+    "offset": 42402304
+  },
+  {
+    "name": "share/lima/templates/_images/opensuse-leap-15.yaml",
+    "kind": "file",
+    "size": 580,
+    "mode": 420,
+    "link": "",
+    "offset": 42403328
+  },
+  {
+    "name": "share/lima/templates/_images/rocky-10.yaml",
+    "kind": "file",
+    "size": 1551,
+    "mode": 420,
+    "link": "",
+    "offset": 42404864
+  },
+  {
+    "name": "share/lima/templates/_images/centos-stream-9.yaml",
+    "kind": "file",
+    "size": 1792,
+    "mode": 420,
+    "link": "",
+    "offset": 42407424
+  },
+  {
+    "name": "share/lima/templates/_images/alpine-3.23.yaml",
+    "kind": "file",
+    "size": 592,
+    "mode": 420,
+    "link": "",
+    "offset": 42409984
+  },
+  {
+    "name": "share/lima/templates/_images/ubuntu-24.10.yaml",
+    "kind": "file",
+    "size": 2497,
+    "mode": 420,
+    "link": "",
+    "offset": 42411520
+  },
+  {
+    "name": "share/lima/templates/_images/almalinux-9.yaml",
+    "kind": "file",
+    "size": 1571,
+    "mode": 420,
+    "link": "",
+    "offset": 42414592
+  },
+  {
+    "name": "share/lima/templates/_images/macos.yaml",
+    "kind": "file",
+    "size": 485,
+    "mode": 420,
+    "link": "",
+    "offset": 42417152
+  },
+  {
+    "name": "share/lima/templates/_images/ubuntu.yaml",
+    "kind": "file",
+    "size": 3855,
+    "mode": 420,
+    "link": "",
+    "offset": 42418176
+  },
+  {
+    "name": "share/lima/templates/_images/almalinux-8.yaml",
+    "kind": "file",
+    "size": 1922,
+    "mode": 420,
+    "link": "",
+    "offset": 42422784
+  },
+  {
+    "name": "share/lima/templates/_images/ubuntu-lts.yaml",
+    "kind": "file",
+    "size": 3855,
+    "mode": 420,
+    "link": "",
+    "offset": 42425344
+  },
+  {
+    "name": "share/lima/templates/_images/macos-26.yaml",
+    "kind": "file",
+    "size": 509,
+    "mode": 420,
+    "link": "",
+    "offset": 42429952
+  },
+  {
+    "name": "share/lima/templates/_images/alpine-3.22.yaml",
+    "kind": "file",
+    "size": 592,
+    "mode": 420,
+    "link": "",
+    "offset": 42430976
+  },
+  {
+    "name": "share/lima/templates/_images/freebsd-15.yaml",
+    "kind": "file",
+    "size": 710,
+    "mode": 420,
+    "link": "",
+    "offset": 42432512
+  },
+  {
+    "name": "share/lima/templates/_images/ubuntu-24.04.yaml",
+    "kind": "file",
+    "size": 3403,
+    "mode": 420,
+    "link": "",
+    "offset": 42434048
+  },
+  {
+    "name": "share/lima/templates/_images/ubuntu-25.10.yaml",
+    "kind": "file",
+    "size": 2445,
+    "mode": 420,
+    "link": "",
+    "offset": 42438144
+  },
+  {
+    "name": "share/lima/templates/_images/oraclelinux-9.yaml",
+    "kind": "file",
+    "size": 609,
+    "mode": 420,
+    "link": "",
+    "offset": 42441216
+  },
+  {
+    "name": "share/lima/templates/_images/rocky-9.yaml",
+    "kind": "file",
+    "size": 1511,
+    "mode": 420,
+    "link": "",
+    "offset": 42442752
+  },
+  {
+    "name": "share/lima/templates/_images/fedora-42.yaml",
+    "kind": "file",
+    "size": 889,
+    "mode": 420,
+    "link": "",
+    "offset": 42444800
+  },
+  {
+    "name": "share/lima/templates/_images/freebsd.yaml",
+    "kind": "file",
+    "size": 710,
+    "mode": 420,
+    "link": "",
+    "offset": 42446336
+  },
+  {
+    "name": "share/lima/templates/_images/fedora-44.yaml",
+    "kind": "file",
+    "size": 892,
+    "mode": 420,
+    "link": "",
+    "offset": 42447872
+  },
+  {
+    "name": "share/lima/templates/_images/alpine-3.21.yaml",
+    "kind": "file",
+    "size": 592,
+    "mode": 420,
+    "link": "",
+    "offset": 42449408
+  },
+  {
+    "name": "share/lima/templates/_images/ubuntu-20.04.yaml",
+    "kind": "file",
+    "size": 1922,
+    "mode": 420,
+    "link": "",
+    "offset": 42450944
+  },
+  {
+    "name": "share/lima/templates/_images/oraclelinux-10.yaml",
+    "kind": "file",
+    "size": 613,
+    "mode": 420,
+    "link": "",
+    "offset": 42453504
+  },
+  {
+    "name": "share/lima/templates/homebrew-linux.yaml",
+    "kind": "file",
+    "size": 1023,
+    "mode": 420,
+    "link": "",
+    "offset": 42455040
+  },
+  {
+    "name": "share/lima/templates/fedora-44.yaml",
+    "kind": "file",
+    "size": 89,
+    "mode": 420,
+    "link": "",
+    "offset": 42456576
+  },
+  {
+    "name": "share/lima/templates/alpine-3.21.yaml",
+    "kind": "file",
+    "size": 437,
+    "mode": 420,
+    "link": "",
+    "offset": 42457600
+  },
+  {
+    "name": "share/lima/templates/ubuntu-20.04.yaml",
+    "kind": "file",
+    "size": 92,
+    "mode": 420,
+    "link": "",
+    "offset": 42458624
+  },
+  {
+    "name": "share/lima/templates/debian.yaml",
+    "kind": "file",
+    "size": 89,
+    "mode": 420,
+    "link": "",
+    "offset": 42459648
+  },
+  {
+    "name": "share/lima/templates/podman-rootful.yaml",
+    "kind": "file",
+    "size": 2149,
+    "mode": 420,
+    "link": "",
+    "offset": 42460672
+  },
+  {
+    "name": "share/lima/templates/faasd.yaml",
+    "kind": "file",
+    "size": 1630,
+    "mode": 420,
+    "link": "",
+    "offset": 42463744
+  },
+  {
+    "name": "share/lima/templates/oraclelinux-10.yaml",
+    "kind": "file",
+    "size": 94,
+    "mode": 420,
+    "link": "",
+    "offset": 42466304
+  },
+  {
+    "name": "share/lima/lima-guestagent.Linux-x86_64.gz",
+    "kind": "file",
+    "size": 8274826,
+    "mode": 420,
+    "link": "",
+    "offset": 42467328
+  },
+  {
+    "name": "share/man",
+    "kind": "dir",
+    "size": 0,
+    "mode": 493,
+    "link": "",
+    "offset": 50742784
+  },
+  {
+    "name": "share/man/man1",
+    "kind": "dir",
+    "size": 0,
+    "mode": 493,
+    "link": "",
+    "offset": 50743296
+  },
+  {
+    "name": "share/man/man1/limactl-info.1",
+    "kind": "file",
+    "size": 789,
+    "mode": 420,
+    "link": "",
+    "offset": 50743808
+  },
+  {
+    "name": "share/man/man1/limactl-snapshot-create.1",
+    "kind": "file",
+    "size": 923,
+    "mode": 420,
+    "link": "",
+    "offset": 50745344
+  },
+  {
+    "name": "share/man/man1/limactl-network-create.1",
+    "kind": "file",
+    "size": 1162,
+    "mode": 420,
+    "link": "",
+    "offset": 50746880
+  },
+  {
+    "name": "share/man/man1/limactl-disk-list.1",
+    "kind": "file",
+    "size": 857,
+    "mode": 420,
+    "link": "",
+    "offset": 50748928
+  },
+  {
+    "name": "share/man/man1/limactl-rename.1",
+    "kind": "file",
+    "size": 2477,
+    "mode": 420,
+    "link": "",
+    "offset": 50750464
+  },
+  {
+    "name": "share/man/man1/limactl-restart.1",
+    "kind": "file",
+    "size": 2289,
+    "mode": 420,
+    "link": "",
+    "offset": 50753536
+  },
+  {
+    "name": "share/man/man1/limactl-validate.1",
+    "kind": "file",
+    "size": 808,
+    "mode": 420,
+    "link": "",
+    "offset": 50756608
+  },
+  {
+    "name": "share/man/man1/limactl-snapshot.1",
+    "kind": "file",
+    "size": 1191,
+    "mode": 420,
+    "link": "",
+    "offset": 50758144
+  },
+  {
+    "name": "share/man/man1/limactl-mcp.1",
+    "kind": "file",
+    "size": 678,
+    "mode": 420,
+    "link": "",
+    "offset": 50760192
+  },
+  {
+    "name": "share/man/man1/limactl-disk-import.1",
+    "kind": "file",
+    "size": 852,
+    "mode": 420,
+    "link": "",
+    "offset": 50761728
+  },
+  {
+    "name": "share/man/man1/limactl-template-validate.1",
+    "kind": "file",
+    "size": 835,
+    "mode": 420,
+    "link": "",
+    "offset": 50763264
+  },
+  {
+    "name": "share/man/man1/limactl-sudoers.1",
+    "kind": "file",
+    "size": 1389,
+    "mode": 420,
+    "link": "",
+    "offset": 50764800
+  },
+  {
+    "name": "share/man/man1/limactl-autostart.1",
+    "kind": "file",
+    "size": 854,
+    "mode": 420,
+    "link": "",
+    "offset": 50766848
+  },
+  {
+    "name": "share/man/man1/limactl-network-delete.1",
+    "kind": "file",
+    "size": 1034,
+    "mode": 420,
+    "link": "",
+    "offset": 50768384
+  },
+  {
+    "name": "share/man/man1/limactl-template-yq.1",
+    "kind": "file",
+    "size": 1150,
+    "mode": 420,
+    "link": "",
+    "offset": 50770432
+  },
+  {
+    "name": "share/man/man1/limactl-edit.1",
+    "kind": "file",
+    "size": 2212,
+    "mode": 420,
+    "link": "",
+    "offset": 50772480
+  },
+  {
+    "name": "share/man/man1/limactl-show-ssh.1",
+    "kind": "file",
+    "size": 2036,
+    "mode": 420,
+    "link": "",
+    "offset": 50775552
+  },
+  {
+    "name": "share/man/man1/limactl-start.1",
+    "kind": "file",
+    "size": 3934,
+    "mode": 420,
+    "link": "",
+    "offset": 50778112
+  },
+  {
+    "name": "share/man/man1/limactl-stop.1",
+    "kind": "file",
+    "size": 787,
+    "mode": 420,
+    "link": "",
+    "offset": 50782720
+  },
+  {
+    "name": "share/man/man1/limactl-network.1",
+    "kind": "file",
+    "size": 1195,
+    "mode": 420,
+    "link": "",
+    "offset": 50784256
+  },
+  {
+    "name": "share/man/man1/limactl-disk-resize.1",
+    "kind": "file",
+    "size": 869,
+    "mode": 420,
+    "link": "",
+    "offset": 50786304
+  },
+  {
+    "name": "share/man/man1/limactl-completion.1",
+    "kind": "file",
+    "size": 1048,
+    "mode": 420,
+    "link": "",
+    "offset": 50787840
+  },
+  {
+    "name": "share/man/man1/limactl-template-url.1",
+    "kind": "file",
+    "size": 839,
+    "mode": 420,
+    "link": "",
+    "offset": 50789888
+  },
+  {
+    "name": "share/man/man1/limactl-completion-powershell.1",
+    "kind": "file",
+    "size": 1144,
+    "mode": 420,
+    "link": "",
+    "offset": 50791424
+  },
+  {
+    "name": "share/man/man1/limactl-delete.1",
+    "kind": "file",
+    "size": 833,
+    "mode": 420,
+    "link": "",
+    "offset": 50793472
+  },
+  {
+    "name": "share/man/man1/limactl-autostart-disable.1",
+    "kind": "file",
+    "size": 822,
+    "mode": 420,
+    "link": "",
+    "offset": 50795008
+  },
+  {
+    "name": "share/man/man1/limactl-disk-delete.1",
+    "kind": "file",
+    "size": 965,
+    "mode": 420,
+    "link": "",
+    "offset": 50796544
+  },
+  {
+    "name": "share/man/man1/limactl-copy.1",
+    "kind": "file",
+    "size": 1845,
+    "mode": 420,
+    "link": "",
+    "offset": 50798080
+  },
+  {
+    "name": "share/man/man1/limactl-tunnel.1",
+    "kind": "file",
+    "size": 962,
+    "mode": 420,
+    "link": "",
+    "offset": 50800640
+  },
+  {
+    "name": "share/man/man1/limactl-create.1",
+    "kind": "file",
+    "size": 4133,
+    "mode": 420,
+    "link": "",
+    "offset": 50802176
+  },
+  {
+    "name": "share/man/man1/limactl-screenshot.1",
+    "kind": "file",
+    "size": 900,
+    "mode": 420,
+    "link": "",
+    "offset": 50807296
+  },
+  {
+    "name": "share/man/man1/limactl-list.1",
+    "kind": "file",
+    "size": 2238,
+    "mode": 420,
+    "link": "",
+    "offset": 50808832
+  },
+  {
+    "name": "share/man/man1/limactl-disk-create.1",
+    "kind": "file",
+    "size": 947,
+    "mode": 420,
+    "link": "",
+    "offset": 50811904
+  },
+  {
+    "name": "share/man/man1/limactl-disk-unlock.1",
+    "kind": "file",
+    "size": 1024,
+    "mode": 420,
+    "link": "",
+    "offset": 50813440
+  },
+  {
+    "name": "share/man/man1/limactl-snapshot-apply.1",
+    "kind": "file",
+    "size": 911,
+    "mode": 420,
+    "link": "",
+    "offset": 50814976
+  },
+  {
+    "name": "share/man/man1/limactl-template.1",
+    "kind": "file",
+    "size": 903,
+    "mode": 420,
+    "link": "",
+    "offset": 50816512
+  },
+  {
+    "name": "share/man/man1/limactl-template-copy.1",
+    "kind": "file",
+    "size": 1444,
+    "mode": 420,
+    "link": "",
+    "offset": 50818048
+  },
+  {
+    "name": "share/man/man1/limactl-completion-zsh.1",
+    "kind": "file",
+    "size": 1466,
+    "mode": 420,
+    "link": "",
+    "offset": 50820096
+  },
+  {
+    "name": "share/man/man1/limactl-unprotect.1",
+    "kind": "file",
+    "size": 766,
+    "mode": 420,
+    "link": "",
+    "offset": 50822144
+  },
+  {
+    "name": "share/man/man1/limactl-snapshot-list.1",
+    "kind": "file",
+    "size": 983,
+    "mode": 420,
+    "link": "",
+    "offset": 50823680
+  },
+  {
+    "name": "share/man/man1/limactl-completion-fish.1",
+    "kind": "file",
+    "size": 1190,
+    "mode": 420,
+    "link": "",
+    "offset": 50825216
+  },
+  {
+    "name": "share/man/man1/limactl-protect.1",
+    "kind": "file",
+    "size": 932,
+    "mode": 420,
+    "link": "",
+    "offset": 50827264
+  },
+  {
+    "name": "share/man/man1/limactl-watch.1",
+    "kind": "file",
+    "size": 1639,
+    "mode": 420,
+    "link": "",
+    "offset": 50828800
+  },
+  {
+    "name": "share/man/man1/limactl-network-list.1",
+    "kind": "file",
+    "size": 910,
+    "mode": 420,
+    "link": "",
+    "offset": 50831360
+  },
+  {
+    "name": "share/man/man1/limactl.1",
+    "kind": "file",
+    "size": 1668,
+    "mode": 420,
+    "link": "",
+    "offset": 50832896
+  },
+  {
+    "name": "share/man/man1/limactl-disk.1",
+    "kind": "file",
+    "size": 1149,
+    "mode": 420,
+    "link": "",
+    "offset": 50835456
+  },
+  {
+    "name": "share/man/man1/limactl-clone.1",
+    "kind": "file",
+    "size": 2532,
+    "mode": 420,
+    "link": "",
+    "offset": 50837504
+  },
+  {
+    "name": "share/man/man1/limactl-factory-reset.1",
+    "kind": "file",
+    "size": 786,
+    "mode": 420,
+    "link": "",
+    "offset": 50840576
+  },
+  {
+    "name": "share/man/man1/lima.1",
+    "kind": "file",
+    "size": 387,
+    "mode": 420,
+    "link": "",
+    "offset": 50842112
+  },
+  {
+    "name": "share/man/man1/limactl-completion-bash.1",
+    "kind": "file",
+    "size": 1419,
+    "mode": 420,
+    "link": "",
+    "offset": 50843136
+  },
+  {
+    "name": "share/man/man1/limactl-snapshot-delete.1",
+    "kind": "file",
+    "size": 906,
+    "mode": 420,
+    "link": "",
+    "offset": 50845184
+  },
+  {
+    "name": "share/man/man1/limactl-autostart-enable.1",
+    "kind": "file",
+    "size": 1033,
+    "mode": 420,
+    "link": "",
+    "offset": 50846720
+  },
+  {
+    "name": "share/man/man1/limactl-prune.1",
+    "kind": "file",
+    "size": 827,
+    "mode": 420,
+    "link": "",
+    "offset": 50848768
+  },
+  {
+    "name": "share/man/man1/limactl-shell.1",
+    "kind": "file",
+    "size": 1876,
+    "mode": 420,
+    "link": "",
+    "offset": 50850304
+  }
+]
